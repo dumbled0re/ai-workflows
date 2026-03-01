@@ -3,8 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime
-
-from anthropic import Anthropic
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -84,90 +83,110 @@ DISCOVERY_PROMPT_TEMPLATE = """\
 """
 
 
-class AIAnalyzer:
-    def __init__(self, api_key: str, model: str):
-        self.client = Anthropic(api_key=api_key)
-        self.model = model
+def prepare_prompts(
+    holdings_summaries: list[dict],
+    candidates: list[dict],
+    timing: str,
+    top_n: int,
+    output_dir: str = "data",
+) -> Path:
+    """Prepare analysis prompts and save to a JSON file for Claude Code Action.
 
-    def analyze_holdings(
-        self, holdings_summaries: list[dict], timing: str
-    ) -> dict:
-        """Analyze user's holdings and return predictions."""
-        holdings_text = _format_stock_data(holdings_summaries)
-        prompt = HOLDINGS_PROMPT_TEMPLATE.format(
-            date=datetime.now().strftime("%Y-%m-%d"),
-            timing="市場開場前（朝）" if timing == "morning" else "市場閉場後（夕）",
-            holdings_data=holdings_text,
-        )
-        return self._call_claude(prompt)
+    Instead of calling the Anthropic API directly, this prepares a prompt file
+    that Claude Code Action will read and process.
 
-    def discover_stocks(
-        self, candidates: list[dict], top_n: int
-    ) -> dict:
-        """Analyze screened candidates and return top picks."""
-        candidates_text = _format_stock_data(candidates)
-        prompt = DISCOVERY_PROMPT_TEMPLATE.format(
-            top_n=top_n,
-            date=datetime.now().strftime("%Y-%m-%d"),
-            n=len(candidates),
-            candidates_data=candidates_text,
-        )
-        return self._call_claude(prompt)
+    Returns:
+        Path to the generated prompt file
+    """
+    out = Path(output_dir)
+    out.mkdir(exist_ok=True)
 
-    def _call_claude(self, user_message: str) -> dict:
-        """Make Claude API call and parse JSON response."""
-        try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=4096,
-                system=SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": user_message}],
-            )
-            text = response.content[0].text
-            return self._parse_json_response(text)
-        except Exception:
-            logger.error("Claude API call failed", exc_info=True)
-            raise
+    holdings_text = _format_stock_data(holdings_summaries)
+    candidates_text = _format_stock_data(candidates)
 
-    def _parse_json_response(self, text: str) -> dict:
-        """Parse JSON from Claude's response, with retry on failure."""
+    now_str = datetime.now().strftime("%Y-%m-%d")
+    timing_label = "市場開場前（朝）" if timing == "morning" else "市場閉場後（夕）"
+
+    holdings_prompt = HOLDINGS_PROMPT_TEMPLATE.format(
+        date=now_str,
+        timing=timing_label,
+        holdings_data=holdings_text,
+    )
+    discovery_prompt = DISCOVERY_PROMPT_TEMPLATE.format(
+        top_n=top_n,
+        date=now_str,
+        n=len(candidates),
+        candidates_data=candidates_text,
+    )
+
+    prompt_data = {
+        "system_prompt": SYSTEM_PROMPT,
+        "holdings_prompt": holdings_prompt,
+        "discovery_prompt": discovery_prompt,
+        "metadata": {
+            "date": now_str,
+            "timing": timing,
+            "holdings_count": len(holdings_summaries),
+            "candidates_count": len(candidates),
+        },
+    }
+
+    prompt_file = out / "analysis_input.json"
+    with open(prompt_file, "w", encoding="utf-8") as f:
+        json.dump(prompt_data, f, ensure_ascii=False, indent=2)
+
+    logger.info("Prompt file saved to %s", prompt_file)
+    return prompt_file
+
+
+def load_analysis_results(output_dir: str = "data") -> tuple[dict, dict]:
+    """Load analysis results written by Claude Code Action.
+
+    Returns:
+        tuple of (holdings_analysis, discovery_results)
+    """
+    out = Path(output_dir)
+
+    holdings_file = out / "holdings_result.json"
+    discovery_file = out / "discovery_result.json"
+
+    holdings_result = _load_json(holdings_file)
+    discovery_result = _load_json(discovery_file)
+
+    return holdings_result, discovery_result
+
+
+def _load_json(path: Path) -> dict:
+    """Load and parse a JSON file with fallback."""
+    if not path.exists():
+        logger.error("Result file not found: %s", path)
+        return _fallback_response()
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            content = f.read().strip()
+
         # Try direct parse
         try:
-            return json.loads(text)
+            return json.loads(content)
         except json.JSONDecodeError:
             pass
 
-        # Try extracting JSON from markdown code block
-        if "```json" in text:
-            start = text.index("```json") + 7
-            end = text.index("```", start)
-            try:
-                return json.loads(text[start:end].strip())
-            except json.JSONDecodeError:
-                pass
-        elif "```" in text:
-            start = text.index("```") + 3
-            end = text.index("```", start)
-            try:
-                return json.loads(text[start:end].strip())
-            except json.JSONDecodeError:
-                pass
+        # Try extracting from markdown code block
+        if "```json" in content:
+            start = content.index("```json") + 7
+            end = content.index("```", start)
+            return json.loads(content[start:end].strip())
+        elif "```" in content:
+            start = content.index("```") + 3
+            end = content.index("```", start)
+            return json.loads(content[start:end].strip())
 
-        # Retry with Claude to fix JSON
-        logger.warning("JSON parse failed, requesting fix from Claude")
-        try:
-            fix_response = self.client.messages.create(
-                model=self.model,
-                max_tokens=4096,
-                messages=[
-                    {"role": "user", "content": f"以下のテキストから正しいJSONを抽出して、JSONのみを返してください:\n\n{text}"},
-                ],
-            )
-            fixed_text = fix_response.content[0].text
-            return json.loads(fixed_text)
-        except (json.JSONDecodeError, Exception):
-            logger.error("JSON fix attempt also failed")
-            return _fallback_response()
+        logger.error("Could not parse JSON from %s", path)
+        return _fallback_response()
+    except Exception:
+        logger.error("Failed to load %s", path, exc_info=True)
+        return _fallback_response()
 
 
 def _format_stock_data(summaries: list[dict]) -> str:
@@ -201,8 +220,8 @@ def _format_stock_data(summaries: list[dict]) -> str:
 
 
 def _fallback_response() -> dict:
-    """Return a fallback response when Claude JSON parsing fails."""
+    """Return a fallback response when analysis results are unavailable."""
     return {
         "error": True,
-        "message": "AI分析の応答をパースできませんでした。再実行してください。",
+        "message": "AI分析の結果を読み込めませんでした。再実行してください。",
     }
