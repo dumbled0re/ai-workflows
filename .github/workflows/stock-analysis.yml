@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   analyze:
@@ -45,7 +46,7 @@ jobs:
 
             結果は指定されたJSON形式のみを data/holdings_result.json に書き込んでください。
             JSONのみを出力し、他のテキストは含めないでください。
-          allowed_tools: "Read,Write,Bash"
+          additional_permissions: "Read,Write,Bash"
 
       - name: Analyze with Claude AI (Discovery)
         uses: anthropics/claude-code-action@v1
@@ -57,7 +58,7 @@ jobs:
 
             結果は指定されたJSON形式のみを data/discovery_result.json に書き込んでください。
             JSONのみを出力し、他のテキストは含めないでください。
-          allowed_tools: "Read,Write,Bash"
+          additional_permissions: "Read,Write,Bash"
 
       # Phase 3: Send results to Slack
       - name: Send results to Slack
