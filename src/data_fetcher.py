@@ -8,10 +8,10 @@ import yfinance as yf
 
 logger = logging.getLogger(__name__)
 
-_BATCH_SIZE = 50
-_BATCH_SLEEP_SEC = 3
+_BATCH_SIZE = 10
+_BATCH_SLEEP_SEC = 5
 _MAX_RETRIES = 3
-_BACKOFF_BASE_SEC = 2
+_BACKOFF_BASE_SEC = 10
 
 
 def fetch_batch(

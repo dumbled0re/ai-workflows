@@ -40,25 +40,25 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--allowedTools "Read,Write,Edit,Bash"'
           prompt: |
             data/analysis_input.json を読んで、"holdings_prompt" の内容に基づき株式分析を行ってください。
             "system_prompt" の指示に従って分析してください。
 
             結果は指定されたJSON形式のみを data/holdings_result.json に書き込んでください。
             JSONのみを出力し、他のテキストは含めないでください。
-          additional_permissions: "Read,Write,Bash"
 
       - name: Analyze with Claude AI (Discovery)
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--allowedTools "Read,Write,Edit,Bash"'
           prompt: |
             data/analysis_input.json を読んで、"discovery_prompt" の内容に基づき有望銘柄を選定してください。
             "system_prompt" の指示に従って分析してください。
 
             結果は指定されたJSON形式のみを data/discovery_result.json に書き込んでください。
             JSONのみを出力し、他のテキストは含めないでください。
-          additional_permissions: "Read,Write,Bash"
 
       # Phase 3: Send results to Slack
       - name: Send results to Slack
