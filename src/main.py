@@ -33,7 +33,7 @@ def phase_prepare() -> None:
     from src.config_loader import load_config
     from src.data_fetcher import fetch_batch
     from src.slack_notifier import send_market_closed_to_slack
-    from src.stock_screener import screen_nikkei225
+    from src.stock_screener import screen_stocks
     from src.technical_indicators import compute_indicators
 
     now_jst = datetime.now(JST)
@@ -85,9 +85,9 @@ def phase_prepare() -> None:
             else:
                 logger.warning("No data for holding: %s", holding.ticker)
 
-    # Screen Nikkei 225
-    logger.info("Starting Nikkei 225 screening")
-    screened_candidates, screened_total, screened_failed = screen_nikkei225(
+    # Screen stocks (Nikkei 225 + JPX400)
+    logger.info("Starting stock screening (Nikkei 225 + JPX400)")
+    screened_candidates, screened_total, screened_failed = screen_stocks(
         config.settings
     )
     data_quality["success"] += screened_total

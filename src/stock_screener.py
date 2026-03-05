@@ -4,14 +4,39 @@ import logging
 
 from src.config_loader import Settings
 from src.data_fetcher import fetch_batch
-from src.nikkei225_components import get_tickers
+from src.nikkei225_components import NIKKEI_225_TICKERS, get_tickers as get_nikkei225_tickers
+from src.jpx400_components import JPX400_TICKERS, get_jpx400_tickers
 from src.technical_indicators import compute_indicators, compute_screening_score
 
 logger = logging.getLogger(__name__)
 
 
-def screen_nikkei225(settings: Settings) -> tuple[list[dict], int, int]:
-    """Screen Nikkei 225 stocks and return top candidates with full indicators.
+def _build_merged_universe() -> tuple[list[str], dict[str, dict]]:
+    """Merge Nikkei 225 and JPX400 tickers, deduplicated.
+
+    Returns:
+        tuple of (unique ticker list, ticker->info dict)
+    """
+    ticker_info: dict[str, dict] = {}
+
+    # Nikkei 225 first (has sector info)
+    for t in NIKKEI_225_TICKERS:
+        ticker_info[t["ticker"]] = t
+
+    # JPX400 (add new ones, don't overwrite Nikkei 225 entries that have sector)
+    for t in JPX400_TICKERS:
+        if t["ticker"] not in ticker_info:
+            ticker_info[t["ticker"]] = {
+                "ticker": t["ticker"],
+                "name": t["name"],
+                "sector": "不明",
+            }
+
+    return list(ticker_info.keys()), ticker_info
+
+
+def screen_stocks(settings: Settings) -> tuple[list[dict], int, int]:
+    """Screen Nikkei 225 + JPX400 stocks and return top candidates.
 
     Two-phase approach:
     1. Fast screening with lightweight indicators (Python only, no Claude)
@@ -20,8 +45,8 @@ def screen_nikkei225(settings: Settings) -> tuple[list[dict], int, int]:
     Returns:
         tuple of (candidate summaries, total screened count, failed count)
     """
-    all_tickers = get_tickers()
-    logger.info("Starting Nikkei 225 screening (%d tickers)", len(all_tickers))
+    all_tickers, ticker_info = _build_merged_universe()
+    logger.info("Starting stock screening (%d tickers: Nikkei225 + JPX400)", len(all_tickers))
 
     # Phase 1: Fetch data and fast screen
     data_dict, failed_tickers = fetch_batch(all_tickers, period="3mo")
@@ -53,10 +78,6 @@ def screen_nikkei225(settings: Settings) -> tuple[list[dict], int, int]:
     )
 
     # Phase 2: Compute full indicators for top candidates
-    from src.nikkei225_components import NIKKEI_225_TICKERS
-
-    ticker_info = {t["ticker"]: t for t in NIKKEI_225_TICKERS}
-
     candidates: list[dict] = []
     for ticker, score in top_candidates:
         df = data_dict.get(ticker)
