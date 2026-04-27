@@ -221,7 +221,7 @@ def phase_prepare() -> None:
     )
 
     # Save current prices for Phase 3 (prediction tracking)
-    meta_dir = Path("data")
+    meta_dir = Path("stock_analyzer/data")
     meta_dir.mkdir(exist_ok=True)
     with open(meta_dir / "current_prices.json", "w", encoding="utf-8") as f:
         json.dump(current_prices, f)
@@ -330,7 +330,7 @@ def phase_review() -> None:
 
     prompt = build_weekly_review_prompt(perf_history, strategy_notes)
 
-    out = Path("data")
+    out = Path("stock_analyzer/data")
     out.mkdir(exist_ok=True)
     with open(out / "review_prompt.txt", "w", encoding="utf-8") as f:
         f.write(prompt)

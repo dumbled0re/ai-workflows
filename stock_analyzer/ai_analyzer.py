@@ -150,7 +150,7 @@ def prepare_prompts(
     candidates: list[dict],
     timing: str,
     top_n: int,
-    output_dir: str = "data",
+    output_dir: str = "stock_analyzer/data",
     market_context: str = "",
     market_news: str = "",
     performance_feedback: str = "",
@@ -213,7 +213,7 @@ def prepare_prompts(
     return prompt_file
 
 
-def load_analysis_results(output_dir: str = "data") -> tuple[dict, dict]:
+def load_analysis_results(output_dir: str = "stock_analyzer/data") -> tuple[dict, dict]:
     """Load analysis results written by Claude Code Action.
 
     Returns:
