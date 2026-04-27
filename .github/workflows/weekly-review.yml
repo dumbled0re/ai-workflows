@@ -53,9 +53,12 @@ jobs:
 
       # Phase 4: Commit updated strategy files back to repo
       - name: Save strategy updates
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git
           git add stock_analyzer/data/strategy_notes.json stock_analyzer/data/screening_weights.json stock_analyzer/data/predictions_history.json
           git diff --cached --quiet || git commit -m "Weekly strategy review: update notes and screening weights [skip ci]"
           git push
