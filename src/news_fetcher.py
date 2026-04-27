@@ -129,3 +129,106 @@ def format_stock_news(stock_news: dict[str, list[dict]]) -> dict[str, str]:
             headlines = " / ".join(item["title"] for item in items)
             result[ticker] = headlines
     return result
+
+
+def fetch_margin_data(tickers: list[str]) -> dict[str, dict]:
+    """Fetch margin trading data (信用残) from kabutan.jp.
+
+    Returns dict mapping ticker to margin data:
+        margin_ratio: 信用倍率 (buy_balance / sell_balance)
+        buy_balance: 買い残 (shares)
+        sell_balance: 売り残 (shares)
+        margin_ratio_change: 前週比の変化方向
+    """
+    results: dict[str, dict] = {}
+
+    for i, ticker in enumerate(tickers):
+        if i > 0:
+            time.sleep(random.uniform(0.3, 0.7))
+
+        code = ticker.replace(".T", "")
+        data = _fetch_kabutan_margin(code)
+        if data:
+            results[ticker] = data
+
+    logger.info("Fetched margin data for %d/%d stocks", len(results), len(tickers))
+    return results
+
+
+def _fetch_kabutan_margin(code: str) -> dict | None:
+    """Fetch margin data for a single stock from kabutan."""
+    try:
+        resp = requests.get(
+            f"https://kabutan.jp/stock/kabuka?code={code}&ashi=shin",
+            headers=_HEADERS,
+            timeout=_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            return None
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Find the weekly margin data table (has 信用倍率 and 売り残 columns)
+        for table in soup.find_all("table"):
+            ths = [th.get_text(strip=True) for th in table.find_all("th")]
+            if "信用倍率" in ths and "売り残(株)" in ths:
+                rows = table.find_all("tr")[1:]  # skip header
+                # Get the two most recent valid rows (skip rows with "－")
+                valid_rows: list[list[str]] = []
+                for row in rows:
+                    cells = [td.get_text(strip=True) for td in row.find_all("td")]
+                    if len(cells) >= 7 and cells[4] != "－":
+                        valid_rows.append(cells)
+                    if len(valid_rows) >= 2:
+                        break
+
+                if not valid_rows:
+                    return None
+
+                latest = valid_rows[0]
+                # cells: [終値, 前週比率, 売買単価, 売買高, 売り残, 買い残, 信用倍率]
+                sell_str = latest[4].replace(",", "")
+                buy_str = latest[5].replace(",", "")
+                ratio_str = latest[6]
+
+                result: dict = {}
+                try:
+                    result["sell_balance"] = int(sell_str)
+                    result["buy_balance"] = int(buy_str)
+                    result["margin_ratio"] = float(ratio_str)
+                except (ValueError, IndexError):
+                    return None
+
+                # Check trend: compare with previous week
+                if len(valid_rows) >= 2:
+                    prev = valid_rows[1]
+                    try:
+                        prev_ratio = float(prev[6])
+                        if result["margin_ratio"] > prev_ratio:
+                            result["margin_trend"] = "買い残増加（将来の売り圧力）"
+                        elif result["margin_ratio"] < prev_ratio:
+                            result["margin_trend"] = "買い残減少（売り圧力緩和）"
+                        else:
+                            result["margin_trend"] = "横ばい"
+                    except (ValueError, IndexError):
+                        pass
+
+                # Interpretation
+                ratio = result.get("margin_ratio", 0)
+                if ratio > 5:
+                    result["signal"] = "買い残過多（将来の売り圧力リスク高）"
+                elif ratio > 3:
+                    result["signal"] = "買い残やや多い"
+                elif 1 < ratio <= 3:
+                    result["signal"] = "需給バランス良好"
+                elif 0.5 < ratio <= 1:
+                    result["signal"] = "売り残優位（踏み上げの可能性）"
+                elif ratio <= 0.5 and ratio > 0:
+                    result["signal"] = "売り残過多（踏み上げリスク高）"
+
+                return result
+
+        return None
+    except Exception as e:
+        logger.debug("Failed to fetch margin data for %s: %s", code, e)
+        return None

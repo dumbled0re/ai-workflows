@@ -33,7 +33,7 @@ def phase_prepare() -> None:
     from src.config_loader import load_config
     from src.data_fetcher import fetch_batch
     from src.market_context import fetch_market_context, format_market_context
-    from src.news_fetcher import fetch_market_news, fetch_stock_news, format_market_news, format_stock_news
+    from src.news_fetcher import fetch_margin_data, fetch_market_news, fetch_stock_news, format_market_news, format_stock_news
     from src.sector_analysis import compute_sector_rankings, format_sector_ranking
     from src.slack_notifier import send_market_closed_to_slack
     from src.stock_screener import screen_stocks
@@ -155,14 +155,35 @@ def phase_prepare() -> None:
             candidate["sector_ranking"] = format_sector_ranking(ranking)
             candidate["sector_score"] = ranking.get("sector_score", 0)
 
-    # Fetch news for top candidates
+    # Fetch news and margin data for top candidates
     candidate_tickers = [c["ticker"] for c in screened_candidates[:20]]
     candidate_news = fetch_stock_news(candidate_tickers, max_per_stock=3)
     candidate_news_formatted = format_stock_news(candidate_news)
+
+    logger.info("Fetching margin (信用残) data for top candidates...")
+    all_margin_tickers = candidate_tickers[:]
+    if config.holdings:
+        all_margin_tickers += [h.ticker for h in config.holdings]
+    margin_data = fetch_margin_data(list(set(all_margin_tickers)))
+    logger.info("Fetched margin data for %d stocks", len(margin_data))
+
     for candidate in screened_candidates:
         news_text = candidate_news_formatted.get(candidate["ticker"])
         if news_text:
             candidate["recent_news"] = news_text
+        margin = margin_data.get(candidate["ticker"])
+        if margin:
+            candidate["margin_ratio"] = margin.get("margin_ratio")
+            candidate["margin_signal"] = margin.get("signal", "")
+            candidate["margin_trend"] = margin.get("margin_trend", "")
+
+    # Also attach margin data to holdings
+    for s in holdings_summaries:
+        margin = margin_data.get(s["ticker"])
+        if margin:
+            s["margin_ratio"] = margin.get("margin_ratio")
+            s["margin_signal"] = margin.get("signal", "")
+            s["margin_trend"] = margin.get("margin_trend", "")
 
     # Review past predictions against current prices
     holdings_data_dict = {}

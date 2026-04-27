@@ -335,6 +335,15 @@ def _format_stock_data(summaries: list[dict]) -> str:
         if s.get("sector_ranking"):
             lines.append(f"業界内評価: {s['sector_ranking']}")
 
+        # Margin trading data (信用残)
+        if s.get("margin_ratio") is not None:
+            margin_line = f"信用倍率: {s['margin_ratio']}倍"
+            if s.get("margin_signal"):
+                margin_line += f" ({s['margin_signal']})"
+            if s.get("margin_trend"):
+                margin_line += f" | 推移: {s['margin_trend']}"
+            lines.append(margin_line)
+
         # Recent news
         if s.get("recent_news"):
             lines.append(f"最新ニュース: {s['recent_news']}")
