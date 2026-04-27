@@ -38,6 +38,9 @@ def fetch_market_context() -> dict:
     if vix:
         context["vix"] = vix
 
+    # 5. Market regime detection
+    context["regime"] = detect_market_regime(context)
+
     return context
 
 
@@ -88,6 +91,67 @@ def _fetch_index(symbol: str, name: str) -> dict | None:
         return None
 
 
+def detect_market_regime(context: dict) -> dict:
+    """Classify the current market into a regime based on index/VIX data.
+
+    Returns a dict with regime name, description, and recommended approach.
+    """
+    nikkei = context.get("nikkei225", {})
+    vix = context.get("vix", {})
+
+    n_1d = nikkei.get("change_1d_pct", 0)
+    n_5d = nikkei.get("change_5d_pct", 0)
+    n_1m = nikkei.get("change_1m_pct", 0)
+    vix_current = vix.get("current", 20)
+
+    # 強気トレンド (Bull)
+    if n_5d > 1 and n_1m > 3 and vix_current < 22:
+        return {
+            "regime": "強気トレンド",
+            "description": "日経平均は上昇基調、VIXは低位安定。モメンタム戦略が有効な局面",
+            "recommended_approach": "トレンドフォロー型の銘柄選定を優先。ブレイクアウト狙い。",
+        }
+
+    # 弱気トレンド (Bear)
+    if n_5d < -1 and n_1m < -3:
+        return {
+            "regime": "弱気トレンド",
+            "description": "日経平均は下落基調。ディフェンシブ銘柄やキャッシュ比率の引き上げを検討",
+            "recommended_approach": "高配当・ディフェンシブ銘柄を重視。逆張りは慎重に。",
+        }
+
+    # 高ボラティリティ (High Vol)
+    if vix_current > 25 or abs(n_1d) > 2:
+        return {
+            "regime": "高ボラティリティ",
+            "description": "市場の変動が大きく、不安定な状況。リスク管理を最優先に",
+            "recommended_approach": "ポジションサイズを縮小。ボラティリティ収縮を待つ戦略。",
+        }
+
+    # レンジ相場 (Range)
+    if abs(n_5d) < 1 and abs(n_1m) < 3:
+        return {
+            "regime": "レンジ相場",
+            "description": "日経平均は方向感に乏しい。レンジ内での逆張りが有効",
+            "recommended_approach": "バリュー株・高配当銘柄を中心に。サポート/レジスタンス付近での売買。",
+        }
+
+    # 回復局面 (Recovery)
+    if n_5d > 1 and n_1m < 0:
+        return {
+            "regime": "回復局面",
+            "description": "直近は反発しているが、月次ではまだマイナス。底打ち確認が重要",
+            "recommended_approach": "出遅れ銘柄の選別買い。段階的なポジション構築。",
+        }
+
+    # Default
+    return {
+        "regime": "混合/不明",
+        "description": "明確なトレンドが判別しにくい状況。複数のシグナルが混在",
+        "recommended_approach": "小ロットで様子見。明確なシグナルを待つ。",
+    }
+
+
 def format_market_context(context: dict) -> str:
     """Format market context dict into readable text for Claude prompt."""
     if not context:
@@ -132,6 +196,12 @@ def format_market_context(context: dict) -> str:
 
     if sentiment_parts:
         parts.append(f"\n市場センチメント: {' / '.join(sentiment_parts)}")
+
+    # Market regime (already computed in fetch_market_context)
+    regime = context.get("regime") or detect_market_regime(context)
+    parts.append(f"\n市場レジーム: {regime['regime']}")
+    parts.append(f"  状況: {regime['description']}")
+    parts.append(f"  推奨: {regime['recommended_approach']}")
 
     return "\n".join(parts)
 

@@ -4,8 +4,8 @@ import logging
 
 from src.config_loader import Settings
 from src.data_fetcher import fetch_batch
-from src.nikkei225_components import NIKKEI_225_TICKERS, get_tickers as get_nikkei225_tickers
-from src.jpx400_components import JPX400_TICKERS, get_jpx400_tickers
+from src.nikkei225_components import NIKKEI_225_TICKERS
+from src.jpx400_components import JPX400_TICKERS
 from src.technical_indicators import compute_indicators, compute_screening_score
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,10 @@ def _build_merged_universe() -> tuple[list[str], dict[str, dict]]:
     return list(ticker_info.keys()), ticker_info
 
 
-def screen_stocks(settings: Settings) -> tuple[list[dict], int, int, dict[str, dict], dict[str, dict]]:
+def screen_stocks(
+    settings: Settings,
+    screening_weights: dict | None = None,
+) -> tuple[list[dict], int, int, dict[str, dict], dict[str, dict]]:
     """Screen Nikkei 225 + JPX400 stocks and return top candidates.
 
     Two-phase approach:
@@ -62,7 +65,7 @@ def screen_stocks(settings: Settings) -> tuple[list[dict], int, int, dict[str, d
     scored: list[tuple[str, float]] = []
     for ticker, df in data_dict.items():
         try:
-            score = compute_screening_score(df, fundamentals=fundamentals.get(ticker))
+            score = compute_screening_score(df, fundamentals=fundamentals.get(ticker), weights=screening_weights)
             scored.append((ticker, score))
         except Exception:
             logger.warning("Scoring failed for %s", ticker, exc_info=True)

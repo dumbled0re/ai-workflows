@@ -67,16 +67,29 @@ def phase_prepare() -> None:
     # Performance tracking: load history and prepare for review
     from src.performance_tracker import (
         format_performance_feedback,
-        get_current_prices_from_data,
         load_history,
         review_predictions,
         save_history,
+    )
+    from src.strategy_learner import (
+        format_strategy_notes_for_prompt,
+        load_screening_weights,
+        load_strategy_notes,
     )
 
     perf_history = load_history()
     logger.info(
         "Loaded prediction history: %d predictions",
         len(perf_history.get("predictions", [])),
+    )
+
+    # Load strategy notes and screening weights (from weekly review)
+    strategy_notes = load_strategy_notes()
+    screening_weights = load_screening_weights()
+    strategy_notes_text = format_strategy_notes_for_prompt(strategy_notes)
+    logger.info(
+        "Loaded %d strategy notes, screening weights ready",
+        len(strategy_notes.get("notes", [])),
     )
 
     # Fetch market context (indices, forex, sentiment)
@@ -127,7 +140,7 @@ def phase_prepare() -> None:
     # Screen stocks (Nikkei 225 + JPX400)
     logger.info("Starting stock screening (Nikkei 225 + JPX400)")
     screened_candidates, screened_total, screened_failed, all_fundamentals, all_ticker_info = screen_stocks(
-        config.settings
+        config.settings, screening_weights=screening_weights
     )
     data_quality["success"] += screened_total
     data_quality["failed"] += screened_failed
@@ -163,10 +176,10 @@ def phase_prepare() -> None:
     # from the candidates we have (they include current_price)
     current_prices: dict[str, float] = {}
     for c in screened_candidates:
-        if c.get("current_price"):
+        if c.get("current_price") is not None:
             current_prices[c["ticker"]] = c["current_price"]
     for s in holdings_summaries:
-        if s.get("current_price"):
+        if s.get("current_price") is not None:
             current_prices[s["ticker"]] = s["current_price"]
 
     perf_history = review_predictions(perf_history, current_prices, date_str)
@@ -183,6 +196,7 @@ def phase_prepare() -> None:
         market_context=market_context_text,
         market_news=market_news_text,
         performance_feedback=performance_feedback,
+        strategy_notes=strategy_notes_text,
     )
 
     # Save current prices for Phase 3 (prediction tracking)
@@ -281,12 +295,94 @@ def phase_notify() -> None:
         sys.exit(1)
 
 
+def phase_review() -> None:
+    """Build the weekly review prompt for Claude to analyze past performance."""
+    from pathlib import Path
+
+    from src.performance_tracker import load_history
+    from src.strategy_learner import build_weekly_review_prompt, load_strategy_notes
+
+    logger.info("Building weekly review prompt")
+
+    perf_history = load_history()
+    strategy_notes = load_strategy_notes()
+
+    prompt = build_weekly_review_prompt(perf_history, strategy_notes)
+
+    out = Path("data")
+    out.mkdir(exist_ok=True)
+    with open(out / "review_prompt.txt", "w", encoding="utf-8") as f:
+        f.write(prompt)
+
+    logger.info("Review prompt saved to data/review_prompt.txt")
+
+
+def phase_apply_review() -> None:
+    """Apply Claude's weekly review results to strategy notes and weights."""
+    import json
+    from pathlib import Path
+
+    from src.strategy_learner import (
+        apply_review_results,
+        load_screening_weights,
+        load_strategy_notes,
+        save_screening_weights,
+        save_strategy_notes,
+    )
+
+    logger.info("Applying weekly review results")
+
+    review_path = Path("data/review_result.json")
+    if not review_path.exists():
+        logger.error("Review result not found: %s", review_path)
+        sys.exit(1)
+
+    with open(review_path, encoding="utf-8") as f:
+        content = f.read().strip()
+
+    # Parse JSON (handle markdown code blocks)
+    try:
+        review_result = json.loads(content)
+    except json.JSONDecodeError:
+        if "```json" in content:
+            start = content.index("```json") + 7
+            end = content.index("```", start)
+            review_result = json.loads(content[start:end].strip())
+        elif "```" in content:
+            start = content.index("```") + 3
+            end = content.index("```", start)
+            review_result = json.loads(content[start:end].strip())
+        else:
+            logger.error("Could not parse review result JSON")
+            sys.exit(1)
+
+    strategy_notes = load_strategy_notes()
+    screening_weights = load_screening_weights()
+
+    strategy_notes, screening_weights = apply_review_results(
+        review_result, strategy_notes, screening_weights
+    )
+
+    save_strategy_notes(strategy_notes)
+    save_screening_weights(screening_weights)
+
+    logger.info(
+        "Applied review: %d strategy notes, screening weights updated",
+        len(strategy_notes.get("notes", [])),
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="JP Stock Analyzer")
     parser.add_argument(
         "phase",
-        choices=["prepare", "notify"],
-        help="Phase to run: 'prepare' (fetch data & build prompts) or 'notify' (send results to Slack)",
+        choices=["prepare", "notify", "review", "apply-review"],
+        help=(
+            "Phase to run: 'prepare' (fetch data & build prompts), "
+            "'notify' (send results to Slack), "
+            "'review' (build weekly review prompt), "
+            "'apply-review' (apply review results)"
+        ),
     )
     args = parser.parse_args()
 
@@ -294,6 +390,10 @@ def main() -> None:
         phase_prepare()
     elif args.phase == "notify":
         phase_notify()
+    elif args.phase == "review":
+        phase_review()
+    elif args.phase == "apply-review":
+        phase_apply_review()
 
 
 if __name__ == "__main__":

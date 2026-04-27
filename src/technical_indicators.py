@@ -140,11 +140,28 @@ def compute_indicators(
     return summary
 
 
-def compute_screening_score(df: pd.DataFrame, fundamentals: dict | None = None) -> float:
+def compute_screening_score(df: pd.DataFrame, fundamentals: dict | None = None, weights: dict | None = None) -> float:
     """Compute a quick screening score for stock discovery.
 
     Uses lightweight technical indicators and optional fundamental data.
     """
+    # Default weights (can be tuned by strategy_learner)
+    w = {
+        "rsi_oversold_recovery": 20,
+        "rsi_healthy_momentum": 15,
+        "volume_spike": 20,
+        "sma25_breakout": 20,
+        "macd_crossover": 15,
+        "bollinger_lower": 10,
+        "per_value": 10,
+        "pbr_undervalued": 10,
+        "roe_profitable": 10,
+        "dividend_yield": 5,
+        "revenue_growth": 5,
+    }
+    if weights:
+        w.update(weights)
+
     score = 0.0
     close = df["Close"].astype(float)
     volume = df["Volume"].astype(float)
@@ -153,14 +170,14 @@ def compute_screening_score(df: pd.DataFrame, fundamentals: dict | None = None) 
     rsi = _safe_rsi(close, 14)
     if rsi is not None:
         if 30 <= rsi <= 50:
-            score += 20  # Oversold recovery
+            score += w["rsi_oversold_recovery"]  # Oversold recovery
         elif 50 < rsi <= 65:
-            score += 15  # Healthy momentum
+            score += w["rsi_healthy_momentum"]  # Healthy momentum
 
     # Volume spike
     vol_ratio = _safe_volume_ratio(volume)
     if vol_ratio is not None and vol_ratio > 1.5:
-        score += 20
+        score += w["volume_spike"]
 
     # SMA25 breakout in last 3 days
     sma_25 = _safe_sma(close, 25)
@@ -173,7 +190,7 @@ def compute_screening_score(df: pd.DataFrame, fundamentals: dict | None = None) 
             if pd.notna(p) and pd.notna(s)
         ) if len(close) > 4 and pd.notna(SMAIndicator(close, window=25).sma_indicator().iloc[-4]) else False
         if breakout:
-            score += 20
+            score += w["sma25_breakout"]
 
     # MACD histogram turning positive
     _, _, hist = _safe_macd(close)
@@ -184,34 +201,34 @@ def compute_screening_score(df: pd.DataFrame, fundamentals: dict | None = None) 
             prev = hist_series.dropna().iloc[-2]
             curr = hist_series.dropna().iloc[-1]
             if prev < 0 and curr > 0:
-                score += 15
+                score += w["macd_crossover"]
 
     # Near Bollinger Band lower (within 5%)
     _, _, bb_lower, bb_pos = _safe_bollinger(close)
     if bb_pos is not None and bb_pos <= 0.15:
-        score += 10
+        score += w["bollinger_lower"]
 
     # Fundamental scoring (when available)
     if fundamentals:
         per = fundamentals.get("trailingPE")
         if per is not None and 0 < per < 15:
-            score += 10  # Value stock
+            score += w["per_value"]  # Value stock
 
         pbr = fundamentals.get("priceToBook")
         if pbr is not None and 0 < pbr < 1.0:
-            score += 10  # Undervalued
+            score += w["pbr_undervalued"]  # Undervalued
 
         roe = fundamentals.get("returnOnEquity")
         if roe is not None and roe > 0.10:
-            score += 10  # Profitable (raw value is ratio, 0.10 = 10%)
+            score += w["roe_profitable"]  # Profitable (raw value is ratio, 0.10 = 10%)
 
         div_yield = fundamentals.get("dividendYield")
         if div_yield is not None and div_yield > 3.0:
-            score += 5  # Income stock (already percentage from yfinance)
+            score += w["dividend_yield"]  # Income stock (yfinance returns percentage, 3.0 = 3%)
 
         rev_growth = fundamentals.get("revenueGrowth")
         if rev_growth is not None and rev_growth > 0.05:
-            score += 5  # Growing (raw value is ratio, 0.05 = 5%)
+            score += w["revenue_growth"]  # Growing (raw value is ratio, 0.05 = 5%)
 
     return score
 
