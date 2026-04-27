@@ -25,7 +25,7 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r stock_analyzer/requirements.txt
 
       # Phase 1: Build review prompt from prediction history
       - name: Prepare review data
@@ -38,10 +38,10 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: '--allowedTools "Read,Write,Edit,Bash"'
           prompt: |
-            まず data/investment_rules.json を読んで投資ルールを把握してください。
-            次に data/review_prompt.txt を読んで、その内容に従い戦略レビューを行ってください。
+            まず stock_analyzer/data/investment_rules.json を読んで投資ルールを把握してください。
+            次に stock_analyzer/data/review_prompt.txt を読んで、その内容に従い戦略レビューを行ってください。
             投資ルールとの整合性も確認し、必要ならルールの改善提案も含めてください。
-            結果は指定されたJSON形式のみを data/review_result.json に書き込んでください。
+            結果は指定されたJSON形式のみを stock_analyzer/data/review_result.json に書き込んでください。
             JSONのみを出力し、他のテキストは含めないでください。
 
       # Phase 3: Apply review results to strategy notes and screening weights
@@ -53,6 +53,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/strategy_notes.json data/screening_weights.json data/predictions_history.json
+          git add stock_analyzer/data/strategy_notes.json stock_analyzer/data/screening_weights.json stock_analyzer/data/predictions_history.json
           git diff --cached --quiet || git commit -m "Weekly strategy review: update notes and screening weights [skip ci]"
           git push

@@ -79,7 +79,7 @@ def phase_gather() -> None:
 - top_storiesは最大10件に絞る
 """
 
-    out = Path("data")
+    out = Path("tech_catchup/data")
     out.mkdir(exist_ok=True)
     with open(out / "tech_catchup_prompt.txt", "w", encoding="utf-8") as f:
         f.write(prompt)
@@ -98,7 +98,7 @@ def phase_notify() -> None:
         logger.error("SLACK_WEBHOOK_URL not set")
         sys.exit(1)
 
-    result_path = Path("data/tech_catchup_result.json")
+    result_path = Path("tech_catchup/data/tech_catchup_result.json")
     if not result_path.exists():
         logger.error("Tech catchup result not found")
         sys.exit(1)

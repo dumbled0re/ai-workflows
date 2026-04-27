@@ -7,7 +7,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_HISTORY_FILE = "data/predictions_history.json"
+_HISTORY_FILE = "stock_analyzer/data/predictions_history.json"
 _REVIEW_WINDOW_DAYS = 14  # Evaluate predictions after 2 weeks
 _MIN_REVIEW_DAYS = 5  # Start checking after 5 trading days
 

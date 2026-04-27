@@ -1,17 +1,21 @@
-# Temporary analysis data (regenerated each run)
-data/analysis_input.json
-data/holdings_result.json
-data/discovery_result.json
-data/review_result.json
-data/review_prompt.txt
-data/current_prices.json
-data/meta.json
+# Stock Analyzer - temp files (regenerated each run)
+stock_analyzer/data/analysis_input.json
+stock_analyzer/data/holdings_result.json
+stock_analyzer/data/discovery_result.json
+stock_analyzer/data/review_result.json
+stock_analyzer/data/review_prompt.txt
+stock_analyzer/data/current_prices.json
+stock_analyzer/data/meta.json
 
-# Persistent data files are tracked:
-# data/predictions_history.json
-# data/strategy_notes.json
-# data/screening_weights.json
-# data/investment_rules.json
+# Stock Analyzer - persistent files are tracked:
+# stock_analyzer/data/predictions_history.json
+# stock_analyzer/data/strategy_notes.json
+# stock_analyzer/data/screening_weights.json
+# stock_analyzer/data/investment_rules.json
+
+# Tech Catchup - temp files
+tech_catchup/data/tech_catchup_prompt.txt
+tech_catchup/data/tech_catchup_result.json
 
 __pycache__/
 *.pyc

@@ -250,7 +250,7 @@ def phase_notify() -> None:
         sys.exit(1)
 
     # Load metadata
-    meta_path = Path("data/meta.json")
+    meta_path = Path("stock_analyzer/data/meta.json")
     if meta_path.exists():
         with open(meta_path, encoding="utf-8") as f:
             meta = json.load(f)
@@ -264,7 +264,7 @@ def phase_notify() -> None:
     perf_history = load_history()
     # Load current prices from the analysis input (saved during prepare phase)
     current_prices: dict[str, float] = {}
-    input_path = Path("data/analysis_input.json")
+    input_path = Path("stock_analyzer/data/analysis_input.json")
     if input_path.exists():
         try:
             with open(input_path, encoding="utf-8") as f:
@@ -279,7 +279,7 @@ def phase_notify() -> None:
 
     # Extract current prices from meta or re-derive from results
     # The simplest approach: load from the previously saved candidates data
-    prices_path = Path("data/current_prices.json")
+    prices_path = Path("stock_analyzer/data/current_prices.json")
     if prices_path.exists():
         try:
             with open(prices_path, encoding="utf-8") as f:
@@ -353,7 +353,7 @@ def phase_apply_review() -> None:
 
     logger.info("Applying weekly review results")
 
-    review_path = Path("data/review_result.json")
+    review_path = Path("stock_analyzer/data/review_result.json")
     if not review_path.exists():
         logger.error("Review result not found: %s", review_path)
         sys.exit(1)
