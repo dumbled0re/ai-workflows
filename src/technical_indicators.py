@@ -11,7 +11,12 @@ logger = logging.getLogger(__name__)
 
 
 def compute_indicators(
-    df: pd.DataFrame, ticker: str, name: str, shares: int = 0, avg_cost: float | None = None
+    df: pd.DataFrame,
+    ticker: str,
+    name: str,
+    shares: int = 0,
+    avg_cost: float | None = None,
+    fundamentals: dict | None = None,
 ) -> dict:
     """Compute technical indicators and return a summary dict.
 
@@ -21,6 +26,7 @@ def compute_indicators(
         name: Company name
         shares: Number of shares held (0 for screened stocks)
         avg_cost: Average purchase cost (optional)
+        fundamentals: Dict of fundamental data from yfinance (optional)
 
     Returns:
         Summary dict with all computed indicators
@@ -96,13 +102,48 @@ def compute_indicators(
             ((current_price - avg_cost) / avg_cost) * 100, 2
         )
 
+    # Fundamental data (when available)
+    if fundamentals:
+        _FUNDAMENTAL_MAPPING: list[tuple[str, str, float | None]] = [
+            ("trailingPE", "per", None),
+            ("forwardPE", "forward_per", None),
+            ("priceToBook", "pbr", None),
+            ("returnOnEquity", "roe", 100),
+            ("returnOnAssets", "roa", 100),
+            ("dividendYield", "dividend_yield", None),
+            ("profitMargins", "profit_margin", 100),
+            ("revenueGrowth", "revenue_growth", 100),
+            ("earningsGrowth", "earnings_growth", 100),
+            ("debtToEquity", "debt_to_equity", None),
+            ("currentRatio", "current_ratio", None),
+        ]
+        for src_key, dst_key, multiplier in _FUNDAMENTAL_MAPPING:
+            raw = fundamentals.get(src_key)
+            if raw is not None:
+                val = float(raw) * multiplier if multiplier else float(raw)
+                summary[dst_key] = _round_or_none(val)
+
+        # Market cap in billions of yen
+        market_cap_raw = fundamentals.get("marketCap")
+        if market_cap_raw is not None:
+            summary["market_cap_billion"] = _round_or_none(float(market_cap_raw) / 1e9)
+
+        # String / pass-through fields
+        next_ed = fundamentals.get("next_earnings_date")
+        if next_ed is not None:
+            summary["next_earnings_date"] = next_ed
+
+        industry = fundamentals.get("industry")
+        if industry is not None:
+            summary["industry"] = industry
+
     return summary
 
 
-def compute_screening_score(df: pd.DataFrame) -> float:
-    """Compute a quick screening score (0-100) for stock discovery.
+def compute_screening_score(df: pd.DataFrame, fundamentals: dict | None = None) -> float:
+    """Compute a quick screening score for stock discovery.
 
-    Uses lightweight indicators for fast evaluation.
+    Uses lightweight technical indicators and optional fundamental data.
     """
     score = 0.0
     close = df["Close"].astype(float)
@@ -149,6 +190,28 @@ def compute_screening_score(df: pd.DataFrame) -> float:
     _, _, bb_lower, bb_pos = _safe_bollinger(close)
     if bb_pos is not None and bb_pos <= 0.15:
         score += 10
+
+    # Fundamental scoring (when available)
+    if fundamentals:
+        per = fundamentals.get("trailingPE")
+        if per is not None and 0 < per < 15:
+            score += 10  # Value stock
+
+        pbr = fundamentals.get("priceToBook")
+        if pbr is not None and 0 < pbr < 1.0:
+            score += 10  # Undervalued
+
+        roe = fundamentals.get("returnOnEquity")
+        if roe is not None and roe > 0.10:
+            score += 10  # Profitable (raw value is ratio, 0.10 = 10%)
+
+        div_yield = fundamentals.get("dividendYield")
+        if div_yield is not None and div_yield > 3.0:
+            score += 5  # Income stock (already percentage from yfinance)
+
+        rev_growth = fundamentals.get("revenueGrowth")
+        if rev_growth is not None and rev_growth > 0.05:
+            score += 5  # Growing (raw value is ratio, 0.05 = 5%)
 
     return score
 

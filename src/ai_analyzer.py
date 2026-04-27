@@ -8,27 +8,50 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """\
-あなたは日本株市場の専門アナリストです。東京証券取引所に上場する銘柄のテクニカル指標、
-市場データ、価格パターンを分析します。
+あなたはプロの短期投資家兼アナリストです。東京証券取引所に上場する銘柄を、
+テクニカル分析とファンダメンタル分析の両面から総合的に評価します。
 
-分析時に考慮すべき要素:
-- テクニカル指標シグナル（RSI, MACD, ボリンジャーバンド, 移動平均線）
-- 出来高パターンと機関投資家の動向示唆
-- 価格モメンタムとトレンド方向
-- 日本市場特有の要因（日銀政策, 為替, セクターローテーション）
+あなたの投資哲学:
+- 短期（1-4週間）で利益を出せる銘柄を厳選する
+- 「今が買い時」の銘柄のみを推奨する。良い銘柄でもタイミングが悪ければ見送る
+- テクニカルでエントリータイミングを計り、ファンダメンタルで銘柄の質を担保する
+- リスク管理を最重要視し、損切りラインを必ず設定する
+
+分析で重視するポイント:
+【テクニカル】
+- 移動平均線のパーフェクトオーダー・ゴールデンクロス・デッドクロス
+- RSIの過売/過買からの反転シグナル
+- MACDのゼロライン突破・ヒストグラム転換
+- ボリンジャーバンドのスクイーズからのブレイクアウト
+- 出来高急増（機関投資家の参入示唆）
+- 52週高値/安値からの距離
+
+【ファンダメンタル】
+- PER/PBRの割安度（同業比較）
+- ROE/ROAの収益性
+- 売上・利益成長率
+- 決算発表日の接近（カタリスト）
+- 財務健全性（自己資本比率、流動比率）
+
+【市場環境】
+- 日経平均・TOPIXのトレンド
+- セクターローテーション
+- 為替・金利動向の影響
+- 地政学リスク
 
 必ず以下を提供してください:
-1. 明確なUPまたはDOWN予測
+1. 明確なUPまたはDOWN予測（曖昧な表現は不可）
 2. 信頼度（HIGH / MEDIUM / LOW）
-3. 2-3個の根拠（箇条書き）
-4. 注意すべきリスク要因
+3. 具体的な根拠（テクニカル+ファンダメンタル）
+4. 想定される値動きのシナリオ
+5. リスク要因と損切りライン
 
 指定されたJSON形式で回答してください。日本語で回答してください。\
 """
 
 HOLDINGS_PROMPT_TEMPLATE = """\
-以下の保有銘柄を分析してください。各銘柄について、テクニカルデータに基づき
-今後1-2週間の価格トレンドがUP（上昇）かDOWN（下降）かを予測してください。
+以下の保有銘柄をプロ投資家の視点で分析してください。
+テクニカル指標とファンダメンタル指標の両面から、今後1-2週間の戦略を提案してください。
 
 本日: {date}
 分析タイミング: {timing}
@@ -36,6 +59,11 @@ HOLDINGS_PROMPT_TEMPLATE = """\
 === 保有銘柄 ===
 
 {holdings_data}
+
+各銘柄について以下を判断してください:
+- 保有継続すべきか、利確/損切りすべきか
+- 追加購入のタイミングか
+- 決算発表が近い場合、その前後の戦略
 
 以下のJSON形式で回答してください:
 {{
@@ -45,24 +73,38 @@ HOLDINGS_PROMPT_TEMPLATE = """\
       "name": "トヨタ自動車",
       "prediction": "UP",
       "confidence": "HIGH",
-      "reasons": ["理由1", "理由2", "理由3"],
+      "reasons": ["テクニカル根拠", "ファンダメンタル根拠", "市場環境根拠"],
       "risk_factor": "リスクの説明",
+      "stop_loss": "損切りライン（価格）",
+      "action": "保有継続/利確/損切り/買い増し",
       "short_summary": "1文の要約"
     }}
   ],
-  "market_overview": "日本市場全体の概況（2-3文）"
+  "market_overview": "日本市場全体の概況と今後1-2週間の見通し（3-4文）"
 }}\
 """
 
 DISCOVERY_PROMPT_TEMPLATE = """\
-以下のスクリーニング済み候補銘柄から、今後1-4週間で最も値上がりが期待できる
-上位{top_n}銘柄を選定してください。各銘柄について、なぜ有望かを説明してください。
+以下のスクリーニング済み候補銘柄から、プロの短期投資家として
+「今すぐ買うべき」上位{top_n}銘柄を厳選してください。
+
+重要: 良い銘柄でも「今が買い時」でなければ選ばないでください。
+テクニカル的にエントリーポイントが来ている銘柄のみを推奨してください。
 
 本日: {date}
 
 === スクリーニング済み候補 ({n}銘柄) ===
 
 {candidates_data}
+
+選定基準（優先順位）:
+1. テクニカル的に買いシグナルが出ている（最重要）
+2. ファンダメンタルが健全（割安、高収益、成長性）
+3. カタリストがある（決算発表、材料）
+4. リスクリワード比が良い（上昇余地 > 下落リスク）
+
+該当銘柄がない場合は正直に「現在推奨なし」と回答してください。
+無理に{top_n}銘柄選ぶ必要はありません。
 
 以下のJSON形式で回答してください:
 {{
@@ -74,11 +116,15 @@ DISCOVERY_PROMPT_TEMPLATE = """\
       "prediction": "UP",
       "confidence": "HIGH",
       "expected_move": "+X%〜+Y% (Z週間)",
-      "reasons": ["理由1", "理由2", "理由3"],
+      "reasons": ["テクニカル根拠", "ファンダメンタル根拠", "カタリスト"],
       "risk_factor": "リスクの説明",
-      "entry_strategy": "エントリー戦略の提案"
+      "entry_price": "推奨エントリー価格帯",
+      "stop_loss": "損切りライン",
+      "target_price": "利確目標",
+      "entry_strategy": "具体的なエントリー戦略（指値/成行、分割購入など）"
     }}
-  ]
+  ],
+  "market_condition": "現在の市場環境が短期投資に適しているかの評価"
 }}\
 """
 
@@ -215,6 +261,47 @@ def _format_stock_data(summaries: list[dict]) -> str:
             lines.append(f"セクター: {s['sector']}")
         if s.get("screening_score") is not None:
             lines.append(f"スクリーニングスコア: {s['screening_score']}/100")
+        # Fundamental data
+        fund_parts = []
+        if s.get("per") is not None:
+            fund_parts.append(f"PER={s['per']}")
+        if s.get("forward_per") is not None:
+            fund_parts.append(f"予想PER={s['forward_per']}")
+        if s.get("pbr") is not None:
+            fund_parts.append(f"PBR={s['pbr']}")
+        if s.get("roe") is not None:
+            fund_parts.append(f"ROE={s['roe']}%")
+        if s.get("roa") is not None:
+            fund_parts.append(f"ROA={s['roa']}%")
+        if fund_parts:
+            lines.append(f"バリュエーション: {' | '.join(fund_parts)}")
+
+        fund_parts2 = []
+        if s.get("dividend_yield") is not None:
+            fund_parts2.append(f"配当利回り={s['dividend_yield']}%")
+        if s.get("profit_margin") is not None:
+            fund_parts2.append(f"利益率={s['profit_margin']}%")
+        if s.get("revenue_growth") is not None:
+            fund_parts2.append(f"売上成長率={s['revenue_growth']}%")
+        if s.get("earnings_growth") is not None:
+            fund_parts2.append(f"利益成長率={s['earnings_growth']}%")
+        if fund_parts2:
+            lines.append(f"収益性: {' | '.join(fund_parts2)}")
+
+        fund_parts3 = []
+        if s.get("debt_to_equity") is not None:
+            fund_parts3.append(f"D/E={s['debt_to_equity']}")
+        if s.get("current_ratio") is not None:
+            fund_parts3.append(f"流動比率={s['current_ratio']}")
+        if s.get("market_cap_billion") is not None:
+            fund_parts3.append(f"時価総額={s['market_cap_billion']}億円")
+        if fund_parts3:
+            lines.append(f"財務: {' | '.join(fund_parts3)}")
+
+        if s.get("next_earnings_date"):
+            lines.append(f"次回決算発表日: {s['next_earnings_date']}")
+        if s.get("industry"):
+            lines.append(f"業種: {s['industry']}")
         parts.append("\n".join(lines))
     return "\n\n".join(parts)
 

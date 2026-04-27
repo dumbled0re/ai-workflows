@@ -1,66 +1,54 @@
 from __future__ import annotations
 
-import io
 import logging
 import random
 import time
-from datetime import datetime, timedelta
 
 import pandas as pd
-import requests
+import yfinance as yf
 
 logger = logging.getLogger(__name__)
 
+_SLEEP_MIN = 0.5
+_SLEEP_MAX = 1.5
 _MAX_RETRIES = 3
 _BACKOFF_BASE_SEC = 5
-_SLEEP_MIN = 0.3
-_SLEEP_MAX = 1.0
 
-_SESSION = requests.Session()
-_SESSION.headers.update(
-    {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        ),
-    }
-)
-
-
-def _ticker_to_stooq(ticker: str) -> str:
-    """Convert Yahoo Finance ticker (e.g. '7203.T') to stooq format ('7203.JP')."""
-    return ticker.replace(".T", ".JP")
-
-
-def _period_to_start_date(period: str) -> str:
-    """Convert period string like '3mo' to start date string 'YYYYMMDD'."""
-    now = datetime.now()
-    if period.endswith("mo"):
-        months = int(period[:-2])
-        start = now - timedelta(days=months * 30)
-    elif period.endswith("y"):
-        years = int(period[:-1])
-        start = now - timedelta(days=years * 365)
-    else:
-        days = int(period[:-1])
-        start = now - timedelta(days=days)
-    return start.strftime("%Y%m%d")
+# Fundamental keys to extract from yfinance .info
+_FUNDAMENTAL_KEYS = [
+    "trailingPE",
+    "forwardPE",
+    "priceToBook",
+    "returnOnEquity",
+    "returnOnAssets",
+    "dividendYield",
+    "marketCap",
+    "profitMargins",
+    "revenueGrowth",
+    "earningsGrowth",
+    "earningsQuarterlyGrowth",
+    "debtToEquity",
+    "currentRatio",
+    "fiftyTwoWeekHigh",
+    "fiftyTwoWeekLow",
+    "sector",
+    "industry",
+]
 
 
 def fetch_batch(
-    tickers: list[str], period: str = "3mo"
-) -> tuple[dict[str, pd.DataFrame], list[str]]:
+    tickers: list[str],
+    period: str = "3mo",
+    fetch_fundamentals: bool = False,
+) -> tuple[dict[str, pd.DataFrame], list[str], dict[str, dict]]:
     """Fetch historical OHLCV data for multiple tickers one by one.
 
     Returns:
-        tuple of (successful data dict, list of failed tickers)
+        tuple of (successful data dict, list of failed tickers, fundamentals dict)
     """
     results: dict[str, pd.DataFrame] = {}
     failed: list[str] = []
-
-    start_date = _period_to_start_date(period)
-    end_date = datetime.now().strftime("%Y%m%d")
+    fundamentals: dict[str, dict] = {}
 
     for i, ticker in enumerate(tickers):
         if i > 0:
@@ -69,10 +57,12 @@ def fetch_batch(
         if (i + 1) % 20 == 0:
             logger.info("Progress: %d/%d tickers fetched", i + 1, len(tickers))
 
-        data = _download_from_stooq(ticker, start_date, end_date)
+        data, info = _download_ticker(ticker, period, fetch_fundamentals)
 
         if data is not None and len(data) >= 20:
             results[ticker] = data
+            if info:
+                fundamentals[ticker] = info
         else:
             if data is not None and not data.empty:
                 logger.warning(
@@ -83,47 +73,40 @@ def fetch_batch(
     logger.info(
         "Data fetch complete: %d succeeded, %d failed", len(results), len(failed)
     )
-    return results, failed
+    return results, failed, fundamentals
 
 
-def _download_from_stooq(
-    ticker: str, start_date: str, end_date: str
-) -> pd.DataFrame | None:
-    """Download a single ticker from stooq.com."""
-    stooq_ticker = _ticker_to_stooq(ticker)
-    url = (
-        f"https://stooq.com/q/d/l/"
-        f"?s={stooq_ticker}&d1={start_date}&d2={end_date}&i=d"
-    )
-
+def _download_ticker(
+    ticker: str, period: str, fetch_fundamentals: bool
+) -> tuple[pd.DataFrame | None, dict | None]:
+    """Download a single ticker from Yahoo Finance via yfinance."""
     for attempt in range(_MAX_RETRIES):
         try:
-            resp = _SESSION.get(url, timeout=15)
-            if resp.status_code == 200:
-                text = resp.text.strip()
-                if "No data" in text or len(text) < 50:
-                    logger.warning("No data available for %s on stooq", ticker)
-                    return None
-                df = pd.read_csv(io.StringIO(text), parse_dates=["Date"])
-                df = df.set_index("Date")
-                df = df.sort_index()
-                df = df.dropna(how="all")
-                if not df.empty:
-                    return df
-            elif resp.status_code == 429:
-                wait = _BACKOFF_BASE_SEC * (2 ** attempt) + random.uniform(0, 3)
-                logger.warning(
-                    "Rate limited for %s, retrying in %.0fs", ticker, wait
-                )
-                time.sleep(wait)
-                continue
-            else:
-                logger.warning(
-                    "HTTP %d for %s on attempt %d",
-                    resp.status_code,
-                    ticker,
-                    attempt + 1,
-                )
+            tk = yf.Ticker(ticker)
+            df = tk.history(period=period, auto_adjust=True)
+
+            if df is None or df.empty:
+                logger.warning("No data returned for %s", ticker)
+                return None, None
+
+            # Keep only OHLCV columns
+            expected_cols = ["Open", "High", "Low", "Close", "Volume"]
+            available = [c for c in expected_cols if c in df.columns]
+            if "Close" not in available:
+                logger.warning("Missing Close column for %s", ticker)
+                return None, None
+
+            df = df[available]
+            df = df.dropna(how="all")
+            df = df.sort_index()
+
+            info = None
+            if fetch_fundamentals and not df.empty:
+                info = _extract_fundamentals(tk, ticker)
+
+            if not df.empty:
+                return df, info
+
         except Exception as e:
             logger.warning(
                 "Download attempt %d/%d failed for %s: %s",
@@ -133,8 +116,34 @@ def _download_from_stooq(
                 e,
             )
 
-        wait = _BACKOFF_BASE_SEC * (2 ** attempt) + random.uniform(0, 3)
+        wait = _BACKOFF_BASE_SEC * (2**attempt) + random.uniform(0, 3)
         time.sleep(wait)
 
     logger.error("All %d download attempts failed for %s", _MAX_RETRIES, ticker)
-    return None
+    return None, None
+
+
+def _extract_fundamentals(tk: yf.Ticker, ticker: str) -> dict | None:
+    """Extract fundamental data from a yfinance Ticker object."""
+    try:
+        raw = tk.info
+        info: dict = {}
+        for key in _FUNDAMENTAL_KEYS:
+            val = raw.get(key)
+            if val is not None:
+                info[key] = val
+
+        # Earnings date from calendar
+        try:
+            cal = tk.calendar
+            if cal and "Earnings Date" in cal:
+                dates = cal["Earnings Date"]
+                if dates:
+                    info["next_earnings_date"] = str(dates[0])
+        except Exception:
+            pass
+
+        return info if info else None
+    except Exception as e:
+        logger.debug("Failed to fetch fundamentals for %s: %s", ticker, e)
+        return None

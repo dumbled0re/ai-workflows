@@ -65,8 +65,8 @@ def phase_prepare() -> None:
     holdings_summaries: list[dict] = []
     if config.holdings:
         tickers = [h.ticker for h in config.holdings]
-        holdings_data, holdings_failed = fetch_batch(
-            tickers, period=f"{config.settings.history_days}d"
+        holdings_data, holdings_failed, holdings_fundamentals = fetch_batch(
+            tickers, period=f"{config.settings.history_days}d", fetch_fundamentals=True
         )
         data_quality["success"] += len(holdings_data)
         data_quality["failed"] += len(holdings_failed)
@@ -80,6 +80,7 @@ def phase_prepare() -> None:
                     name=holding.name,
                     shares=holding.shares,
                     avg_cost=holding.avg_cost,
+                    fundamentals=holdings_fundamentals.get(holding.ticker),
                 )
                 holdings_summaries.append(summary)
             else:

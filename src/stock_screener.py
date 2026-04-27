@@ -49,7 +49,7 @@ def screen_stocks(settings: Settings) -> tuple[list[dict], int, int]:
     logger.info("Starting stock screening (%d tickers: Nikkei225 + JPX400)", len(all_tickers))
 
     # Phase 1: Fetch data and fast screen
-    data_dict, failed_tickers = fetch_batch(all_tickers, period="3mo")
+    data_dict, failed_tickers, fundamentals = fetch_batch(all_tickers, period="3mo", fetch_fundamentals=True)
     total_screened = len(data_dict)
     failed_count = len(failed_tickers)
 
@@ -61,7 +61,7 @@ def screen_stocks(settings: Settings) -> tuple[list[dict], int, int]:
     scored: list[tuple[str, float]] = []
     for ticker, df in data_dict.items():
         try:
-            score = compute_screening_score(df)
+            score = compute_screening_score(df, fundamentals=fundamentals.get(ticker))
             scored.append((ticker, score))
         except Exception:
             logger.warning("Scoring failed for %s", ticker, exc_info=True)
@@ -89,6 +89,7 @@ def screen_stocks(settings: Settings) -> tuple[list[dict], int, int]:
                 df=df,
                 ticker=ticker,
                 name=info.get("name", ticker),
+                fundamentals=fundamentals.get(ticker),
             )
             summary["screening_score"] = score
             summary["sector"] = info.get("sector", "不明")

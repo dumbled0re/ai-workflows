@@ -151,14 +151,20 @@ def _format_holding_block(h: dict) -> dict:
     reasons = "\n".join(f"  - {r}" for r in h.get("reasons", []))
     risk = h.get("risk_factor", "")
     summary = h.get("short_summary", "")
+    action = h.get("action", "")
+    stop_loss = h.get("stop_loss", "")
 
     text = (
         f"*{h.get('name', '')} ({h.get('ticker', '')})* "
         f"{pred_emoji} *{pred}* | {conf_emoji} 信頼度: *{conf}*\n"
         f"{summary}\n"
-        f"{reasons}\n"
-        f"  :warning: リスク: {risk}"
     )
+    if action:
+        text += f"  :arrow_right: アクション: *{action}*\n"
+    text += f"{reasons}\n"
+    if stop_loss:
+        text += f"  :octagonal_sign: 損切りライン: {stop_loss}\n"
+    text += f"  :warning: リスク: {risk}"
     return {"type": "section", "text": {"type": "mrkdwn", "text": text}}
 
 
@@ -171,15 +177,25 @@ def _format_discovery_block(r: dict) -> dict:
     risk = r.get("risk_factor", "")
     entry = r.get("entry_strategy", "")
     expected = r.get("expected_move", "")
+    entry_price = r.get("entry_price", "")
+    stop_loss = r.get("stop_loss", "")
+    target_price = r.get("target_price", "")
 
     text = (
         f"*#{r.get('rank', '?')} - {r.get('name', '')} ({r.get('ticker', '')})* "
         f"{pred_emoji} | {conf_emoji} 信頼度: *{r.get('confidence', '?')}*\n"
         f"予想: {expected}\n"
         f"{reasons}\n"
-        f"  :dart: エントリー: {entry}\n"
-        f"  :warning: リスク: {risk}"
     )
+    if entry_price:
+        text += f"  :moneybag: エントリー価格: {entry_price}\n"
+    if target_price:
+        text += f"  :dart: 利確目標: {target_price}\n"
+    if stop_loss:
+        text += f"  :octagonal_sign: 損切り: {stop_loss}\n"
+    if entry:
+        text += f"  :bulb: 戦略: {entry}\n"
+    text += f"  :warning: リスク: {risk}"
     return {"type": "section", "text": {"type": "mrkdwn", "text": text}}
 
 
