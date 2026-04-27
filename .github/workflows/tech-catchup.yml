@@ -45,5 +45,5 @@ jobs:
       # Phase 3: Send to Slack
       - name: Send to Slack
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_TECH }}
         run: python -m tech_catchup.main notify
