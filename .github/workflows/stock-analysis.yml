@@ -9,7 +9,7 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 jobs:
@@ -60,8 +60,19 @@ jobs:
             結果は指定されたJSON形式のみを data/discovery_result.json に書き込んでください。
             JSONのみを出力し、他のテキストは含めないでください。
 
-      # Phase 3: Send results to Slack
+      # Phase 3: Send results to Slack & save predictions for tracking
       - name: Send results to Slack
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: python -m src.main notify
+
+      # Phase 4: Commit prediction tracking data back to repo
+      - name: Save prediction history
+        run: |
+          if [ -f data/predictions_history.json ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add data/predictions_history.json
+            git diff --cached --quiet || git commit -m "Update prediction tracking data [skip ci]"
+            git push
+          fi

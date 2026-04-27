@@ -60,6 +60,8 @@ HOLDINGS_PROMPT_TEMPLATE = """\
 
 {market_news}
 
+{performance_feedback}
+
 === 保有銘柄 ===
 
 {holdings_data}
@@ -100,6 +102,8 @@ DISCOVERY_PROMPT_TEMPLATE = """\
 {market_context}
 
 {market_news}
+
+{performance_feedback}
 
 === スクリーニング済み候補 ({n}銘柄) ===
 
@@ -145,6 +149,7 @@ def prepare_prompts(
     output_dir: str = "data",
     market_context: str = "",
     market_news: str = "",
+    performance_feedback: str = "",
 ) -> Path:
     """Prepare analysis prompts and save to a JSON file for Claude Code Action.
 
@@ -169,6 +174,7 @@ def prepare_prompts(
         holdings_data=holdings_text,
         market_context=market_context,
         market_news=market_news,
+        performance_feedback=performance_feedback,
     )
     discovery_prompt = DISCOVERY_PROMPT_TEMPLATE.format(
         top_n=top_n,
@@ -177,6 +183,7 @@ def prepare_prompts(
         candidates_data=candidates_text,
         market_context=market_context,
         market_news=market_news,
+        performance_feedback=performance_feedback,
     )
 
     prompt_data = {

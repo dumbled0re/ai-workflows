@@ -64,6 +64,21 @@ def phase_prepare() -> None:
 
     data_quality: dict = {"success": 0, "failed": 0}
 
+    # Performance tracking: load history and prepare for review
+    from src.performance_tracker import (
+        format_performance_feedback,
+        get_current_prices_from_data,
+        load_history,
+        review_predictions,
+        save_history,
+    )
+
+    perf_history = load_history()
+    logger.info(
+        "Loaded prediction history: %d predictions",
+        len(perf_history.get("predictions", [])),
+    )
+
     # Fetch market context (indices, forex, sentiment)
     logger.info("Fetching market context...")
     market_context = fetch_market_context()
@@ -136,6 +151,29 @@ def phase_prepare() -> None:
         if news_text:
             candidate["recent_news"] = news_text
 
+    # Review past predictions against current prices
+    holdings_data_dict = {}
+    if config.holdings:
+        for h in config.holdings:
+            df = holdings_data.get(h.ticker)  # type: ignore[possibly-undefined]
+            if df is not None:
+                holdings_data_dict[h.ticker] = df
+
+    # screen_stocks already fetched all screening data; extract current prices
+    # from the candidates we have (they include current_price)
+    current_prices: dict[str, float] = {}
+    for c in screened_candidates:
+        if c.get("current_price"):
+            current_prices[c["ticker"]] = c["current_price"]
+    for s in holdings_summaries:
+        if s.get("current_price"):
+            current_prices[s["ticker"]] = s["current_price"]
+
+    perf_history = review_predictions(perf_history, current_prices, date_str)
+    performance_feedback = format_performance_feedback(perf_history)
+    save_history(perf_history)
+    logger.info("Performance review complete")
+
     # Save prompts for Claude Code Action
     prepare_prompts(
         holdings_summaries=holdings_summaries,
@@ -144,11 +182,16 @@ def phase_prepare() -> None:
         top_n=config.settings.discovery_top_n,
         market_context=market_context_text,
         market_news=market_news_text,
+        performance_feedback=performance_feedback,
     )
 
-    # Save data quality and timing info for Phase 3
+    # Save current prices for Phase 3 (prediction tracking)
     meta_dir = Path("data")
     meta_dir.mkdir(exist_ok=True)
+    with open(meta_dir / "current_prices.json", "w", encoding="utf-8") as f:
+        json.dump(current_prices, f)
+
+    # Save data quality and timing info for Phase 3
     with open(meta_dir / "meta.json", "w", encoding="utf-8") as f:
         json.dump({"timing": timing, "data_quality": data_quality}, f)
 
@@ -156,11 +199,12 @@ def phase_prepare() -> None:
 
 
 def phase_notify() -> None:
-    """Phase 3: Read Claude's analysis results and send to Slack."""
+    """Phase 3: Read Claude's analysis results, save predictions, send to Slack."""
     import json
     from pathlib import Path
 
     from src.ai_analyzer import load_analysis_results
+    from src.performance_tracker import load_history, save_history, save_new_predictions
     from src.slack_notifier import send_analysis_to_slack
 
     logger.info("Phase 3 (Notify): Sending results to Slack")
@@ -180,6 +224,42 @@ def phase_notify() -> None:
 
     # Load Claude's analysis results
     holdings_result, discovery_result = load_analysis_results()
+
+    # Save new predictions for tracking
+    perf_history = load_history()
+    # Load current prices from the analysis input (saved during prepare phase)
+    current_prices: dict[str, float] = {}
+    input_path = Path("data/analysis_input.json")
+    if input_path.exists():
+        try:
+            with open(input_path, encoding="utf-8") as f:
+                analysis_input = json.load(f)
+            # Extract prices from the prompt text is unreliable;
+            # instead, parse from holdings/discovery results
+            for h in holdings_result.get("holdings_analysis", []):
+                # We'll use entry prices from the prediction itself
+                pass
+        except Exception:
+            pass
+
+    # Extract current prices from meta or re-derive from results
+    # The simplest approach: load from the previously saved candidates data
+    prices_path = Path("data/current_prices.json")
+    if prices_path.exists():
+        try:
+            with open(prices_path, encoding="utf-8") as f:
+                current_prices = json.load(f)
+        except Exception:
+            pass
+
+    if current_prices:
+        perf_history = save_new_predictions(
+            perf_history, holdings_result, discovery_result, current_prices
+        )
+        save_history(perf_history)
+        logger.info("New predictions saved to tracking history")
+    else:
+        logger.warning("No current prices available; skipping prediction tracking")
 
     # Send to Slack
     success = send_analysis_to_slack(
