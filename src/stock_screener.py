@@ -35,7 +35,7 @@ def _build_merged_universe() -> tuple[list[str], dict[str, dict]]:
     return list(ticker_info.keys()), ticker_info
 
 
-def screen_stocks(settings: Settings) -> tuple[list[dict], int, int]:
+def screen_stocks(settings: Settings) -> tuple[list[dict], int, int, dict[str, dict], dict[str, dict]]:
     """Screen Nikkei 225 + JPX400 stocks and return top candidates.
 
     Two-phase approach:
@@ -43,7 +43,8 @@ def screen_stocks(settings: Settings) -> tuple[list[dict], int, int]:
     2. Full indicator computation for top candidates
 
     Returns:
-        tuple of (candidate summaries, total screened count, failed count)
+        tuple of (candidate summaries, total screened count, failed count,
+                  fundamentals dict, ticker_info dict)
     """
     all_tickers, ticker_info = _build_merged_universe()
     logger.info("Starting stock screening (%d tickers: Nikkei225 + JPX400)", len(all_tickers))
@@ -100,4 +101,4 @@ def screen_stocks(settings: Settings) -> tuple[list[dict], int, int]:
             )
 
     logger.info("Screening complete: %d candidates with full indicators", len(candidates))
-    return candidates, total_screened, failed_count
+    return candidates, total_screened, failed_count, fundamentals, ticker_info

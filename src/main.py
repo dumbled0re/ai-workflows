@@ -32,6 +32,9 @@ def phase_prepare() -> None:
     from src.ai_analyzer import prepare_prompts
     from src.config_loader import load_config
     from src.data_fetcher import fetch_batch
+    from src.market_context import fetch_market_context, format_market_context
+    from src.news_fetcher import fetch_market_news, fetch_stock_news, format_market_news, format_stock_news
+    from src.sector_analysis import compute_sector_rankings, format_sector_ranking
     from src.slack_notifier import send_market_closed_to_slack
     from src.stock_screener import screen_stocks
     from src.technical_indicators import compute_indicators
@@ -61,6 +64,18 @@ def phase_prepare() -> None:
 
     data_quality: dict = {"success": 0, "failed": 0}
 
+    # Fetch market context (indices, forex, sentiment)
+    logger.info("Fetching market context...")
+    market_context = fetch_market_context()
+    market_context_text = format_market_context(market_context)
+    logger.info("Market context ready")
+
+    # Fetch market news
+    logger.info("Fetching market news...")
+    market_news = fetch_market_news(max_items=10)
+    market_news_text = format_market_news(market_news)
+    logger.info("Fetched %d market news items", len(market_news))
+
     # Fetch and compute indicators for holdings
     holdings_summaries: list[dict] = []
     if config.holdings:
@@ -70,6 +85,10 @@ def phase_prepare() -> None:
         )
         data_quality["success"] += len(holdings_data)
         data_quality["failed"] += len(holdings_failed)
+
+        # Fetch news for holdings
+        holdings_news = fetch_stock_news(tickers, max_per_stock=3)
+        holdings_news_formatted = format_stock_news(holdings_news)
 
         for holding in config.holdings:
             df = holdings_data.get(holding.ticker)
@@ -82,17 +101,40 @@ def phase_prepare() -> None:
                     avg_cost=holding.avg_cost,
                     fundamentals=holdings_fundamentals.get(holding.ticker),
                 )
+                # Attach news headlines
+                news_text = holdings_news_formatted.get(holding.ticker)
+                if news_text:
+                    summary["recent_news"] = news_text
                 holdings_summaries.append(summary)
             else:
                 logger.warning("No data for holding: %s", holding.ticker)
 
     # Screen stocks (Nikkei 225 + JPX400)
     logger.info("Starting stock screening (Nikkei 225 + JPX400)")
-    screened_candidates, screened_total, screened_failed = screen_stocks(
+    screened_candidates, screened_total, screened_failed, all_fundamentals, all_ticker_info = screen_stocks(
         config.settings
     )
     data_quality["success"] += screened_total
     data_quality["failed"] += screened_failed
+
+    # Compute sector rankings
+    logger.info("Computing sector rankings...")
+    sector_rankings = compute_sector_rankings(all_fundamentals, all_ticker_info)
+    for candidate in screened_candidates:
+        ticker = candidate["ticker"]
+        ranking = sector_rankings.get(ticker)
+        if ranking:
+            candidate["sector_ranking"] = format_sector_ranking(ranking)
+            candidate["sector_score"] = ranking.get("sector_score", 0)
+
+    # Fetch news for top candidates
+    candidate_tickers = [c["ticker"] for c in screened_candidates[:20]]
+    candidate_news = fetch_stock_news(candidate_tickers, max_per_stock=3)
+    candidate_news_formatted = format_stock_news(candidate_news)
+    for candidate in screened_candidates:
+        news_text = candidate_news_formatted.get(candidate["ticker"])
+        if news_text:
+            candidate["recent_news"] = news_text
 
     # Save prompts for Claude Code Action
     prepare_prompts(
@@ -100,6 +142,8 @@ def phase_prepare() -> None:
         candidates=screened_candidates,
         timing=timing,
         top_n=config.settings.discovery_top_n,
+        market_context=market_context_text,
+        market_news=market_news_text,
     )
 
     # Save data quality and timing info for Phase 3

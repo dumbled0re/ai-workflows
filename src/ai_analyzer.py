@@ -56,6 +56,10 @@ HOLDINGS_PROMPT_TEMPLATE = """\
 本日: {date}
 分析タイミング: {timing}
 
+{market_context}
+
+{market_news}
+
 === 保有銘柄 ===
 
 {holdings_data}
@@ -92,6 +96,10 @@ DISCOVERY_PROMPT_TEMPLATE = """\
 テクニカル的にエントリーポイントが来ている銘柄のみを推奨してください。
 
 本日: {date}
+
+{market_context}
+
+{market_news}
 
 === スクリーニング済み候補 ({n}銘柄) ===
 
@@ -135,6 +143,8 @@ def prepare_prompts(
     timing: str,
     top_n: int,
     output_dir: str = "data",
+    market_context: str = "",
+    market_news: str = "",
 ) -> Path:
     """Prepare analysis prompts and save to a JSON file for Claude Code Action.
 
@@ -157,12 +167,16 @@ def prepare_prompts(
         date=now_str,
         timing=timing_label,
         holdings_data=holdings_text,
+        market_context=market_context,
+        market_news=market_news,
     )
     discovery_prompt = DISCOVERY_PROMPT_TEMPLATE.format(
         top_n=top_n,
         date=now_str,
         n=len(candidates),
         candidates_data=candidates_text,
+        market_context=market_context,
+        market_news=market_news,
     )
 
     prompt_data = {
@@ -302,6 +316,14 @@ def _format_stock_data(summaries: list[dict]) -> str:
             lines.append(f"次回決算発表日: {s['next_earnings_date']}")
         if s.get("industry"):
             lines.append(f"業種: {s['industry']}")
+
+        # Sector relative ranking
+        if s.get("sector_ranking"):
+            lines.append(f"業界内評価: {s['sector_ranking']}")
+
+        # Recent news
+        if s.get("recent_news"):
+            lines.append(f"最新ニュース: {s['recent_news']}")
         parts.append("\n".join(lines))
     return "\n\n".join(parts)
 
