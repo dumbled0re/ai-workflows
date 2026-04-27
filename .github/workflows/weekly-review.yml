@@ -29,7 +29,7 @@ jobs:
 
       # Phase 1: Build review prompt from prediction history
       - name: Prepare review data
-        run: python -m src.main review
+        run: python -m stock_analyzer.main review
 
       # Phase 2: Claude analyzes past performance and generates strategy updates
       - name: Strategy review with Claude AI
@@ -46,7 +46,7 @@ jobs:
 
       # Phase 3: Apply review results to strategy notes and screening weights
       - name: Apply review results
-        run: python -m src.main apply-review
+        run: python -m stock_analyzer.main apply-review
 
       # Phase 4: Commit updated strategy files back to repo
       - name: Save strategy updates

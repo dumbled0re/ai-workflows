@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import logging
 
-from src.config_loader import Settings
-from src.data_fetcher import fetch_batch
-from src.nikkei225_components import NIKKEI_225_TICKERS
-from src.jpx400_components import JPX400_TICKERS
-from src.technical_indicators import compute_indicators, compute_screening_score
+from stock_analyzer.config_loader import Settings
+from stock_analyzer.data_fetcher import fetch_batch
+from stock_analyzer.nikkei225_components import NIKKEI_225_TICKERS
+from stock_analyzer.jpx400_components import JPX400_TICKERS
+from stock_analyzer.technical_indicators import compute_indicators, compute_screening_score
 
 logger = logging.getLogger(__name__)
 

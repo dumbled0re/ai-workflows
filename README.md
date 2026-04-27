@@ -91,13 +91,13 @@ pip install -r requirements.txt
 
 # Phase 1: データ準備
 export SLACK_WEBHOOK_URL="your-webhook-url"
-python -m src.main prepare
+python -m stock_analyzer.main prepare
 
 # Phase 2: Claude分析（GitHub Actions上ではclaude-code-actionが実行）
 # ローカルでは手動でdata/holdings_result.jsonとdata/discovery_result.jsonを作成
 
 # Phase 3: Slack通知
-python -m src.main notify
+python -m stock_analyzer.main notify
 ```
 
 ## Disclaimer

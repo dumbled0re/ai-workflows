@@ -29,15 +29,15 @@ def is_market_day(date: datetime) -> bool:
 
 def phase_prepare() -> None:
     """Phase 1: Fetch data, compute indicators, prepare prompts for Claude."""
-    from src.ai_analyzer import prepare_prompts
-    from src.config_loader import load_config
-    from src.data_fetcher import fetch_batch
-    from src.market_context import fetch_market_context, format_market_context
-    from src.news_fetcher import fetch_margin_data, fetch_market_news, fetch_stock_news, format_market_news, format_stock_news
-    from src.sector_analysis import compute_sector_rankings, format_sector_ranking
-    from src.slack_notifier import send_market_closed_to_slack
-    from src.stock_screener import screen_stocks
-    from src.technical_indicators import compute_indicators
+    from stock_analyzer.ai_analyzer import prepare_prompts
+    from stock_analyzer.config_loader import load_config
+    from stock_analyzer.data_fetcher import fetch_batch
+    from stock_analyzer.market_context import fetch_market_context, format_market_context
+    from stock_analyzer.news_fetcher import fetch_margin_data, fetch_market_news, fetch_stock_news, format_market_news, format_stock_news
+    from stock_analyzer.sector_analysis import compute_sector_rankings, format_sector_ranking
+    from stock_analyzer.slack_notifier import send_market_closed_to_slack
+    from stock_analyzer.stock_screener import screen_stocks
+    from stock_analyzer.technical_indicators import compute_indicators
 
     now_jst = datetime.now(JST)
     timing = "morning" if now_jst.hour < 12 else "evening"
@@ -65,13 +65,13 @@ def phase_prepare() -> None:
     data_quality: dict = {"success": 0, "failed": 0}
 
     # Performance tracking: load history and prepare for review
-    from src.performance_tracker import (
+    from stock_analyzer.performance_tracker import (
         format_performance_feedback,
         load_history,
         review_predictions,
         save_history,
     )
-    from src.strategy_learner import (
+    from stock_analyzer.strategy_learner import (
         format_strategy_notes_for_prompt,
         load_screening_weights,
         load_strategy_notes,
@@ -238,9 +238,9 @@ def phase_notify() -> None:
     import json
     from pathlib import Path
 
-    from src.ai_analyzer import load_analysis_results
-    from src.performance_tracker import load_history, save_history, save_new_predictions
-    from src.slack_notifier import send_analysis_to_slack
+    from stock_analyzer.ai_analyzer import load_analysis_results
+    from stock_analyzer.performance_tracker import load_history, save_history, save_new_predictions
+    from stock_analyzer.slack_notifier import send_analysis_to_slack
 
     logger.info("Phase 3 (Notify): Sending results to Slack")
 
@@ -320,8 +320,8 @@ def phase_review() -> None:
     """Build the weekly review prompt for Claude to analyze past performance."""
     from pathlib import Path
 
-    from src.performance_tracker import load_history
-    from src.strategy_learner import build_weekly_review_prompt, load_strategy_notes
+    from stock_analyzer.performance_tracker import load_history
+    from stock_analyzer.strategy_learner import build_weekly_review_prompt, load_strategy_notes
 
     logger.info("Building weekly review prompt")
 
@@ -343,7 +343,7 @@ def phase_apply_review() -> None:
     import json
     from pathlib import Path
 
-    from src.strategy_learner import (
+    from stock_analyzer.strategy_learner import (
         apply_review_results,
         load_screening_weights,
         load_strategy_notes,
@@ -418,7 +418,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    from src.slack_notifier import send_error_to_slack
+    from stock_analyzer.slack_notifier import send_error_to_slack
 
     try:
         main()

@@ -33,7 +33,7 @@ jobs:
       - name: Prepare analysis data
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        run: python -m src.main prepare
+        run: python -m stock_analyzer.main prepare
 
       # Phase 2: Claude Code Action reads prompts and generates analysis
       - name: Analyze with Claude AI (Holdings)
@@ -71,12 +71,12 @@ jobs:
       - name: Send results to Slack
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        run: python -m src.main notify
+        run: python -m stock_analyzer.main notify
 
       # Phase 4: Evening strategy review (only on evening runs: 07:00 UTC = 16:00 JST)
       - name: Build strategy review prompt
         if: github.event.schedule == '0 7 * * 1-5' || github.event_name == 'workflow_dispatch'
-        run: python -m src.main review
+        run: python -m stock_analyzer.main review
 
       - name: Strategy review with Claude AI
         if: github.event.schedule == '0 7 * * 1-5' || github.event_name == 'workflow_dispatch'
@@ -91,7 +91,7 @@ jobs:
 
       - name: Apply strategy review results
         if: github.event.schedule == '0 7 * * 1-5' || github.event_name == 'workflow_dispatch'
-        run: python -m src.main apply-review
+        run: python -m stock_analyzer.main apply-review
 
       # Phase 5: Commit all tracking & strategy data back to repo
       - name: Save tracking and strategy data
