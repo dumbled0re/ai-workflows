@@ -39,7 +39,7 @@ jobs:
       - name: Analyze with Claude AI (Holdings)
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: '--allowedTools "Read,Write,Edit,Bash"'
           prompt: |
             まず stock_analyzer/data/investment_rules.json を読んで投資ルールを把握してください。
@@ -52,7 +52,7 @@ jobs:
       - name: Analyze with Claude AI (Discovery)
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: '--allowedTools "Read,Write,Edit,Bash"'
           prompt: |
             まず stock_analyzer/data/investment_rules.json を読んで投資ルールを把握してください。
@@ -82,7 +82,7 @@ jobs:
         if: github.event.schedule == '0 7 * * 1-5' || github.event_name == 'workflow_dispatch'
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: '--allowedTools "Read,Write,Edit,Bash"'
           prompt: |
             stock_analyzer/data/review_prompt.txt を読んで、その内容に従い戦略レビューを行ってください。
