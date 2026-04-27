@@ -1,0 +1,56 @@
+{
+  "notes": [
+    {
+      "insight": "出来高が20日平均の2倍以上に急増した銘柄は、トレンド転換の初動である可能性が高い",
+      "evidence": "一般的なテクニカル分析の原則。出来高は価格に先行する",
+      "confidence": "HIGH",
+      "category": "technical_pattern",
+      "still_valid": true,
+      "date_added": "2026-04-27",
+      "last_validated": "2026-04-27"
+    },
+    {
+      "insight": "信用倍率5倍以上の銘柄はUP予測を避ける。買い残が多すぎると将来の売り圧力になる",
+      "evidence": "需給分析の基本原則。信用買い残は将来の反対売買（売り）を意味する",
+      "confidence": "HIGH",
+      "category": "risk_management",
+      "still_valid": true,
+      "date_added": "2026-04-27",
+      "last_validated": "2026-04-27"
+    },
+    {
+      "insight": "決算発表前の3営業日はエントリーを避ける。サプライズリスクが高く、テクニカルが無効化される",
+      "evidence": "決算発表はファンダメンタルの急変を伴い、テクニカル分析の前提を崩す",
+      "confidence": "HIGH",
+      "category": "risk_management",
+      "still_valid": true,
+      "date_added": "2026-04-27",
+      "last_validated": "2026-04-27"
+    },
+    {
+      "insight": "RSI30以下+ボリンジャーバンド下限付近+出来高増加の3条件が揃った銘柄は反発確率が高い",
+      "evidence": "複数の逆張りシグナルの合致は信頼度が上がる",
+      "confidence": "MEDIUM",
+      "category": "technical_pattern",
+      "still_valid": true,
+      "date_added": "2026-04-27",
+      "last_validated": "2026-04-27"
+    },
+    {
+      "insight": "PBR1倍以下かつROE10%以上の銘柄は割安成長株の候補。セクター内で相対的に有利",
+      "evidence": "バリュー投資の基本原則。資産価値以下で収益性が高い",
+      "confidence": "MEDIUM",
+      "category": "fundamental_insight",
+      "still_valid": true,
+      "date_added": "2026-04-27",
+      "last_validated": "2026-04-27"
+    }
+  ],
+  "regime_strategies": {
+    "強気トレンド": "モメンタム重視。SMAパーフェクトオーダー銘柄のブレイクアウトを狙う。利確は欲張らず+5-10%で段階的に",
+    "弱気トレンド": "現金比率を高める。ディフェンシブ銘柄（食品、医薬品、電力）のみ。HIGH信頼度のみ推奨",
+    "レンジ相場": "逆張り戦略。ボリンジャーバンド下限で買い、上限で利確。出来高確認必須",
+    "高ボラティリティ": "推奨数を最小限に。損切り幅を通常の1.5倍に設定。ポジションサイズ半減"
+  },
+  "last_review_date": "2026-04-27"
+}

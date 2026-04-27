@@ -42,8 +42,9 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: '--allowedTools "Read,Write,Edit,Bash"'
           prompt: |
-            data/analysis_input.json を読んで、"holdings_prompt" の内容に基づき株式分析を行ってください。
-            "system_prompt" の指示に従って分析してください。
+            まず data/investment_rules.json を読んで投資ルールを把握してください。
+            次に data/analysis_input.json を読んで、"holdings_prompt" の内容に基づき株式分析を行ってください。
+            "system_prompt" の指示と investment_rules の両方に従って分析してください。
 
             結果は指定されたJSON形式のみを data/holdings_result.json に書き込んでください。
             JSONのみを出力し、他のテキストは含めないでください。
@@ -54,8 +55,14 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: '--allowedTools "Read,Write,Edit,Bash"'
           prompt: |
-            data/analysis_input.json を読んで、"discovery_prompt" の内容に基づき有望銘柄を選定してください。
-            "system_prompt" の指示に従って分析してください。
+            まず data/investment_rules.json を読んで投資ルールを把握してください。
+            次に data/analysis_input.json を読んで、"discovery_prompt" の内容に基づき有望銘柄を選定してください。
+            "system_prompt" の指示と investment_rules の両方に従って分析してください。
+
+            特に以下のルールを厳守すること:
+            - entry_rules.avoid_entry の条件に該当する銘柄は推奨しない
+            - market_regime_rules に従い、現在のレジームに適した銘柄のみ推奨する
+            - confidence_calibration に従い、信頼度を適切に設定する
 
             結果は指定されたJSON形式のみを data/discovery_result.json に書き込んでください。
             JSONのみを出力し、他のテキストは含めないでください。

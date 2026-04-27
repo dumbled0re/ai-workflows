@@ -1,4 +1,18 @@
-data/
+# Temporary analysis data (regenerated each run)
+data/analysis_input.json
+data/holdings_result.json
+data/discovery_result.json
+data/review_result.json
+data/review_prompt.txt
+data/current_prices.json
+data/meta.json
+
+# Persistent data files are tracked:
+# data/predictions_history.json
+# data/strategy_notes.json
+# data/screening_weights.json
+# data/investment_rules.json
+
 __pycache__/
 *.pyc
 .env

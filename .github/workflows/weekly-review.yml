@@ -38,7 +38,9 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: '--allowedTools "Read,Write,Edit,Bash"'
           prompt: |
-            data/review_prompt.txt を読んで、その内容に従い週次戦略レビューを行ってください。
+            まず data/investment_rules.json を読んで投資ルールを把握してください。
+            次に data/review_prompt.txt を読んで、その内容に従い戦略レビューを行ってください。
+            投資ルールとの整合性も確認し、必要ならルールの改善提案も含めてください。
             結果は指定されたJSON形式のみを data/review_result.json に書き込んでください。
             JSONのみを出力し、他のテキストは含めないでください。
 
