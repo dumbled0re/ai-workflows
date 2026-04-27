@@ -55,7 +55,7 @@ def phase_prepare() -> None:
         sys.exit(0)
 
     # Load config
-    config = load_config("stocks.yml")
+    config = load_config()
     logger.info("Loaded %d holdings", len(config.holdings))
 
     # Track data quality
