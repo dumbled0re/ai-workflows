@@ -66,13 +66,31 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: python -m src.main notify
 
-      # Phase 4: Commit prediction tracking data back to repo
-      - name: Save prediction history
+      # Phase 4: Evening strategy review (only on evening runs: 07:00 UTC = 16:00 JST)
+      - name: Build strategy review prompt
+        if: github.event.schedule == '0 7 * * 1-5' || github.event_name == 'workflow_dispatch'
+        run: python -m src.main review
+
+      - name: Strategy review with Claude AI
+        if: github.event.schedule == '0 7 * * 1-5' || github.event_name == 'workflow_dispatch'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--allowedTools "Read,Write,Edit,Bash"'
+          prompt: |
+            data/review_prompt.txt を読んで、その内容に従い戦略レビューを行ってください。
+            結果は指定されたJSON形式のみを data/review_result.json に書き込んでください。
+            JSONのみを出力し、他のテキストは含めないでください。
+
+      - name: Apply strategy review results
+        if: github.event.schedule == '0 7 * * 1-5' || github.event_name == 'workflow_dispatch'
+        run: python -m src.main apply-review
+
+      # Phase 5: Commit all tracking & strategy data back to repo
+      - name: Save tracking and strategy data
         run: |
-          if [ -f data/predictions_history.json ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add data/predictions_history.json
-            git diff --cached --quiet || git commit -m "Update prediction tracking data [skip ci]"
-            git push
-          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f data/predictions_history.json data/strategy_notes.json data/screening_weights.json 2>/dev/null || true
+          git diff --cached --quiet || git commit -m "Update prediction tracking and strategy data [skip ci]"
+          git push || true
