@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 def phase_gather() -> None:
     """Gather AI news from multiple sources and build analysis prompt."""
     from tech_catchup.sources import (
+        fetch_ai_company_news,
+        fetch_ai_tools_releases,
         fetch_arxiv_ai,
         fetch_github_trending_ai,
         fetch_hackernews_ai,
@@ -28,14 +30,19 @@ def phase_gather() -> None:
     hn = fetch_hackernews_ai(max_items=15)
     github = fetch_github_trending_ai(max_items=10)
     arxiv = fetch_arxiv_ai(max_items=10)
+    company_news = fetch_ai_company_news(max_per_source=5)
+    tool_releases = fetch_ai_tools_releases(max_items=10)
 
-    logger.info("Sources: HN=%d, GitHub=%d, arXiv=%d", len(hn), len(github), len(arxiv))
+    logger.info(
+        "Sources: HN=%d, GitHub=%d, arXiv=%d, Companies=%d, Tools=%d",
+        len(hn), len(github), len(arxiv), len(company_news), len(tool_releases),
+    )
 
-    if not hn and not github and not arxiv:
+    if not hn and not github and not arxiv and not company_news:
         logger.warning("No AI news found from any source")
         sys.exit(0)
 
-    sources_text = format_all_sources(hn, github, arxiv)
+    sources_text = format_all_sources(hn, github, arxiv, company_news, tool_releases)
 
     from datetime import datetime, timedelta, timezone
     jst = timezone(timedelta(hours=9))
