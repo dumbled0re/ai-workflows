@@ -98,6 +98,7 @@ jobs:
 
       # Phase 5: Commit all tracking & strategy data back to repo
       - name: Save tracking and strategy data
+        id: save_data
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -105,5 +106,24 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git
           git add -f stock_analyzer/data/predictions_history.json stock_analyzer/data/strategy_notes.json stock_analyzer/data/screening_weights.json 2>/dev/null || true
-          git diff --cached --quiet || git commit -m "Update prediction tracking and strategy data [skip ci]"
-          git push || true
+          if git diff --cached --quiet; then
+            echo "No data changes to commit"
+            echo "push_status=skipped" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "Update prediction tracking and strategy data [skip ci]"
+            if git push; then
+              echo "push_status=success" >> "$GITHUB_OUTPUT"
+            else
+              echo "push_status=failed" >> "$GITHUB_OUTPUT"
+              echo "::error::Git push failed - tracking data will be lost!"
+            fi
+          fi
+
+      - name: Notify push failure
+        if: steps.save_data.outputs.push_status == 'failed'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -X POST "$SLACK_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d '{"blocks":[{"type":"header","text":{"type":"plain_text","text":":rotating_light: データ保存失敗"}},{"type":"section","text":{"type":"mrkdwn","text":"予測追跡データのgit pushが失敗しました。\n改善ループが停止しています。\n\nGitHub Actionsのログを確認してください。"}}]}'

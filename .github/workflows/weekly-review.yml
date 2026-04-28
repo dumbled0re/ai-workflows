@@ -53,6 +53,7 @@ jobs:
 
       # Phase 4: Commit updated strategy files back to repo
       - name: Save strategy updates
+        id: save_data
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -60,5 +61,12 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git
           git add stock_analyzer/data/strategy_notes.json stock_analyzer/data/screening_weights.json stock_analyzer/data/predictions_history.json
-          git diff --cached --quiet || git commit -m "Weekly strategy review: update notes and screening weights [skip ci]"
-          git push
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Weekly strategy review: update notes and screening weights [skip ci]"
+            if ! git push; then
+              echo "::error::Git push failed - strategy data will be lost!"
+              exit 1
+            fi
+          fi
