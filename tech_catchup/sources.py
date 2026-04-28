@@ -254,6 +254,61 @@ def fetch_ai_company_news(max_per_source: int = 5) -> list[dict]:
     except Exception as e:
         logger.debug("Failed to fetch Google AI news: %s", e)
 
+    # Meta AI Blog
+    try:
+        resp = requests.get(
+            "https://ai.meta.com/blog/",
+            headers=_HEADERS,
+            timeout=_TIMEOUT,
+        )
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, "html.parser")
+            seen_m: set[str] = set()
+            for a in soup.select("a[href*='/blog/']"):
+                title = a.get_text(strip=True)
+                href = a.get("href", "")
+                if (
+                    len(title) > 20
+                    and href != "/blog/"
+                    and title not in seen_m
+                    and len(seen_m) < max_per_source
+                ):
+                    seen_m.add(title)
+                    url = f"https://ai.meta.com{href}" if href.startswith("/") else href
+                    results.append({
+                        "title": title,
+                        "url": url,
+                        "source": "Meta AI",
+                    })
+    except Exception as e:
+        logger.debug("Failed to fetch Meta AI news: %s", e)
+
+    # Microsoft AI Blog
+    try:
+        resp = requests.get(
+            "https://blogs.microsoft.com/ai/",
+            headers=_HEADERS,
+            timeout=_TIMEOUT,
+        )
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, "html.parser")
+            seen_ms: set[str] = set()
+            for a in soup.select("a[href*='blogs.microsoft.com']"):
+                title = a.get_text(strip=True)
+                if (
+                    len(title) > 20
+                    and title not in seen_ms
+                    and len(seen_ms) < max_per_source
+                ):
+                    seen_ms.add(title)
+                    results.append({
+                        "title": title,
+                        "url": a.get("href", ""),
+                        "source": "Microsoft AI",
+                    })
+    except Exception as e:
+        logger.debug("Failed to fetch Microsoft AI news: %s", e)
+
     logger.info("Fetched %d AI company news items", len(results))
     return results
 
@@ -264,13 +319,33 @@ def fetch_ai_tools_releases(max_items: int = 10) -> list[dict]:
 
     # GitHub releases for key AI tool repos
     tool_repos = [
+        # Anthropic
         ("anthropics/claude-code", "Claude Code"),
-        ("openai/codex", "OpenAI Codex"),
-        ("google-gemini/gemini-cli", "Gemini CLI"),
         ("anthropics/anthropic-sdk-python", "Anthropic Python SDK"),
-        ("openai/openai-python", "OpenAI Python SDK"),
-        ("langchain-ai/langchain", "LangChain"),
+        ("anthropics/anthropic-sdk-typescript", "Anthropic TS SDK"),
+        ("anthropics/courses", "Anthropic Courses"),
         ("modelcontextprotocol/servers", "MCP Servers"),
+        ("modelcontextprotocol/python-sdk", "MCP Python SDK"),
+        # OpenAI
+        ("openai/codex", "OpenAI Codex"),
+        ("openai/openai-python", "OpenAI Python SDK"),
+        ("openai/openai-agents-python", "OpenAI Agents SDK"),
+        ("openai/whisper", "Whisper"),
+        # Google
+        ("google-gemini/gemini-cli", "Gemini CLI"),
+        ("google-gemini/cookbook", "Gemini Cookbook"),
+        ("google/generative-ai-python", "Google GenAI SDK"),
+        # Meta
+        ("meta-llama/llama-models", "Llama Models"),
+        ("meta-llama/llama-stack", "Llama Stack"),
+        # Ecosystem
+        ("langchain-ai/langchain", "LangChain"),
+        ("run-llama/llama_index", "LlamaIndex"),
+        ("huggingface/transformers", "HuggingFace Transformers"),
+        ("vllm-project/vllm", "vLLM"),
+        ("ollama/ollama", "Ollama"),
+        ("microsoft/autogen", "AutoGen"),
+        ("crewAIInc/crewAI", "CrewAI"),
     ]
 
     for repo, name in tool_repos:
