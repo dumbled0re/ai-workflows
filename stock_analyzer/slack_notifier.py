@@ -113,15 +113,39 @@ def _build_blocks(
 
     blocks.append({"type": "divider"})
 
-    # Discovery
-    recommended = discovery_results.get("recommended_stocks", [])
-    if recommended:
+    # Short-term picks
+    short_term = discovery_results.get("short_term_picks", [])
+    # Fallback: support old format
+    if not short_term:
+        short_term = discovery_results.get("recommended_stocks", [])
+    if short_term:
         blocks.append({
             "type": "header",
-            "text": {"type": "plain_text", "text": "おすすめ銘柄"},
+            "text": {"type": "plain_text", "text": "短期トレード候補（1-4週間）"},
         })
-        for r in recommended:
+        for r in short_term:
             blocks.append(_format_discovery_block(r))
+
+    blocks.append({"type": "divider"})
+
+    # Long-term picks
+    long_term = discovery_results.get("long_term_picks", [])
+    if long_term:
+        blocks.append({
+            "type": "header",
+            "text": {"type": "plain_text", "text": "長期投資候補（3-12ヶ月）"},
+        })
+        for r in long_term:
+            blocks.append(_format_long_term_block(r))
+
+    # Market condition
+    market_cond = discovery_results.get("market_condition", "")
+    if market_cond:
+        blocks.append({"type": "divider"})
+        blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"*:crystal_ball: 市場環境評価*\n>{market_cond}"},
+        })
 
     # Footer
     blocks.append({"type": "divider"})
@@ -195,6 +219,34 @@ def _format_discovery_block(r: dict) -> dict:
         text += f"  :octagonal_sign: 損切り: {stop_loss}\n"
     if entry:
         text += f"  :bulb: 戦略: {entry}\n"
+    text += f"  :warning: リスク: {risk}"
+    return {"type": "section", "text": {"type": "mrkdwn", "text": text}}
+
+
+def _format_long_term_block(r: dict) -> dict:
+    """Format a single long-term investment recommendation into a Slack block."""
+    conf_emoji = _CONFIDENCE_EMOJI.get(r.get("confidence", ""), ":white_circle:")
+
+    reasons = "\n".join(f"  - {r_}" for r_ in r.get("reasons", []))
+    risk = r.get("risk_factor", "")
+    thesis = r.get("investment_thesis", "")
+    expected = r.get("expected_return", "")
+    entry_zone = r.get("ideal_entry_zone", "")
+    dividend = r.get("dividend_info", "")
+
+    text = (
+        f"*#{r.get('rank', '?')} - {r.get('name', '')} ({r.get('ticker', '')})*"
+        f" {conf_emoji} 信頼度: *{r.get('confidence', '?')}*\n"
+    )
+    if thesis:
+        text += f"{thesis}\n"
+    if expected:
+        text += f"  :chart_with_upwards_trend: 想定リターン: {expected}\n"
+    text += f"{reasons}\n"
+    if entry_zone:
+        text += f"  :moneybag: 理想的な買い場: {entry_zone}\n"
+    if dividend:
+        text += f"  :money_with_wings: 配当: {dividend}\n"
     text += f"  :warning: リスク: {risk}"
     return {"type": "section", "text": {"type": "mrkdwn", "text": text}}
 

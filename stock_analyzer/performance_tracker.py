@@ -171,8 +171,11 @@ def save_new_predictions(
         })
         new_count += 1
 
-    # Extract from discovery recommendations
-    for r in discovery_result.get("recommended_stocks", []):
+    # Extract from short-term picks
+    short_term = discovery_result.get("short_term_picks", [])
+    if not short_term:
+        short_term = discovery_result.get("recommended_stocks", [])
+    for r in short_term:
         ticker = r.get("ticker", "")
         if not ticker:
             continue
@@ -184,7 +187,7 @@ def save_new_predictions(
         if entry_price is None:
             continue
 
-        pred_id = f"{today}_{ticker}_discovery"
+        pred_id = f"{today}_{ticker}_short_term"
         if any(p["id"] == pred_id for p in history.get("predictions", [])):
             continue
 
@@ -200,7 +203,44 @@ def save_new_predictions(
             "stop_loss": r.get("stop_loss", ""),
             "target_price": r.get("target_price", ""),
             "entry_strategy": r.get("entry_strategy", ""),
-            "source": "discovery",
+            "source": "short_term",
+            "status": "pending",
+            "actual_price": None,
+            "actual_return_pct": None,
+            "reviewed_date": None,
+            "days_held": None,
+        })
+        new_count += 1
+
+    # Extract from long-term picks
+    for r in discovery_result.get("long_term_picks", []):
+        ticker = r.get("ticker", "")
+        if not ticker:
+            continue
+        prediction = r.get("prediction")
+        if prediction not in ("UP", "DOWN"):
+            continue
+
+        entry_price = current_prices.get(ticker)
+        if entry_price is None:
+            continue
+
+        pred_id = f"{today}_{ticker}_long_term"
+        if any(p["id"] == pred_id for p in history.get("predictions", [])):
+            continue
+
+        history.setdefault("predictions", []).append({
+            "id": pred_id,
+            "date": today,
+            "ticker": ticker,
+            "name": r.get("name", ""),
+            "prediction": prediction,
+            "confidence": r.get("confidence", "MEDIUM"),
+            "entry_price": round(entry_price, 1),
+            "investment_thesis": r.get("investment_thesis", ""),
+            "expected_return": r.get("expected_return", ""),
+            "ideal_entry_zone": r.get("ideal_entry_zone", ""),
+            "source": "long_term",
             "status": "pending",
             "actual_price": None,
             "actual_return_pct": None,
