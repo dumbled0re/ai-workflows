@@ -309,6 +309,37 @@ def fetch_ai_company_news(max_per_source: int = 5) -> list[dict]:
     except Exception as e:
         logger.debug("Failed to fetch Microsoft AI news: %s", e)
 
+    # Vercel Blog
+    try:
+        resp = requests.get(
+            "https://vercel.com/blog",
+            headers=_HEADERS,
+            timeout=_TIMEOUT,
+        )
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, "html.parser")
+            seen_v: set[str] = set()
+            for a in soup.select("a[href*='/blog/']"):
+                title = a.get_text(strip=True)
+                href = a.get("href", "")
+                if (
+                    len(title) > 20
+                    and href != "/blog/"
+                    and title not in seen_v
+                    and len(seen_v) < max_per_source
+                ):
+                    combined = title.lower()
+                    if any(kw in combined for kw in ["ai", "model", "sdk", "next", "v0", "agent"]):
+                        seen_v.add(title)
+                        url = f"https://vercel.com{href}" if href.startswith("/") else href
+                        results.append({
+                            "title": title,
+                            "url": url,
+                            "source": "Vercel",
+                        })
+    except Exception as e:
+        logger.debug("Failed to fetch Vercel blog: %s", e)
+
     logger.info("Fetched %d AI company news items", len(results))
     return results
 
@@ -338,6 +369,10 @@ def fetch_ai_tools_releases(max_items: int = 10) -> list[dict]:
         # Meta
         ("meta-llama/llama-models", "Llama Models"),
         ("meta-llama/llama-stack", "Llama Stack"),
+        # Vercel / Next.js
+        ("vercel/ai", "Vercel AI SDK"),
+        ("vercel/next.js", "Next.js"),
+        ("vercel/ai-chatbot", "Vercel AI Chatbot"),
         # Ecosystem
         ("langchain-ai/langchain", "LangChain"),
         ("run-llama/llama_index", "LlamaIndex"),
