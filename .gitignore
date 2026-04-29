@@ -1,4 +1,5 @@
-# Stock Analyzer - temp files (regenerated each run)
+# ─── Stock Analyzer ───
+# Temp files (regenerated each run)
 stock_analyzer/data/analysis_input.json
 stock_analyzer/data/holdings_result.json
 stock_analyzer/data/discovery_result.json
@@ -6,17 +7,29 @@ stock_analyzer/data/review_result.json
 stock_analyzer/data/review_prompt.txt
 stock_analyzer/data/current_prices.json
 stock_analyzer/data/meta.json
-
-# Stock Analyzer - persistent files are tracked:
+# Persistent files are tracked:
 # stock_analyzer/data/predictions_history.json
 # stock_analyzer/data/strategy_notes.json
 # stock_analyzer/data/screening_weights.json
 # stock_analyzer/data/investment_rules.json
 
-# Tech Catchup - temp files
+# ─── Tech Catchup ───
 tech_catchup/data/tech_catchup_prompt.txt
 tech_catchup/data/tech_catchup_result.json
 
+# ─── YouTube Factory ───
+youtube_factory/.venv/
+youtube_factory/data/work/
+youtube_factory/data/*.mp4
+youtube_factory/data/*.mp3
+youtube_factory/data/*.wav
+youtube_factory/data/*.jpg
+youtube_factory/data/*.png
+youtube_factory/data/script.json
+youtube_factory/data/metadata.json
+
+# ─── Common ───
 __pycache__/
 *.pyc
 .env
+.venv/
