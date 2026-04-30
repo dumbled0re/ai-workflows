@@ -1,5 +1,5 @@
 {
-  "rsi_oversold_recovery": 25,
+  "rsi_oversold_recovery": 20,
   "rsi_healthy_momentum": 15,
   "volume_spike": 25,
   "sma25_breakout": 25,
