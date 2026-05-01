@@ -28,6 +28,15 @@ youtube_factory/data/*.png
 youtube_factory/data/script.json
 youtube_factory/data/metadata.json
 
+# ─── Moppy Clicker ───
+moppy_clicker/.venv/
+moppy_clicker/data/
+moppy_clicker/secrets/
+moppy_clicker/**/token.json
+moppy_clicker/**/credentials.json
+moppy_clicker/.ruff_cache/
+moppy_clicker/.pytest_cache/
+
 # ─── Common ───
 __pycache__/
 *.pyc
