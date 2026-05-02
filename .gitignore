@@ -17,17 +17,6 @@ stock_analyzer/data/meta.json
 tech_catchup/data/tech_catchup_prompt.txt
 tech_catchup/data/tech_catchup_result.json
 
-# ─── YouTube Factory ───
-youtube_factory/.venv/
-youtube_factory/data/work/
-youtube_factory/data/*.mp4
-youtube_factory/data/*.mp3
-youtube_factory/data/*.wav
-youtube_factory/data/*.jpg
-youtube_factory/data/*.png
-youtube_factory/data/script.json
-youtube_factory/data/metadata.json
-
 # ─── Moppy Clicker ───
 moppy_clicker/.venv/
 moppy_clicker/data/
@@ -42,3 +31,4 @@ __pycache__/
 *.pyc
 .env
 .venv/
+.claude/
