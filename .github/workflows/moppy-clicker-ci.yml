@@ -1,0 +1,29 @@
+name: moppy-clicker CI
+
+on:
+  pull_request:
+    paths:
+      - "moppy_clicker/**"
+      - ".github/workflows/moppy-clicker*.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: moppy_clicker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy moppy_clicker
+      - run: uv run pytest -q

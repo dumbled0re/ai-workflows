@@ -1,0 +1,60 @@
+name: moppy-clicker
+
+on:
+  schedule:
+    - cron: "0 23 * * *"  # JST 朝8時
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "extract candidates only, no clicks"
+        type: boolean
+        default: false
+
+concurrency:
+  group: moppy-clicker
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: moppy_clicker
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Sync deps
+        run: uv sync --frozen
+
+      - name: Restore state artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: moppy-state
+          path: moppy_clicker/data/
+        continue-on-error: true
+
+      - name: Run
+        env:
+          SLACK_WEBHOOK_URL_MOPPY: ${{ secrets.SLACK_WEBHOOK_URL_MOPPY }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          MOPPY_DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+        run: uv run python -m moppy_clicker.main run
+
+      - name: Save state artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: moppy-state
+          path: moppy_clicker/data/state.json
+          retention-days: 30
+          if-no-files-found: ignore
