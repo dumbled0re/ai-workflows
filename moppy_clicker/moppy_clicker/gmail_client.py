@@ -17,6 +17,7 @@ import email.header
 import email.message
 import imaplib
 import logging
+import re
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from types import TracebackType
@@ -27,7 +28,9 @@ logger = logging.getLogger(__name__)
 
 GMAIL_IMAP_HOST = "imap.gmail.com"
 GMAIL_IMAP_PORT = 993
-ALL_MAIL_FOLDER = '"[Gmail]/All Mail"'  # quoted because of space
+# Gmail's All Mail folder name is localized (e.g. "[Gmail]/All Mail" /
+# "[Gmail]/すべてのメール"); we detect it via the \All IMAP attribute.
+LIST_LINE_FOLDER_RE = re.compile(rb'"([^"]+)"\s*$')
 
 
 class GmailAuthError(RuntimeError):
@@ -119,9 +122,33 @@ class GmailClient:
             raise GmailAuthError(
                 f"IMAP login rejected (regenerate app password if 2FA recently changed): {exc}"
             ) from exc
-        typ, _ = self._conn.select(ALL_MAIL_FOLDER, readonly=False)
+        folder = self._find_all_mail_folder()
+        typ, _ = self._conn.select(folder, readonly=False)
         if typ != "OK":
-            raise GmailAuthError(f"could not select {ALL_MAIL_FOLDER}")
+            raise GmailAuthError(f"could not select folder {folder}")
+        logger.info("selected folder %s", folder)
+
+    def _find_all_mail_folder(self) -> str:
+        """Return the IMAP path of Gmail's All Mail folder (locale-independent).
+
+        Uses the ``\\All`` Gmail IMAP attribute. Falls back to ``INBOX``.
+        """
+        try:
+            typ, data = self._conn.list()
+        except imaplib.IMAP4.error:
+            return "INBOX"
+        if typ != "OK" or not data:
+            return "INBOX"
+        for line in data:
+            if not isinstance(line, bytes):
+                continue
+            if b"\\All" not in line:
+                continue
+            match = LIST_LINE_FOLDER_RE.search(line)
+            if match:
+                name = match.group(1).decode("utf-8", errors="replace")
+                return f'"{name}"'
+        return "INBOX"
 
     def close(self) -> None:
         with contextlib.suppress(imaplib.IMAP4.error):
