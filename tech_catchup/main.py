@@ -84,6 +84,10 @@ def phase_gather() -> None:
 - 既に広く知られている情報より、新しい動きを優先する
 - エンジニアが実務で活用できる情報を重視する
 - top_storiesは最大10件に絞る
+- 【必須】 ソース上で「【必須掲載】」と明示された Claude Code / OpenAI Codex / Gemini CLI の
+  最新リリースは、その日のリリースがあれば**必ず top_stories に1項目以上含める**。
+  当該ツールの新機能・破壊的変更・バグ修正を summary に簡潔に列挙する。
+  （これらはユーザの日常開発に直結する must-watch ツール）
 """
 
     out = Path("tech_catchup/data")

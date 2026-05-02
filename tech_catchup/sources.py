@@ -345,45 +345,53 @@ def fetch_ai_company_news(max_per_source: int = 5) -> list[dict]:
 
 
 def fetch_ai_tools_releases(max_items: int = 10) -> list[dict]:
-    """Fetch latest releases/changelogs from major AI developer tools."""
+    """Fetch latest releases/changelogs from major AI developer tools.
+
+    Repos flagged with priority=True are user must-watch — their releases
+    bypass the analyzer's importance filter so version bumps + feature
+    notes always reach the daily digest. Body truncation is generous
+    enough (1500 chars) to keep the actual changelog intact.
+    """
     results: list[dict] = []
 
-    # GitHub releases for key AI tool repos
-    tool_repos = [
-        # Anthropic
-        ("anthropics/claude-code", "Claude Code"),
-        ("anthropics/anthropic-sdk-python", "Anthropic Python SDK"),
-        ("anthropics/anthropic-sdk-typescript", "Anthropic TS SDK"),
-        ("anthropics/courses", "Anthropic Courses"),
-        ("modelcontextprotocol/servers", "MCP Servers"),
-        ("modelcontextprotocol/python-sdk", "MCP Python SDK"),
-        # OpenAI
-        ("openai/codex", "OpenAI Codex"),
-        ("openai/openai-python", "OpenAI Python SDK"),
-        ("openai/openai-agents-python", "OpenAI Agents SDK"),
-        ("openai/whisper", "Whisper"),
-        # Google
-        ("google-gemini/gemini-cli", "Gemini CLI"),
-        ("google-gemini/cookbook", "Gemini Cookbook"),
-        ("google/generative-ai-python", "Google GenAI SDK"),
+    # GitHub releases for key AI tool repos. priority=True → always surface.
+    tool_repos: list[tuple[str, str, bool]] = [
+        # Anthropic — CLAUDE CODE IS MUST-WATCH
+        ("anthropics/claude-code", "Claude Code", True),
+        ("anthropics/anthropic-sdk-python", "Anthropic Python SDK", True),
+        ("anthropics/anthropic-sdk-typescript", "Anthropic TS SDK", False),
+        ("anthropics/courses", "Anthropic Courses", False),
+        ("modelcontextprotocol/servers", "MCP Servers", False),
+        ("modelcontextprotocol/python-sdk", "MCP Python SDK", False),
+        # OpenAI — CODEX IS MUST-WATCH
+        ("openai/codex", "OpenAI Codex", True),
+        ("openai/openai-python", "OpenAI Python SDK", False),
+        ("openai/openai-agents-python", "OpenAI Agents SDK", False),
+        ("openai/whisper", "Whisper", False),
+        # Google — GEMINI CLI IS MUST-WATCH
+        ("google-gemini/gemini-cli", "Gemini CLI", True),
+        ("google-gemini/cookbook", "Gemini Cookbook", False),
+        ("google/generative-ai-python", "Google GenAI SDK", False),
         # Meta
-        ("meta-llama/llama-models", "Llama Models"),
-        ("meta-llama/llama-stack", "Llama Stack"),
+        ("meta-llama/llama-models", "Llama Models", False),
+        ("meta-llama/llama-stack", "Llama Stack", False),
         # Vercel / Next.js
-        ("vercel/ai", "Vercel AI SDK"),
-        ("vercel/next.js", "Next.js"),
-        ("vercel/ai-chatbot", "Vercel AI Chatbot"),
+        ("vercel/ai", "Vercel AI SDK", False),
+        ("vercel/next.js", "Next.js", False),
+        ("vercel/ai-chatbot", "Vercel AI Chatbot", False),
         # Ecosystem
-        ("langchain-ai/langchain", "LangChain"),
-        ("run-llama/llama_index", "LlamaIndex"),
-        ("huggingface/transformers", "HuggingFace Transformers"),
-        ("vllm-project/vllm", "vLLM"),
-        ("ollama/ollama", "Ollama"),
-        ("microsoft/autogen", "AutoGen"),
-        ("crewAIInc/crewAI", "CrewAI"),
+        ("langchain-ai/langchain", "LangChain", False),
+        ("run-llama/llama_index", "LlamaIndex", False),
+        ("huggingface/transformers", "HuggingFace Transformers", False),
+        ("vllm-project/vllm", "vLLM", False),
+        ("ollama/ollama", "Ollama", False),
+        ("microsoft/autogen", "AutoGen", False),
+        ("crewAIInc/crewAI", "CrewAI", False),
     ]
 
-    for repo, name in tool_repos:
+    body_chars = 1500  # was 200 — too aggressive, important features were truncated
+
+    for repo, name, priority in tool_repos:
         try:
             resp = requests.get(
                 f"https://api.github.com/repos/{repo}/releases",
@@ -396,7 +404,7 @@ def fetch_ai_tools_releases(max_items: int = 10) -> list[dict]:
             releases = resp.json()
             for rel in releases[:1]:  # Latest release only
                 tag = rel.get("tag_name", "")
-                body = rel.get("body", "")[:200]
+                body = (rel.get("body") or "")[:body_chars]
                 published = rel.get("published_at", "")[:10]
                 results.append({
                     "title": f"{name} {tag}",
@@ -405,11 +413,13 @@ def fetch_ai_tools_releases(max_items: int = 10) -> list[dict]:
                     "changelog": body,
                     "url": rel.get("html_url", ""),
                     "source": "GitHub Releases",
+                    "priority": priority,
                 })
         except Exception:
             continue
 
-    logger.info("Fetched %d AI tool releases", len(results))
+    logger.info("Fetched %d AI tool releases (%d priority)",
+                len(results), sum(1 for r in results if r.get("priority")))
     return results
 
 
@@ -461,12 +471,33 @@ def format_all_sources(
             )
 
     if tool_releases:
-        parts.append("\n=== AIツール最新リリース ===")
-        for item in tool_releases:
+        # Split priority releases into a separate must-cover section so the
+        # analyzer reliably surfaces them even when the day's news is dense.
+        priority_items = [r for r in tool_releases if r.get("priority")]
+        other_items = [r for r in tool_releases if not r.get("priority")]
+
+        if priority_items:
             parts.append(
-                f"- {item['title']} ({item.get('published', '')})\n"
-                f"  {item.get('changelog', '')}\n"
-                f"  URL: {item['url']}"
+                "\n=== 【必須掲載】Claude Code / Codex / Gemini CLI 等の最新リリース ==="
             )
+            parts.append(
+                "※ これらは利用ツールの中核であり、毎回 digest に必ず1項目以上掲載すること。"
+                "リリース内容の新機能・破壊的変更・バグ修正を簡潔に要約。"
+            )
+            for item in priority_items:
+                parts.append(
+                    f"- {item['title']} ({item.get('published', '')})\n"
+                    f"  {item.get('changelog', '')}\n"
+                    f"  URL: {item['url']}"
+                )
+
+        if other_items:
+            parts.append("\n=== AIツール最新リリース（その他） ===")
+            for item in other_items:
+                parts.append(
+                    f"- {item['title']} ({item.get('published', '')})\n"
+                    f"  {item.get('changelog', '')}\n"
+                    f"  URL: {item['url']}"
+                )
 
     return "\n".join(parts)
