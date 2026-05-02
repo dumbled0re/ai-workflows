@@ -13,9 +13,17 @@ class Shot(BaseModel):
     """One visual unit within a story (~5-15 seconds)."""
 
     narration: str = Field(..., min_length=1, max_length=200)
-    image_query: str = Field(..., description="検索キーワード or local asset name")
-    image_source: str = Field(default="card", description="card/og/auto")
+    image_query: str = Field(..., description="English vivid keywords for AI image gen / search")
+    image_source: str = Field(default="ai", description="ai/og/card/auto")
     text_overlay: str = Field(default="", max_length=18)
+
+    @field_validator("image_source")
+    @classmethod
+    def _valid_image_source(cls, v: str) -> str:
+        v = (v or "ai").lower()
+        if v not in {"ai", "og", "card", "auto"}:
+            raise ValueError(f"image_source must be one of ai/og/card/auto, got {v}")
+        return v
 
     @field_validator("narration")
     @classmethod

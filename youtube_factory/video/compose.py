@@ -163,22 +163,92 @@ def burn_subtitles(video_path: Path, ass_path: Path, out_path: Path) -> None:
 
 
 def mux_audio(
-    video_path: Path, audio_path: Path, out_path: Path,
-    *, fade_out_video_at: float | None = None,
+    video_path: Path,
+    audio_path: Path,
+    out_path: Path,
+    *,
+    fade_out_video_at: float | None = None,
+    avatar_pngs_dir: Path | None = None,
+    avatar_fps: int = 30,
+    avatar_position: str = "bottom-right",
+    avatar_margin: int = 30,
+    showwaves: bool = False,
 ) -> None:
-    """Mux video with audio. Optionally fade video to black at the end."""
+    """Mux video + audio, with optional avatar PNG overlay and showwaves visualization.
+
+    avatar_pngs_dir: directory containing frame_*****.png sequence; overlaid as
+                     a corner badge using the same fps as the source video.
+    showwaves: if True, render a thin audio waveform overlay along the bottom.
+    """
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     audio_dur = _probe_duration(audio_path)
     video_dur = _probe_duration(video_path)
     final_dur = min(audio_dur, video_dur)
 
-    # If video is shorter than audio (audio extends past visuals), pad with last frame
-    # Or if video is longer, trim to audio length
+    has_avatar = (
+        avatar_pngs_dir is not None
+        and avatar_pngs_dir.exists()
+        and any(avatar_pngs_dir.glob("frame_*.png"))
+    )
+
+    inputs: list[str] = ["-i", str(video_path)]
+    audio_input_idx = 1
+    avatar_input_idx: int | None = None
+
+    if has_avatar:
+        inputs.extend([
+            "-framerate", str(avatar_fps),
+            "-i", str(avatar_pngs_dir / "frame_%05d.png"),
+        ])
+        avatar_input_idx = 1
+        audio_input_idx = 2
+
+    inputs.extend(["-i", str(audio_path)])
+
+    # Build filter graph
+    filter_parts: list[str] = []
+    last_video_label = "0:v"
+
+    if has_avatar:
+        # Position avatar
+        positions = {
+            "bottom-right": f"W-w-{avatar_margin}:H-h-{avatar_margin}",
+            "bottom-left":  f"{avatar_margin}:H-h-{avatar_margin}",
+            "top-right":    f"W-w-{avatar_margin}:{avatar_margin}",
+            "top-left":     f"{avatar_margin}:{avatar_margin}",
+        }
+        pos = positions.get(avatar_position, positions["bottom-right"])
+        filter_parts.append(
+            f"[{last_video_label}][{avatar_input_idx}:v]overlay={pos}:format=auto[av]"
+        )
+        last_video_label = "av"
+
+    if showwaves:
+        # Render a thin waveform layer from the audio, overlay along the very bottom
+        # (28px tall, at y=H-32 to leave a 4px gap below)
+        filter_parts.append(
+            f"[{audio_input_idx}:a]showwaves=s=1920x28:mode=cline:colors=0xFFFFFF80:rate={avatar_fps},"
+            f"format=yuva420p,colorkey=0x000000:0.1:0[wf]"
+        )
+        filter_parts.append(
+            f"[{last_video_label}][wf]overlay=0:H-h-4:format=auto[wfv]"
+        )
+        last_video_label = "wfv"
+
     cmd = [
         "ffmpeg", "-y", "-loglevel", "error",
-        "-i", str(video_path),
-        "-i", str(audio_path),
+        *inputs,
+    ]
+
+    if filter_parts:
+        cmd.extend(["-filter_complex", ";".join(filter_parts)])
+        cmd.extend(["-map", f"[{last_video_label}]"])
+    else:
+        cmd.extend(["-map", "0:v"])
+
+    cmd.extend([
+        "-map", f"{audio_input_idx}:a",
         "-c:v", "libx264",
         "-preset", "fast",
         "-pix_fmt", "yuv420p",
@@ -188,7 +258,7 @@ def mux_audio(
         "-shortest",
         "-t", f"{final_dur:.3f}",
         str(out_path),
-    ]
+    ])
     _run_ffmpeg(cmd, "mux_audio")
 
 

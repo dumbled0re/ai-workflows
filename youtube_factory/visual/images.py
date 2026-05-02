@@ -1,20 +1,26 @@
 """Image generation for video shots.
 
-Strategy:
-- Headline cards (Pillow-rendered) with bold typography for narrative segments
-- Chapter cards with large numerals for story dividers
-- OG images only when they look good (size + format checks)
-- Fallback to text card always works
+Strategy (priority order, with automatic fallback):
+1. AI-generated cinematic image via Pollinations.ai (no API key, Flux model)
+2. Open Graph image from source URL (only when quality passes)
+3. Pillow-rendered headline card (always succeeds)
+Chapter cards use a dedicated big-numeral layout regardless of source.
+
+All sources receive the same overlay treatment: dark gradient for text
+readability, accent bars, lower-third with source URL, and brand label.
 
 No external API keys required.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
+import urllib.parse
 from io import BytesIO
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -40,8 +46,19 @@ _HEADERS = {
     ),
 }
 _TIMEOUT = 10
+_AI_TIMEOUT = 90  # Pollinations needs longer for Flux
 _MIN_OG_WIDTH = 600
 _MIN_OG_HEIGHT = 300
+_MIN_AI_SIZE = 800  # reject obviously broken AI returns
+
+POLLINATIONS_BASE = "https://image.pollinations.ai/prompt"
+# Cinematic news style suffix appended to every AI prompt
+AI_STYLE_SUFFIX = (
+    "cinematic editorial photography, dramatic lighting, "
+    "technology and AI theme, dark atmospheric background, "
+    "vivid color contrast, ultra detailed, "
+    "professional news graphics, 4k, no text"
+)
 
 
 STORY_COLOR_PALETTE = [
@@ -65,8 +82,15 @@ def generate_image(
     chapter_number: int | None = None,
     is_chapter_card: bool = False,
     story_color_index: int = 0,
+    cache_dir: Path | None = None,
 ) -> None:
-    """Generate one image for a shot.
+    """Generate one image for a shot, with multi-tier fallback.
+
+    Source priority:
+      - "ai":   Pollinations.ai → og → headline card
+      - "og":   og → headline card
+      - "card": headline card only
+      - "auto": ai → og → headline card
 
     chapter_number: If provided AND is_chapter_card=True, render a chapter card
                     with the number (01, 02, ...) and the text as story title.
@@ -79,20 +103,212 @@ def generate_image(
         _render_chapter_card(out_path, chapter_number, text_overlay, accent_color=accent)
         return
 
-    # Try OG image only if explicitly requested
-    if image_source == "og" and source_url:
-        if _try_og_image(source_url, out_path, text_overlay, accent_color=accent):
+    src = (image_source or "auto").lower()
+
+    # Cascade: ai → pexels → og → headline card. "card" skips network attempts.
+    if src != "card":
+        if image_query and _render_ai_image(
+            out_path,
+            prompt=image_query,
+            text_overlay=text_overlay,
+            accent_color=accent,
+            source_url=source_url,
+            cache_dir=cache_dir,
+        ):
             return
 
-    # Default: bold text card with story-color accent
-    _render_headline_card(out_path, text_overlay or image_query or "AI News", accent_color=accent)
+        if image_query:
+            from youtube_factory.visual import pexels
+            if pexels.is_available():
+                pexels_cache = cache_dir.parent / "pexels" if cache_dir else None
+                if pexels.render_pexels_photo(
+                    out_path,
+                    query=image_query,
+                    text_overlay=text_overlay,
+                    accent_color=accent,
+                    source_url=source_url,
+                    cache_dir=pexels_cache,
+                ):
+                    return
+
+        if source_url and _try_og_image(
+            source_url, out_path, text_overlay, accent_color=accent,
+        ):
+            return
+
+    _render_headline_card(
+        out_path,
+        text_overlay or image_query or "AI News",
+        accent_color=accent,
+        source_url=source_url,
+    )
+
+
+# ---------------------------------------------------------------------------
+# AI image (Pollinations.ai - no API key, Flux model)
+# ---------------------------------------------------------------------------
+
+def _render_ai_image(
+    out_path: Path,
+    *,
+    prompt: str,
+    text_overlay: str,
+    accent_color: tuple,
+    source_url: str = "",
+    cache_dir: Path | None = None,
+) -> bool:
+    """Generate cinematic AI background + overlay text. Returns True on success."""
+    img = _fetch_pollinations(prompt, cache_dir=cache_dir)
+    if img is None:
+        return False
+
+    img = _fit_cover(img, VIDEO_W, VIDEO_H)
+    # Slight blur — keeps text crisp against busy AI imagery
+    img = img.filter(ImageFilter.GaussianBlur(radius=1.5))
+
+    # Dark veil + bottom-heavy gradient for text readability
+    veil = Image.new("RGBA", (VIDEO_W, VIDEO_H), (0, 0, 0, 60))
+    img = Image.alpha_composite(img.convert("RGBA"), veil).convert("RGB")
+
+    bottom_overlay = Image.new("RGBA", (VIDEO_W, VIDEO_H), (0, 0, 0, 0))
+    bdraw = ImageDraw.Draw(bottom_overlay)
+    grad_top = int(VIDEO_H * 0.45)
+    for y in range(grad_top, VIDEO_H):
+        ratio = (y - grad_top) / (VIDEO_H - grad_top)
+        alpha = int(210 * (ratio ** 1.4))
+        bdraw.line([(0, y), (VIDEO_W, y)], fill=(0, 0, 0, alpha))
+    img = Image.alpha_composite(img.convert("RGBA"), bottom_overlay).convert("RGB")
+
+    draw = ImageDraw.Draw(img)
+    # Accent bars top + bottom
+    draw.rectangle([0, 0, VIDEO_W, 8], fill=accent_color)
+    draw.rectangle([0, VIDEO_H - 8, VIDEO_W, VIDEO_H], fill=accent_color)
+
+    if text_overlay:
+        _draw_bottom_text(img, text_overlay, max_chars=18, font_size=124)
+
+    if source_url:
+        _draw_lower_third(img, source_url=source_url, accent_color=accent_color)
+
+    _draw_brand_label(img, "AI NEWS DAILY", color=accent_color)
+
+    img.save(out_path, "JPEG", quality=92)
+    logger.info("AI image: %s ← %r", out_path.name, prompt[:60])
+    return True
+
+
+def _fetch_pollinations(
+    prompt: str, *, cache_dir: Path | None = None, max_attempts: int = 4,
+) -> Image.Image | None:
+    """Fetch Pollinations.ai image with 429-aware retries. Cache by prompt hash."""
+    import random
+    import time as _time
+
+    full_prompt = f"{prompt}, {AI_STYLE_SUFFIX}"
+    seed = int(hashlib.sha256(full_prompt.encode("utf-8")).hexdigest()[:8], 16) % 1_000_000
+
+    if cache_dir is not None:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_path = cache_dir / f"poll_{seed:06d}.jpg"
+        if cache_path.exists() and cache_path.stat().st_size > 50_000:
+            try:
+                return Image.open(cache_path).convert("RGB")
+            except Exception:
+                cache_path.unlink(missing_ok=True)
+    else:
+        cache_path = None
+
+    encoded = urllib.parse.quote(full_prompt, safe="")
+    url = (
+        f"{POLLINATIONS_BASE}/{encoded}"
+        f"?width=1920&height=1080&model=flux&nologo=true&seed={seed}&enhance=true"
+    )
+
+    for attempt in range(max_attempts):
+        try:
+            resp = requests.get(url, headers=_HEADERS, timeout=_AI_TIMEOUT)
+            if resp.status_code == 429:
+                # Rate limit — back off with jitter and retry
+                wait = (5 * (2 ** attempt)) + random.uniform(0, 3)
+                logger.warning(
+                    "Pollinations 429 for %r — sleeping %.1fs (attempt %d/%d)",
+                    prompt[:40], wait, attempt + 1, max_attempts,
+                )
+                _time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            if len(resp.content) < 50_000:
+                logger.warning(
+                    "Pollinations response too small (%dB) for %r",
+                    len(resp.content), prompt[:40],
+                )
+                return None
+            img = Image.open(BytesIO(resp.content)).convert("RGB")
+            if img.width < _MIN_AI_SIZE or img.height < _MIN_AI_SIZE / 2:
+                logger.warning("Pollinations image too small (%dx%d)", img.width, img.height)
+                return None
+            if cache_path is not None:
+                try:
+                    img.save(cache_path, "JPEG", quality=92)
+                except Exception as e:
+                    logger.debug("AI cache save failed: %s", e)
+            return img
+        except requests.RequestException as e:
+            wait = 2 + attempt * 3
+            logger.warning(
+                "Pollinations fetch failed (%s) attempt %d/%d: %s — retrying in %ds",
+                prompt[:40], attempt + 1, max_attempts, e, wait,
+            )
+            _time.sleep(wait)
+        except Exception as e:
+            logger.warning("Pollinations decode failed: %s", e)
+            return None
+
+    logger.warning("Pollinations gave up after %d attempts for %r", max_attempts, prompt[:40])
+    return None
+
+
+def _draw_lower_third(
+    img: Image.Image, *, source_url: str, accent_color: tuple,
+) -> None:
+    """Top-left source banner: '出典 | <domain>'."""
+    if not source_url:
+        return
+    try:
+        host = urlparse(source_url).netloc.replace("www.", "") or source_url[:32]
+    except Exception:
+        host = source_url[:32]
+    if not host:
+        return
+    label = f"出典 | {host}"
+
+    base = img.convert("RGBA")
+    layer = Image.new("RGBA", (VIDEO_W, VIDEO_H), (0, 0, 0, 0))
+    ldraw = ImageDraw.Draw(layer)
+    font = _find_japanese_font(30, bold=True)
+    bbox = ldraw.textbbox((0, 0), label, font=font)
+    text_w = bbox[2] - bbox[0]
+    pad_x = 28
+    bar_x0, bar_y0 = 0, 96
+    bar_x1 = bar_x0 + text_w + pad_x * 2 + 12  # +12 for stripe
+    bar_y1 = bar_y0 + 56
+    ldraw.rectangle([bar_x0, bar_y0, bar_x1, bar_y1], fill=(0, 0, 0, 215))
+    ldraw.rectangle([bar_x0, bar_y0, bar_x0 + 12, bar_y1], fill=(*accent_color, 255))
+    ldraw.text((bar_x0 + 12 + pad_x, bar_y0 + 12), label, font=font, fill=(245, 245, 245, 255))
+    composed = Image.alpha_composite(base, layer).convert("RGB")
+    img.paste(composed)
 
 
 # ---------------------------------------------------------------------------
 # Card renderers
 # ---------------------------------------------------------------------------
 
-def _render_headline_card(out_path: Path, text: str, accent_color: tuple = COLOR_BG_ACCENT) -> None:
+def _render_headline_card(
+    out_path: Path,
+    text: str,
+    accent_color: tuple = COLOR_BG_ACCENT,
+    source_url: str = "",
+) -> None:
     """Render a polished headline card with diagonal accent and large text."""
     img = _make_gradient_bg(VIDEO_W, VIDEO_H, COLOR_BG_DARK, COLOR_BG_MID)
     draw = ImageDraw.Draw(img)
@@ -120,6 +336,10 @@ def _render_headline_card(out_path: Path, text: str, accent_color: tuple = COLOR
 
     # Main text - large and centered
     _draw_large_text(img, text, max_chars=14, font_size=140)
+
+    # Lower-third source banner (if URL provided)
+    if source_url:
+        _draw_lower_third(img, source_url=source_url, accent_color=accent_color)
 
     # Brand label bottom-right
     _draw_brand_label(img, "AI NEWS DAILY", color=accent_color)
@@ -222,6 +442,8 @@ def _try_og_image(source_url: str, out_path: Path, text_overlay: str, accent_col
 
         if text_overlay:
             _draw_bottom_text(img, text_overlay, max_chars=20, font_size=120)
+        if source_url:
+            _draw_lower_third(img, source_url=source_url, accent_color=accent_color)
         _draw_brand_label(img, "AI NEWS DAILY", color=accent_color)
 
         img.save(out_path, "JPEG", quality=92)

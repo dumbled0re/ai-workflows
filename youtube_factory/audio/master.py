@@ -27,10 +27,13 @@ LUFS_TARGET = -16.0
 TRUE_PEAK = -1.5
 LRA = 11.0
 
-# BGM ducking
-BGM_VOLUME_DB = -28.0  # base BGM volume (very quiet)
-DUCK_RATIO = 8.0       # sidechain compression ratio
-DUCK_THRESHOLD = -22.0 # compress BGM when narration above this
+# BGM ducking — tuned so BGM is clearly audible in voice gaps but
+# politely steps down during narration. Base level 12dB below voice target
+# (= "ambient bed" feel), gentle 3:1 ratio so duck is musical not
+# pumping, threshold low enough that any spoken word triggers it.
+BGM_VOLUME_DB = -18.0  # base BGM volume (audible bed during silences)
+DUCK_RATIO = 3.0       # sidechain compression ratio (gentle)
+DUCK_THRESHOLD = -32.0 # trigger duck on any voice activity
 
 
 @dataclass
@@ -143,6 +146,56 @@ def build_master_audio(
     return total, timings
 
 
+def generate_procedural_bgm(out_path: Path, duration_sec: float) -> Path:
+    """Generate a low-key ambient pad with ffmpeg lavfi only (no API/key).
+
+    Texture (A minor with added 9th, breathy):
+      - Sub bass A1 (55Hz) drone, very faint
+      - Bass A2 (110Hz) main drone
+      - Triad C3 / E3 with slight pitch modulation for chorus
+      - 9th add (B3) with slow swell — gives "thoughtful news" mood
+      - Slow LFO on top voices = breathing
+      - Subtle aecho for space, lowpass for warmth
+    Quiet enough to sit under narration without competing.
+    """
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Note: chained sin() with subtle frequency modulation (LFO * t)
+    # gives a "chorused" texture. Each voice has different LFO speed for
+    # gradual phase wandering — natural, non-mechanical sound.
+    expr = (
+        "0.16*sin(2*PI*110*t)"                                  # A2
+        "+0.13*sin(2*PI*(130.81 + 0.6*sin(2*PI*0.07*t))*t)"     # C3 chorused
+        "+0.14*sin(2*PI*(164.81 + 0.7*sin(2*PI*0.09*t))*t)"     # E3 chorused
+        "+0.10*sin(2*PI*220*t)"                                 # A3 (octave brightness)
+        "+0.08*sin(2*PI*329.63*t)"                              # E4 air
+        # 9th swells in slowly — emotional lift
+        "+0.07*sin(2*PI*246.94*t)*max(0,sin(2*PI*0.05*t))"      # B3 swell
+    )
+
+    cmd = [
+        "ffmpeg", "-y", "-loglevel", "error",
+        "-f", "lavfi", "-t", f"{duration_sec:.2f}",
+        "-i", f"aevalsrc='{expr}:s={SAMPLE_RATE}'",
+        "-af",
+        # Keep enough midrange to be audible on laptop speakers,
+        # warmth + space + breathing
+        "highpass=f=80,"
+        "lowpass=f=1800,"
+        "aphaser=in_gain=0.5:out_gain=0.74:delay=3:decay=0.4:speed=0.22,"
+        "aecho=0.5:0.7:60|110:0.22|0.16,"
+        "tremolo=f=0.14:d=0.18,"
+        f"afade=t=in:st=0:d=2.5,afade=t=out:st={max(0.0, duration_sec - 3.0):.2f}:d=3.0,"
+        "aformat=channel_layouts=stereo",
+        "-c:a", "pcm_s16le",
+        "-ar", str(SAMPLE_RATE),
+        str(out_path),
+    ]
+    subprocess.run(cmd, check=True, timeout=180)
+    logger.info("Generated procedural BGM (%.1fs) → %s", duration_sec, out_path.name)
+    return out_path
+
+
 def mix_bgm(
     voice_path: Path,
     bgm_path: Path,
@@ -166,13 +219,17 @@ def mix_bgm(
     # 4. Mix voice + (compressed BGM)
     # 5. Final loudnorm
 
+    # `normalize=0` keeps amix from auto-attenuating each input by 1/N
+    # (the default normalize=1 was making BGM nearly inaudible after the
+    # weight division). With normalize=0, the BGM's `volume=` setting is
+    # the actual final level; voice stays at its loudnorm-target.
     filter_graph = (
         f"[1:a]aloop=loop=-1:size=2e+09,atrim=0:{voice_dur:.3f},asetpts=PTS-STARTPTS,"
-        f"volume={bgm_db}dB,afade=t=in:st=0:d=1.0,afade=t=out:st={voice_dur - 1.5:.3f}:d=1.5[bgm];"
+        f"volume={bgm_db}dB,afade=t=in:st=0:d=1.5,afade=t=out:st={voice_dur - 2.5:.3f}:d=2.5[bgm];"
         f"[0:a]asplit=2[voice_in][voice_sidechain];"
         f"[bgm][voice_sidechain]sidechaincompress=threshold={_db_to_linear(DUCK_THRESHOLD):.4f}:"
-        f"ratio={DUCK_RATIO}:attack=10:release=300:makeup=1[bgm_ducked];"
-        f"[voice_in][bgm_ducked]amix=inputs=2:weights=1.5 1:duration=first:dropout_transition=0[mixed]"
+        f"ratio={DUCK_RATIO}:attack=8:release=250:makeup=1[bgm_ducked];"
+        f"[voice_in][bgm_ducked]amix=inputs=2:weights=1 1:normalize=0:duration=first:dropout_transition=0[mixed]"
     )
 
     cmd = [
