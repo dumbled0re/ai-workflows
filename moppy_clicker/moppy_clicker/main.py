@@ -1,7 +1,6 @@
 """moppy_clicker CLI entry point.
 
 Subcommands:
-  auth          one-shot interactive OAuth flow (writes secrets/token.json)
   run           fetch → parse → click → notify
   click <URL>   manual single-URL click (moppy hosts only)
   state         dump state for a single message_id
@@ -37,8 +36,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="moppy_clicker")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("auth", help="run interactive OAuth flow (local only)")
-
     p_run = sub.add_parser("run", help="fetch and click")
     p_run.add_argument("--dry-run", action="store_true", help="extract only, no click")
     p_run.add_argument("--max-messages", type=int, default=None)
@@ -52,24 +49,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def cmd_auth(cfg: Config) -> int:
-    from .gmail_client import _load_credentials
-
-    try:
-        _load_credentials(cfg.gmail_token_path, cfg.gmail_credentials_path, cfg.gmail_token_json)
-    except GmailAuthError as exc:
-        print(f"auth failed: {exc}", file=sys.stderr)
-        return 1
-    print(f"OK: token written to {cfg.gmail_token_path}")
-    return 0
-
-
 def cmd_run(cfg: Config, dry_run: bool, max_messages: int | None, notify: bool) -> int:
     started_at = datetime.now(UTC)
     notifier = Notifier(cfg.slack_webhook_url) if notify else None
 
     try:
-        gmail = GmailClient(cfg.gmail_token_path, cfg.gmail_credentials_path, cfg.gmail_token_json)
+        gmail = GmailClient(cfg.gmail_user, cfg.gmail_app_password)
     except GmailAuthError as exc:
         logger.error("auth error: %s", exc)
         if notifier:
@@ -78,12 +63,6 @@ def cmd_run(cfg: Config, dry_run: bool, max_messages: int | None, notify: bool) 
 
     state = StateStore(cfg.state_path)
     state.prune_old(days=30)
-
-    msg_ids = gmail.search_messages(
-        cfg.gmail_query,
-        max_results=max_messages or cfg.max_messages,
-    )
-    logger.info("found %d candidate messages", len(msg_ids))
 
     parse_failure_ids: list[str] = []
     anomaly_ids: list[str] = []
@@ -96,71 +75,80 @@ def cmd_run(cfg: Config, dry_run: bool, max_messages: int | None, notify: bool) 
         interval_max=cfg.click_interval_max,
     )
 
-    for msg_id in msg_ids:
-        if state.is_message_complete(msg_id, cfg.max_attempts):
-            continue
-        try:
-            parsed = gmail.get_message(msg_id)
-        except GmailParseError as exc:
-            logger.warning("get_message failed for %s: %s", msg_id, exc)
-            parse_failure_ids.append(msg_id)
-            continue
+    try:
+        msg_ids = gmail.search_messages(
+            cfg.gmail_query,
+            max_results=max_messages or cfg.max_messages,
+        )
+        logger.info("found %d candidate messages", len(msg_ids))
 
-        if not parsed.has_body:
-            parse_failure_ids.append(msg_id)
-            continue
+        for msg_id in msg_ids:
+            if state.is_message_complete(msg_id, cfg.max_attempts):
+                continue
+            try:
+                parsed = gmail.get_message(msg_id)
+            except GmailParseError as exc:
+                logger.warning("get_message failed for %s: %s", msg_id, exc)
+                parse_failure_ids.append(msg_id)
+                continue
 
-        if parsed.plaintext_body:
-            body, is_html = parsed.plaintext_body, False
-        else:
-            assert parsed.html_body is not None
-            body, is_html = parsed.html_body, True
-        candidates, anomalies = parse_email(body, is_html=is_html)
-        if anomalies or not candidates:
-            logger.warning(
-                "anomalous parse for %s: anomalies=%s candidates=%d",
-                msg_id,
-                anomalies,
-                len(candidates),
-            )
-            anomaly_ids.append(msg_id)
-            continue
+            if not parsed.has_body:
+                parse_failure_ids.append(msg_id)
+                continue
 
-        new_candidates: list[ClickCandidate] = [
-            c for c in candidates if not state.is_url_done(msg_id, str(c.url), cfg.max_attempts)
-        ]
-
-        if dry_run:
-            dry_run_view.append(
-                (
+            if parsed.plaintext_body:
+                body, is_html = parsed.plaintext_body, False
+            else:
+                assert parsed.html_body is not None
+                body, is_html = parsed.html_body, True
+            candidates, anomalies = parse_email(body, is_html=is_html)
+            if anomalies or not candidates:
+                logger.warning(
+                    "anomalous parse for %s: anomalies=%s candidates=%d",
                     msg_id,
-                    redact_subject(parsed.subject),
-                    [redact_url(str(c.url)) for c in new_candidates],
+                    anomalies,
+                    len(candidates),
                 )
-            )
-            continue
+                anomaly_ids.append(msg_id)
+                continue
 
-        if not new_candidates:
-            continue
+            new_candidates: list[ClickCandidate] = [
+                c for c in candidates if not state.is_url_done(msg_id, str(c.url), cfg.max_attempts)
+            ]
 
-        state.increment_attempt(msg_id)
-        for idx, candidate in enumerate(new_candidates):
-            if idx > 0:
-                clicker.sleep_between()
-            result = clicker.click(candidate)
-            state.record_attempt(msg_id, result)
-            all_results.append(result)
-            if result.final_status == "success" and candidate.estimated_points:
-                estimated_pt_total += candidate.estimated_points
-        state.save()
+            if dry_run:
+                dry_run_view.append(
+                    (
+                        msg_id,
+                        redact_subject(parsed.subject),
+                        [redact_url(str(c.url)) for c in new_candidates],
+                    )
+                )
+                continue
 
-        if state.is_message_complete(msg_id, cfg.max_attempts) and all(
-            r.final_status == "success"
-            for r in all_results
-            if r.candidate.url in {c.url for c in new_candidates}
-        ):
-            gmail.mark_as_read(msg_id)
-            gmail.add_label(msg_id, cfg.moppy_label)
+            if not new_candidates:
+                continue
+
+            state.increment_attempt(msg_id)
+            for idx, candidate in enumerate(new_candidates):
+                if idx > 0:
+                    clicker.sleep_between()
+                result = clicker.click(candidate)
+                state.record_attempt(msg_id, result)
+                all_results.append(result)
+                if result.final_status == "success" and candidate.estimated_points:
+                    estimated_pt_total += candidate.estimated_points
+            state.save()
+
+            if state.is_message_complete(msg_id, cfg.max_attempts) and all(
+                r.final_status == "success"
+                for r in all_results
+                if r.candidate.url in {c.url for c in new_candidates}
+            ):
+                gmail.mark_as_read(msg_id)
+                gmail.add_label(msg_id, cfg.moppy_label)
+    finally:
+        gmail.close()
 
     finished_at = datetime.now(UTC)
     summary = RunSummary(
@@ -230,8 +218,6 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     _setup_logging(cfg.log_level)
 
-    if args.cmd == "auth":
-        return cmd_auth(cfg)
     if args.cmd == "run":
         return cmd_run(
             cfg,

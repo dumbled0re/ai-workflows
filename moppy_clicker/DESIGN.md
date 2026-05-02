@@ -1,6 +1,8 @@
-# moppy_clicker — 設計書（v2: codex review 反映版）
+# moppy_clicker — 設計書（v3: IMAP + App Password）
 
 モッピー（ポイントサイト）配信メールに含まれる「クリックで○pt」リンクを自動でクリック（HTTP GET）し、結果を Slack に通知する自動化ワークフロー。
+
+> **v3 変更点（v2 → v3）**: Gmail API + OAuth から **IMAP + App Password 認証** にスイッチ。Cloud Console セットアップ不要、refresh token 失効リスク無し、Python 標準ライブラリ `imaplib` のみで完結。
 
 > ⚠ **規約上の位置付け**: モッピーの利用規約は「自動化ツールによるアクセス」を禁止しているため、検知された場合はアカウント凍結＋累積ポイント没収の可能性あり。本実装は **検知回避ロジックを含めない**。リスクはユーザー（リポジトリオーナー）が承知の上で運用する。
 
@@ -107,27 +109,33 @@ class RunSummary(BaseModel):
 
 ### 2. `gmail_client.py`
 
-**OAuth2 フロー:**
-- ローカル初回認証: `secrets/credentials.json`（OAuth client）→ `InstalledAppFlow` で `secrets/token.json` 生成（mode 0600）
-- GitHub Actions: Secret `GMAIL_TOKEN_JSON`（refresh token を含む完全な token JSON）から毎回ロード → 必要に応じて refresh
-- **artifact upload はしない**（secret 漏洩リスク）。refresh token は失効するまで複数回有効なので、毎回同じ secret から起動する設計で問題ない
-- スコープ: `gmail.modify`（既読化＋ラベル付与に必要）
+**IMAP + App Password 認証:**
+- Gmail の **アプリパスワード**（`https://myaccount.google.com/apppasswords` で発行、要2段階認証）を使う
+- 環境変数: `GMAIL_USER`（メアド）+ `GMAIL_APP_PASSWORD`（16文字、空白OK・自動 strip）
+- 接続: `imap.gmail.com:993`（SSL）
+- Folder: `[Gmail]/All Mail`（INBOX 限定だとアーカイブ済みメールを見落とすため）
+- Python 標準ライブラリ `imaplib` のみ使用、追加依存なし
+
+**Gmail 拡張IMAPコマンド使用:**
+- 検索: `X-GM-RAW` で Gmail Web UI と同じクエリ構文（`from:moppy.jp -label:moppy-clicked` 等）が使える
+- ラベル付与: `X-GM-LABELS` 拡張で IMAP 経由でも Gmail ラベル操作可能
 
 **エラー分類:**
 | エラー | 動作 |
 |---|---|
-| `RefreshError(invalid_grant)` | Slack: 「再認証要」、exit 1 |
-| `RefreshError(その他)` | exponential backoff で最大2回 |
-| Token JSON 破損 | Slack 通知、exit 1 |
-| Secret 未設定 | 起動時 fail-fast |
-| Scope不足 | Slack 通知 + scope 名を明示、exit 1 |
-| Rate limit (429) | exponential backoff で最大3回 |
+| connect 失敗（DNS/network） | `GmailAuthError`、Slack 通知、exit 1 |
+| login 失敗（認証エラー） | 「app password 再生成？」と促し exit 1 |
+| `GMAIL_USER` 不正（`@` 含まない等） | 起動時 fail-fast |
+| `GMAIL_APP_PASSWORD` 16文字でない | 起動時 fail-fast |
+| Folder select 失敗 | exit 1 |
+| FETCH 個別失敗 | スキップして次のメッセージ |
 
 **API:**
-- `search_messages(query: str, max_results: int) -> list[str]`（msg_id のみ返す、pagination 対応）
-- `get_message(msg_id: str) -> ParsedMessage`（HTML 本文、件名、from を抽出。MIME/base64 エラーは ParseError 化）
-- `mark_as_read(msg_id: str)`
-- `add_label(msg_id: str, label_name: str)`（ラベルなければ作成、作成失敗時はラベル付与を skip して警告ログのみ）
+- `search_messages(query: str, max_results: int) -> list[str]`（IMAP UID を返す）
+- `get_message(uid: str) -> ParsedMessage`（RFC822 をパースして plaintext / html を抽出）
+- `mark_as_read(uid: str)`（`+FLAGS (\Seen)`）
+- `add_label(uid: str, label_name: str)`（`+X-GM-LABELS (label)`、ラベル無ければ Gmail 側で自動作成）
+- `close()` / context manager サポート
 
 ### 3. `moppy_parser.py`
 
@@ -267,20 +275,22 @@ def redact_subject(subject: str, prefix_len: int = 5) -> str:
 
 | 変数 | 必須 | デフォルト | 用途 |
 |---|---|---|---|
-| `GMAIL_TOKEN_JSON` | ◯ (Actions) | - | OAuth token JSON 文字列 |
-| `GMAIL_CREDENTIALS_PATH` | - (local) | `secrets/credentials.json` | OAuth client（ローカルのみ） |
-| `GMAIL_TOKEN_PATH` | - (local) | `secrets/token.json` | token 保存先（ローカルのみ） |
+| `GMAIL_USER` | ◯ | - | Gmail アドレス（フル） |
+| `GMAIL_APP_PASSWORD` | ◯ | - | 16文字 app password（空白OK・自動strip） |
 | `SLACK_WEBHOOK_URL_MOPPY` | ◯ | - | Slack通知先 |
-| `MOPPY_GMAIL_QUERY` | - | `from:moppy.jp -label:moppy-clicked newer_than:3d` | Gmail検索クエリ |
+| `MOPPY_GMAIL_QUERY` | - | `from:moppy.jp -label:moppy-clicked newer_than:3d` | Gmail検索クエリ（X-GM-RAW構文） |
 | `MOPPY_DRY_RUN` | - | `0` | `1` でクリック実行せず候補一覧のみ通知 |
 | `MOPPY_CLICK_INTERVAL_MIN` | - | `5` | クリック間隔最小秒（≥1） |
 | `MOPPY_CLICK_INTERVAL_MAX` | - | `15` | クリック間隔最大秒（≥MIN） |
 | `MOPPY_MAX_ATTEMPTS` | - | `3` | 同一URLの最大試行回数 |
 | `MOPPY_MAX_MESSAGES` | - | `50` | 1実行あたり最大処理件数 |
 | `MOPPY_STATE_PATH` | - | `data/state.json` | 状態ファイルパス |
+| `MOPPY_LABEL` | - | `moppy-clicked` | 完了ラベル名 |
 | `MOPPY_LOG_LEVEL` | - | `INFO` | ログレベル |
 
 **起動時 validation:**
+- `GMAIL_USER`: `@` を含むこと
+- `GMAIL_APP_PASSWORD`: 空白除去後 16文字
 - 数値: 型チェック + 範囲（INTERVAL_MIN ≥ 1, MIN ≤ MAX, MAX_ATTEMPTS 1-10, MAX_MESSAGES 1-500）
 - `SLACK_WEBHOOK_URL_MOPPY`: `https://hooks.slack.com/` で始まること
 - 失敗時 fail-fast、Slack 通知は出さない（webhook 自体が無効な可能性）
@@ -290,20 +300,19 @@ def redact_subject(subject: str, prefix_len: int = 5) -> str:
 ```bash
 cd moppy_clicker && uv sync
 
-# 初回認証（ローカル、ブラウザが開く）
-uv run python -m moppy_clicker.main auth
-
 # dry-run: クリックせず、候補一覧を Slack に通知
-uv run python -m moppy_clicker.main run --dry-run
+GMAIL_USER=... GMAIL_APP_PASSWORD=... SLACK_WEBHOOK_URL_MOPPY=... \
+  uv run python -m moppy_clicker.main run --dry-run
 
 # 本番実行
-uv run python -m moppy_clicker.main run
+GMAIL_USER=... GMAIL_APP_PASSWORD=... SLACK_WEBHOOK_URL_MOPPY=... \
+  uv run python -m moppy_clicker.main run
 
 # 単一URL手動テスト（scheme/host が moppy 配下のみ受理）
-uv run python -m moppy_clicker.main click https://pc.moppy.jp/redirect/...
+uv run python -m moppy_clicker.main click https://pc.moppy.jp/cc/c?t=...
 
 # state 確認
-uv run python -m moppy_clicker.main state --message-id <id>
+uv run python -m moppy_clicker.main state --message-id <uid>
 ```
 
 **flag/env 優先順位:** CLI flag > 環境変数 > デフォルト
@@ -312,63 +321,20 @@ uv run python -m moppy_clicker.main state --message-id <id>
 
 ## GitHub Actions
 
-`.github/workflows/moppy-clicker.yml`:
+`.github/workflows/moppy-clicker.yml` を参照（cron `0 23 * * *` UTC = JST 朝8時、`workflow_dispatch` で手動 dry-run 可能）。
 
-```yaml
-on:
-  schedule:
-    - cron: "0 23 * * *"  # JST 朝8時
-  workflow_dispatch:
-
-concurrency:
-  group: moppy-clicker
-  cancel-in-progress: false
-
-jobs:
-  run:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync
-        working-directory: moppy_clicker
-      - name: Restore state
-        uses: actions/download-artifact@v4
-        with:
-          name: moppy-state
-          path: moppy_clicker/data/
-        continue-on-error: true
-      - name: Restore token
-        run: |
-          umask 077
-          mkdir -p moppy_clicker/secrets
-          printf '%s' "$GMAIL_TOKEN_JSON" > moppy_clicker/secrets/token.json
-        env:
-          GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
-      - name: Run
-        working-directory: moppy_clicker
-        env:
-          SLACK_WEBHOOK_URL_MOPPY: ${{ secrets.SLACK_WEBHOOK_URL_MOPPY }}
-          GMAIL_TOKEN_PATH: secrets/token.json
-        run: uv run python -m moppy_clicker.main run
-      - name: Save state
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: moppy-state
-          path: moppy_clicker/data/state.json
-          retention-days: 30
-      - name: Cleanup token
-        if: always()
-        run: rm -f moppy_clicker/secrets/token.json
-```
+**必要な GitHub Secrets:**
+| Secret 名 | 値 |
+|---|---|
+| `GMAIL_USER` | Gmail アドレス（フル） |
+| `GMAIL_APP_PASSWORD` | アプリパスワード（16文字、空白含んでもOK） |
+| `SLACK_WEBHOOK_URL_MOPPY` | Slack incoming webhook URL |
 
 **安全策:**
 - `concurrency` で cron×手動の二重起動を防止
 - `continue-on-error` で初回 state なし時にも起動可能
-- token は最後に必ず削除（失敗時も `if: always()`）
-- token は **artifact しない**（state のみ artifact）
+- ファイルベースの secret は無し（環境変数のみ、cleanup 不要）
+- state.json のみ artifact（token なし、本物 URL は redaction 済み）
 
 ## CI（PR 時）
 
@@ -385,9 +351,16 @@ jobs:
 - 複数アカウント並行運用
 - ポイント以外のキャンペーン参加（アンケート、ガチャ等）
 
-## 残課題（実装前に user 確認が必要）
+## 運用開始までに必要な手動セットアップ
 
-1. **サンプルメール1通**（fixture/parser 設計確定のため）
-2. **新規 webhook 作成**（`SLACK_WEBHOOK_URL_MOPPY`、専用 channel）
+1. **Gmail で 2段階認証を ON**: https://myaccount.google.com/security
+2. **アプリパスワード生成**: https://myaccount.google.com/apppasswords → 16文字パスワードを発行
+3. **Slack incoming webhook 作成**（モッピー専用 channel 推奨、株分析と兼用しない）
+4. **GitHub Secrets 登録**（リポジトリ Settings → Secrets and variables → Actions）:
+   - `GMAIL_USER` = メアド
+   - `GMAIL_APP_PASSWORD` = ステップ2で発行したパスワード
+   - `SLACK_WEBHOOK_URL_MOPPY` = ステップ3の URL
+5. **手動 workflow_dispatch で dry-run** → Slack に候補リンクが届くか確認
+6. 問題なければ自動 cron 運用へ
 3. **Google Cloud Console** で OAuth client 作成 → Production 公開設定（refresh token 7日失効回避）
 4. パース失敗時の運用ポリシー: 「ローカルで該当メールを再取得 → fixture 化 → parser 修正」を OK とするか

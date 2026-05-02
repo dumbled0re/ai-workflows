@@ -4,9 +4,6 @@ version = "0.1.0"
 description = "Auto-click moppy.jp reward emails (Gmail API → HTTP GET → Slack notify)"
 requires-python = ">=3.12"
 dependencies = [
-    "google-api-python-client>=2.140.0",
-    "google-auth-httplib2>=0.2.0",
-    "google-auth-oauthlib>=1.2.1",
     "requests>=2.32.0",
     "beautifulsoup4>=4.12.0",
     "pydantic>=2.8.0",
@@ -43,15 +40,6 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 
-[[tool.mypy.overrides]]
-module = [
-    "googleapiclient.*",
-    "google_auth_oauthlib.*",
-    "google.auth.*",
-    "google.oauth2.*",
-]
-ignore_missing_imports = true
-disallow_untyped_calls = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

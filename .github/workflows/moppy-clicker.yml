@@ -42,18 +42,11 @@ jobs:
           path: moppy_clicker/data/
         continue-on-error: true
 
-      - name: Materialize OAuth token
-        env:
-          GMAIL_TOKEN_JSON: ${{ secrets.GMAIL_TOKEN_JSON }}
-        run: |
-          umask 077
-          mkdir -p secrets
-          printf '%s' "$GMAIL_TOKEN_JSON" > secrets/token.json
-
       - name: Run
         env:
           SLACK_WEBHOOK_URL_MOPPY: ${{ secrets.SLACK_WEBHOOK_URL_MOPPY }}
-          GMAIL_TOKEN_PATH: secrets/token.json
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           MOPPY_DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
         run: uv run python -m moppy_clicker.main run
 
@@ -65,7 +58,3 @@ jobs:
           path: moppy_clicker/data/state.json
           retention-days: 30
           if-no-files-found: ignore
-
-      - name: Cleanup token
-        if: always()
-        run: rm -f secrets/token.json

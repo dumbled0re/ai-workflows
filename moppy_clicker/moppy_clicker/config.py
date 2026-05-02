@@ -36,9 +36,8 @@ def _env_str(name: str, default: str | None = None, *, required: bool = False) -
 
 @dataclass(frozen=True)
 class Config:
-    gmail_token_json: str | None
-    gmail_credentials_path: str
-    gmail_token_path: str
+    gmail_user: str
+    gmail_app_password: str
     slack_webhook_url: str
     gmail_query: str
     dry_run: bool
@@ -57,6 +56,21 @@ class Config:
         if not webhook.startswith("https://hooks.slack.com/"):
             raise ConfigError("SLACK_WEBHOOK_URL_MOPPY must start with https://hooks.slack.com/")
 
+        gmail_user = _env_str("GMAIL_USER", required=True)
+        assert gmail_user is not None
+        if "@" not in gmail_user:
+            raise ConfigError(f"GMAIL_USER must be a full email address, got {gmail_user!r}")
+
+        gmail_app_password = _env_str("GMAIL_APP_PASSWORD", required=True)
+        assert gmail_app_password is not None
+        # Google displays app passwords as "abcd efgh ijkl mnop" — strip spaces.
+        cleaned_password = gmail_app_password.replace(" ", "")
+        if len(cleaned_password) != 16:
+            raise ConfigError(
+                f"GMAIL_APP_PASSWORD must be 16 characters (after stripping spaces); "
+                f"got {len(cleaned_password)}"
+            )
+
         interval_min = _env_int("MOPPY_CLICK_INTERVAL_MIN", 5, low=1, high=600)
         interval_max = _env_int("MOPPY_CLICK_INTERVAL_MAX", 15, low=1, high=600)
         if interval_min > interval_max:
@@ -67,11 +81,8 @@ class Config:
             raise ConfigError(f"MOPPY_LOG_LEVEL invalid: {log_level}")
 
         return cls(
-            gmail_token_json=_env_str("GMAIL_TOKEN_JSON"),
-            gmail_credentials_path=_env_str("GMAIL_CREDENTIALS_PATH", "secrets/credentials.json")
-            or "secrets/credentials.json",
-            gmail_token_path=_env_str("GMAIL_TOKEN_PATH", "secrets/token.json")
-            or "secrets/token.json",
+            gmail_user=gmail_user,
+            gmail_app_password=cleaned_password,
             slack_webhook_url=webhook,
             gmail_query=_env_str(
                 "MOPPY_GMAIL_QUERY",
