@@ -102,7 +102,7 @@ def cmd_run(cfg: Config, dry_run: bool, max_messages: int | None, notify: bool) 
                 assert parsed.html_body is not None
                 body, is_html = parsed.html_body, True
             candidates, anomalies = parse_email(body, is_html=is_html)
-            if anomalies or not candidates:
+            if anomalies:
                 logger.warning(
                     "anomalous parse for %s: anomalies=%s candidates=%d",
                     msg_id,
@@ -110,6 +110,12 @@ def cmd_run(cfg: Config, dry_run: bool, max_messages: int | None, notify: bool) 
                     len(candidates),
                 )
                 anomaly_ids.append(msg_id)
+                continue
+            if not candidates:
+                # No click-coin URLs: legitimate non-coin email (newsletter,
+                # confirmation, etc.). Mark so future runs skip it.
+                if not dry_run:
+                    gmail.add_label(msg_id, "moppy-no-coins")
                 continue
 
             new_candidates: list[ClickCandidate] = [

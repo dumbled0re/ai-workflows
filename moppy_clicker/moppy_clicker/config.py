@@ -86,9 +86,9 @@ class Config:
             slack_webhook_url=webhook,
             gmail_query=_env_str(
                 "MOPPY_GMAIL_QUERY",
-                "from:moppy.jp -label:moppy-clicked newer_than:3d",
+                "from:moppy.jp -label:moppy-clicked -label:moppy-no-coins newer_than:3d",
             )
-            or "from:moppy.jp -label:moppy-clicked newer_than:3d",
+            or "from:moppy.jp -label:moppy-clicked -label:moppy-no-coins newer_than:3d",
             dry_run=os.environ.get("MOPPY_DRY_RUN", "0") == "1",
             click_interval_min=interval_min,
             click_interval_max=interval_max,
