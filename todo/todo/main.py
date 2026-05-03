@@ -11,6 +11,7 @@ todos.md format:
 
     - [x] 2026-05-01 タスクX (完了: 2026-05-02)
 """
+
 from __future__ import annotations
 
 import argparse

@@ -153,23 +153,25 @@ def save_new_predictions(
         if any(p["id"] == pred_id for p in history.get("predictions", [])):
             continue
 
-        history.setdefault("predictions", []).append({
-            "id": pred_id,
-            "date": today,
-            "ticker": ticker,
-            "name": h.get("name", ""),
-            "prediction": prediction,
-            "confidence": h.get("confidence", "MEDIUM"),
-            "entry_price": round(entry_price, 1),
-            "stop_loss": h.get("stop_loss", ""),
-            "action": h.get("action", ""),
-            "source": "holdings",
-            "status": "pending",
-            "actual_price": None,
-            "actual_return_pct": None,
-            "reviewed_date": None,
-            "days_held": None,
-        })
+        history.setdefault("predictions", []).append(
+            {
+                "id": pred_id,
+                "date": today,
+                "ticker": ticker,
+                "name": h.get("name", ""),
+                "prediction": prediction,
+                "confidence": h.get("confidence", "MEDIUM"),
+                "entry_price": round(entry_price, 1),
+                "stop_loss": h.get("stop_loss", ""),
+                "action": h.get("action", ""),
+                "source": "holdings",
+                "status": "pending",
+                "actual_price": None,
+                "actual_return_pct": None,
+                "reviewed_date": None,
+                "days_held": None,
+            }
+        )
         new_count += 1
 
     # Extract from short-term picks
@@ -192,25 +194,27 @@ def save_new_predictions(
         if any(p["id"] == pred_id for p in history.get("predictions", [])):
             continue
 
-        history.setdefault("predictions", []).append({
-            "id": pred_id,
-            "date": today,
-            "ticker": ticker,
-            "name": r.get("name", ""),
-            "prediction": prediction,
-            "confidence": r.get("confidence", "MEDIUM"),
-            "entry_price": round(entry_price, 1),
-            "expected_move": r.get("expected_move", ""),
-            "stop_loss": r.get("stop_loss", ""),
-            "target_price": r.get("target_price", ""),
-            "entry_strategy": r.get("entry_strategy", ""),
-            "source": "short_term",
-            "status": "pending",
-            "actual_price": None,
-            "actual_return_pct": None,
-            "reviewed_date": None,
-            "days_held": None,
-        })
+        history.setdefault("predictions", []).append(
+            {
+                "id": pred_id,
+                "date": today,
+                "ticker": ticker,
+                "name": r.get("name", ""),
+                "prediction": prediction,
+                "confidence": r.get("confidence", "MEDIUM"),
+                "entry_price": round(entry_price, 1),
+                "expected_move": r.get("expected_move", ""),
+                "stop_loss": r.get("stop_loss", ""),
+                "target_price": r.get("target_price", ""),
+                "entry_strategy": r.get("entry_strategy", ""),
+                "source": "short_term",
+                "status": "pending",
+                "actual_price": None,
+                "actual_return_pct": None,
+                "reviewed_date": None,
+                "days_held": None,
+            }
+        )
         new_count += 1
 
     # Extract from long-term picks
@@ -230,24 +234,26 @@ def save_new_predictions(
         if any(p["id"] == pred_id for p in history.get("predictions", [])):
             continue
 
-        history.setdefault("predictions", []).append({
-            "id": pred_id,
-            "date": today,
-            "ticker": ticker,
-            "name": r.get("name", ""),
-            "prediction": prediction,
-            "confidence": r.get("confidence", "MEDIUM"),
-            "entry_price": round(entry_price, 1),
-            "investment_thesis": r.get("investment_thesis", ""),
-            "expected_return": r.get("expected_return", ""),
-            "ideal_entry_zone": r.get("ideal_entry_zone", ""),
-            "source": "long_term",
-            "status": "pending",
-            "actual_price": None,
-            "actual_return_pct": None,
-            "reviewed_date": None,
-            "days_held": None,
-        })
+        history.setdefault("predictions", []).append(
+            {
+                "id": pred_id,
+                "date": today,
+                "ticker": ticker,
+                "name": r.get("name", ""),
+                "prediction": prediction,
+                "confidence": r.get("confidence", "MEDIUM"),
+                "entry_price": round(entry_price, 1),
+                "investment_thesis": r.get("investment_thesis", ""),
+                "expected_return": r.get("expected_return", ""),
+                "ideal_entry_zone": r.get("ideal_entry_zone", ""),
+                "source": "long_term",
+                "status": "pending",
+                "actual_price": None,
+                "actual_return_pct": None,
+                "reviewed_date": None,
+                "days_held": None,
+            }
+        )
         new_count += 1
 
     logger.info("Saved %d new predictions", new_count)
@@ -279,13 +285,9 @@ def compute_performance_stats(history: dict) -> dict:
 
     # Average returns
     if wins:
-        stats["avg_return_wins"] = round(
-            sum(p.get("actual_return_pct", 0) for p in wins) / len(wins), 2
-        )
+        stats["avg_return_wins"] = round(sum(p.get("actual_return_pct", 0) for p in wins) / len(wins), 2)
     if losses:
-        stats["avg_return_losses"] = round(
-            sum(p.get("actual_return_pct", 0) for p in losses) / len(losses), 2
-        )
+        stats["avg_return_losses"] = round(sum(p.get("actual_return_pct", 0) for p in losses) / len(losses), 2)
 
     # Confidence breakdown
     confidence_stats: dict[str, dict] = {}
@@ -306,9 +308,7 @@ def compute_performance_stats(history: dict) -> dict:
         src_preds = [p for p in resolved if p.get("source") == source]
         if src_preds:
             src_wins = [p for p in src_preds if p["status"] == "win"]
-            stats[f"{source}_accuracy_pct"] = round(
-                len(src_wins) / len(src_preds) * 100, 1
-            )
+            stats[f"{source}_accuracy_pct"] = round(len(src_wins) / len(src_preds) * 100, 1)
 
     # Recent trend (last 10 resolved)
     recent = sorted(resolved, key=lambda p: p.get("reviewed_date", ""), reverse=True)[:10]
@@ -418,10 +418,7 @@ def format_performance_feedback(history: dict) -> str:
                 f"[{p['date']}] 信頼度:{p.get('confidence', '?')}"
             )
 
-    lines.append(
-        "\n上記の反省と成功パターンを踏まえ、同じ失敗を繰り返さず、"
-        "成功パターンを強化する分析をしてください。"
-    )
+    lines.append("\n上記の反省と成功パターンを踏まえ、同じ失敗を繰り返さず、成功パターンを強化する分析をしてください。")
 
     return "\n".join(lines)
 

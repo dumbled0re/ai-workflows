@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master, main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [stock_analyzer, tech_catchup, moppy_clicker, todo]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Sync deps (with dev group)
+        working-directory: ${{ matrix.project }}
+        run: uv sync --frozen --group dev
+
+      - name: Ruff lint
+        working-directory: ${{ matrix.project }}
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        working-directory: ${{ matrix.project }}
+        run: uv run ruff format --check .
+
+      - name: Pytest (if tests exist)
+        working-directory: ${{ matrix.project }}
+        run: |
+          if [ -d tests ]; then
+            uv run pytest
+          else
+            echo "No tests/ directory; skipping pytest."
+          fi

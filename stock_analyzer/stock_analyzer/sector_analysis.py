@@ -91,8 +91,11 @@ def compute_sector_rankings(
 
             rankings[t] = ranking
 
-    logger.info("Computed sector rankings for %d stocks across %d sectors",
-                len(rankings), len(sector_stocks))
+    logger.info(
+        "Computed sector rankings for %d stocks across %d sectors",
+        len(rankings),
+        len(sector_stocks),
+    )
     return rankings
 
 
@@ -104,20 +107,11 @@ def format_sector_ranking(ranking: dict | None) -> str:
     parts = [f"セクター: {ranking['sector']} ({ranking['sector_size']}社)"]
 
     if "per_vs_sector" in ranking:
-        parts.append(
-            f"PER: {ranking['per_vs_sector']} "
-            f"(業界中央値: {ranking['sector_per_median']})"
-        )
+        parts.append(f"PER: {ranking['per_vs_sector']} (業界中央値: {ranking['sector_per_median']})")
     if "pbr_vs_sector" in ranking:
-        parts.append(
-            f"PBR: {ranking['pbr_vs_sector']} "
-            f"(業界中央値: {ranking['sector_pbr_median']})"
-        )
+        parts.append(f"PBR: {ranking['pbr_vs_sector']} (業界中央値: {ranking['sector_pbr_median']})")
     if "roe_vs_sector" in ranking:
-        parts.append(
-            f"ROE: {ranking['roe_vs_sector']} "
-            f"(業界中央値: {ranking['sector_roe_median']}%)"
-        )
+        parts.append(f"ROE: {ranking['roe_vs_sector']} (業界中央値: {ranking['sector_roe_median']}%)")
 
     return " | ".join(parts)
 

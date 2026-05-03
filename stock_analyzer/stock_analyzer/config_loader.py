@@ -33,9 +33,7 @@ class Config:
 
 def _validate_ticker(ticker: str) -> None:
     if not ticker.endswith(".T"):
-        raise ValueError(
-            f"Invalid ticker format: '{ticker}'. Japanese tickers must end with '.T' (e.g. '7203.T')"
-        )
+        raise ValueError(f"Invalid ticker format: '{ticker}'. Japanese tickers must end with '.T' (e.g. '7203.T')")
 
 
 _DEFAULT_CONFIG_PATH = Path(__file__).parent.parent / "config" / "stocks.yml"

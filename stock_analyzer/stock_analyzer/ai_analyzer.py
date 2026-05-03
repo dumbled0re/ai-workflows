@@ -295,17 +295,26 @@ def _format_stock_data(summaries: list[dict]) -> str:
         if s.get("shares"):
             lines.append(f"保有株数: {s['shares']}")
         if s.get("avg_cost"):
-            lines.append(
-                f"平均取得単価: {s['avg_cost']} 円 | 含み損益: {s.get('unrealized_pnl_pct', 'N/A')}%"
-            )
-        lines.extend([
-            f"価格変動: 1日: {s['price_change_1d']}% | 5日: {s['price_change_5d']}% | 1ヶ月: {s['price_change_1m']}% | 3ヶ月: {s['price_change_3m']}%",
-            f"移動平均: SMA5={s['sma_5']} | SMA25={s['sma_25']} | SMA75={s['sma_75']} | {s['trend_signal']}",
-            f"RSI(14): {s['rsi_14']} | MACD: {s['macd_value']} (Signal: {s['macd_signal']}, Hist: {s['macd_histogram']})",
-            f"ボリンジャーバンド: Upper={s['bb_upper']} | Middle={s['bb_middle']} | Lower={s['bb_lower']} | ポジション: {s['bb_position_pct']}",
-            f"出来高比率(対20日平均): {s['volume_ratio']}x",
-            f"52週: 高値から{s['distance_from_52w_high']}% | 安値から{s['distance_from_52w_low']}%",
-        ])
+            lines.append(f"平均取得単価: {s['avg_cost']} 円 | 含み損益: {s.get('unrealized_pnl_pct', 'N/A')}%")
+        lines.extend(
+            [
+                (
+                    f"価格変動: 1日: {s['price_change_1d']}% | 5日: {s['price_change_5d']}% | "
+                    f"1ヶ月: {s['price_change_1m']}% | 3ヶ月: {s['price_change_3m']}%"
+                ),
+                f"移動平均: SMA5={s['sma_5']} | SMA25={s['sma_25']} | SMA75={s['sma_75']} | {s['trend_signal']}",
+                (
+                    f"RSI(14): {s['rsi_14']} | MACD: {s['macd_value']} "
+                    f"(Signal: {s['macd_signal']}, Hist: {s['macd_histogram']})"
+                ),
+                (
+                    f"ボリンジャーバンド: Upper={s['bb_upper']} | Middle={s['bb_middle']} | "
+                    f"Lower={s['bb_lower']} | ポジション: {s['bb_position_pct']}"
+                ),
+                f"出来高比率(対20日平均): {s['volume_ratio']}x",
+                f"52週: 高値から{s['distance_from_52w_high']}% | 安値から{s['distance_from_52w_low']}%",
+            ]
+        )
         if s.get("sector"):
             lines.append(f"セクター: {s['sector']}")
         if s.get("screening_score") is not None:

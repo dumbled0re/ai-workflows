@@ -35,7 +35,11 @@ def phase_gather() -> None:
 
     logger.info(
         "Sources: HN=%d, GitHub=%d, arXiv=%d, Companies=%d, Tools=%d",
-        len(hn), len(github), len(arxiv), len(company_news), len(tool_releases),
+        len(hn),
+        len(github),
+        len(arxiv),
+        len(company_news),
+        len(tool_releases),
     )
 
     if not hn and not github and not arxiv and not company_news:
@@ -45,6 +49,7 @@ def phase_gather() -> None:
     sources_text = format_all_sources(hn, github, arxiv, company_news, tool_releases)
 
     from datetime import datetime, timedelta, timezone
+
     jst = timezone(timedelta(hours=9))
     today = datetime.now(jst).strftime("%Y-%m-%d")
 
@@ -144,25 +149,33 @@ def _build_slack_blocks(result: dict) -> list[dict]:
     blocks: list[dict] = []
 
     date = result.get("date", "")
-    blocks.append({
-        "type": "header",
-        "text": {"type": "plain_text", "text": f"AI Tech Catchup - {date}"},
-    })
+    blocks.append(
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": f"AI Tech Catchup - {date}"},
+        }
+    )
 
     # Daily insight
     insight = result.get("daily_insight", "")
     if insight:
-        blocks.append({
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": f"*:brain: 今日のAI動向*\n>{insight}"},
-        })
+        blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*:brain: 今日のAI動向*\n>{insight}"},
+            }
+        )
         blocks.append({"type": "divider"})
 
     # Top stories
     importance_emoji = {"HIGH": ":red_circle:", "MEDIUM": ":large_yellow_circle:", "LOW": ":white_circle:"}
     category_emoji = {
-        "LLM": ":robot_face:", "Agent": ":mechanical_arm:", "Tool": ":wrench:",
-        "Research": ":microscope:", "Infrastructure": ":building_construction:", "Other": ":bulb:",
+        "LLM": ":robot_face:",
+        "Agent": ":mechanical_arm:",
+        "Tool": ":wrench:",
+        "Research": ":microscope:",
+        "Infrastructure": ":building_construction:",
+        "Other": ":bulb:",
     }
 
     for story in result.get("top_stories", []):
@@ -180,10 +193,17 @@ def _build_slack_blocks(result: dict) -> list[dict]:
         blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": text}})
 
     blocks.append({"type": "divider"})
-    blocks.append({
-        "type": "context",
-        "elements": [{"type": "mrkdwn", "text": ":robot_face: Powered by Claude AI | Sources: Hacker News, GitHub Trending, arXiv"}],
-    })
+    blocks.append(
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": ":robot_face: Powered by Claude AI | Sources: Hacker News, GitHub Trending, arXiv",
+                }
+            ],
+        }
+    )
 
     return blocks
 

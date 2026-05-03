@@ -1,26 +1,55 @@
 from __future__ import annotations
 
 import logging
+
 import requests
 from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
-_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-}
+_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 _TIMEOUT = 15
 
 # AI-related keywords for filtering
 _AI_KEYWORDS = [
-    "ai", "artificial intelligence", "machine learning", "deep learning",
-    "llm", "large language model", "gpt", "claude", "gemini", "openai",
-    "anthropic", "transformer", "neural", "nlp", "computer vision",
-    "diffusion", "generative", "agent", "rag", "fine-tune", "embedding",
-    "chatbot", "copilot", "model", "inference", "training", "pytorch",
-    "tensorflow", "hugging face", "langchain", "vector database",
-    "prompt", "reasoning", "multimodal", "foundation model",
-    "reinforcement learning", "mcp", "tool use",
+    "ai",
+    "artificial intelligence",
+    "machine learning",
+    "deep learning",
+    "llm",
+    "large language model",
+    "gpt",
+    "claude",
+    "gemini",
+    "openai",
+    "anthropic",
+    "transformer",
+    "neural",
+    "nlp",
+    "computer vision",
+    "diffusion",
+    "generative",
+    "agent",
+    "rag",
+    "fine-tune",
+    "embedding",
+    "chatbot",
+    "copilot",
+    "model",
+    "inference",
+    "training",
+    "pytorch",
+    "tensorflow",
+    "hugging face",
+    "langchain",
+    "vector database",
+    "prompt",
+    "reasoning",
+    "multimodal",
+    "foundation model",
+    "reinforcement learning",
+    "mcp",
+    "tool use",
 ]
 
 
@@ -54,13 +83,15 @@ def fetch_hackernews_ai(max_items: int = 15) -> list[dict]:
 
                 title = item.get("title", "").lower()
                 if any(kw in title for kw in _AI_KEYWORDS):
-                    ai_stories.append({
-                        "title": item.get("title", ""),
-                        "url": item.get("url", f"https://news.ycombinator.com/item?id={story_id}"),
-                        "score": item.get("score", 0),
-                        "comments": item.get("descendants", 0),
-                        "source": "Hacker News",
-                    })
+                    ai_stories.append(
+                        {
+                            "title": item.get("title", ""),
+                            "url": item.get("url", f"https://news.ycombinator.com/item?id={story_id}"),
+                            "score": item.get("score", 0),
+                            "comments": item.get("descendants", 0),
+                            "source": "Hacker News",
+                        }
+                    )
             except Exception:
                 continue
 
@@ -115,14 +146,16 @@ def fetch_github_trending_ai(max_items: int = 10) -> list[dict]:
             lang_span = article.select_one("[itemprop='programmingLanguage']")
             language = lang_span.get_text(strip=True) if lang_span else ""
 
-            repos.append({
-                "name": repo_name,
-                "description": desc[:200],
-                "language": language,
-                "stars_today": stars_today,
-                "url": f"https://github.com/{repo_name}",
-                "source": "GitHub Trending",
-            })
+            repos.append(
+                {
+                    "name": repo_name,
+                    "description": desc[:200],
+                    "language": language,
+                    "stars_today": stars_today,
+                    "url": f"https://github.com/{repo_name}",
+                    "source": "GitHub Trending",
+                }
+            )
 
         logger.info("Fetched %d AI repos from GitHub trending", len(repos))
         return repos
@@ -161,13 +194,15 @@ def fetch_arxiv_ai(max_items: int = 15) -> list[dict]:
             if len(authors) > 3:
                 author_names.append(f"他{len(authors) - 3}名")
 
-            papers.append({
-                "title": title.get_text(strip=True) if title else "",
-                "summary": summary.get_text(strip=True)[:300] if summary else "",
-                "authors": ", ".join(author_names),
-                "url": link.get_text(strip=True) if link else "",
-                "source": "arXiv",
-            })
+            papers.append(
+                {
+                    "title": title.get_text(strip=True) if title else "",
+                    "summary": summary.get_text(strip=True)[:300] if summary else "",
+                    "authors": ", ".join(author_names),
+                    "url": link.get_text(strip=True) if link else "",
+                    "source": "arXiv",
+                }
+            )
 
         logger.info("Fetched %d papers from arXiv", len(papers))
         return papers
@@ -196,11 +231,13 @@ def fetch_ai_company_news(max_per_source: int = 5) -> list[dict]:
                 if len(title) > 15 and title not in seen and len(seen) < max_per_source:
                     seen.add(title)
                     url = f"https://www.anthropic.com{href}" if href.startswith("/") else href
-                    results.append({
-                        "title": title,
-                        "url": url,
-                        "source": "Anthropic",
-                    })
+                    results.append(
+                        {
+                            "title": title,
+                            "url": url,
+                            "source": "Anthropic",
+                        }
+                    )
     except Exception as e:
         logger.debug("Failed to fetch Anthropic news: %s", e)
 
@@ -217,11 +254,13 @@ def fetch_ai_company_news(max_per_source: int = 5) -> list[dict]:
                 title = item.find("title")
                 link = item.find("link")
                 if title:
-                    results.append({
-                        "title": title.get_text(strip=True),
-                        "url": link.get_text(strip=True) if link else "",
-                        "source": "OpenAI",
-                    })
+                    results.append(
+                        {
+                            "title": title.get_text(strip=True),
+                            "url": link.get_text(strip=True) if link else "",
+                            "source": "OpenAI",
+                        }
+                    )
     except Exception as e:
         logger.debug("Failed to fetch OpenAI news: %s", e)
 
@@ -246,11 +285,13 @@ def fetch_ai_company_news(max_per_source: int = 5) -> list[dict]:
                 ):
                     seen_g.add(title)
                     url = f"https://blog.google{href}" if href.startswith("/") else href
-                    results.append({
-                        "title": title,
-                        "url": url,
-                        "source": "Google AI",
-                    })
+                    results.append(
+                        {
+                            "title": title,
+                            "url": url,
+                            "source": "Google AI",
+                        }
+                    )
     except Exception as e:
         logger.debug("Failed to fetch Google AI news: %s", e)
 
@@ -267,19 +308,16 @@ def fetch_ai_company_news(max_per_source: int = 5) -> list[dict]:
             for a in soup.select("a[href*='/blog/']"):
                 title = a.get_text(strip=True)
                 href = a.get("href", "")
-                if (
-                    len(title) > 20
-                    and href != "/blog/"
-                    and title not in seen_m
-                    and len(seen_m) < max_per_source
-                ):
+                if len(title) > 20 and href != "/blog/" and title not in seen_m and len(seen_m) < max_per_source:
                     seen_m.add(title)
                     url = f"https://ai.meta.com{href}" if href.startswith("/") else href
-                    results.append({
-                        "title": title,
-                        "url": url,
-                        "source": "Meta AI",
-                    })
+                    results.append(
+                        {
+                            "title": title,
+                            "url": url,
+                            "source": "Meta AI",
+                        }
+                    )
     except Exception as e:
         logger.debug("Failed to fetch Meta AI news: %s", e)
 
@@ -295,17 +333,15 @@ def fetch_ai_company_news(max_per_source: int = 5) -> list[dict]:
             seen_ms: set[str] = set()
             for a in soup.select("a[href*='blogs.microsoft.com']"):
                 title = a.get_text(strip=True)
-                if (
-                    len(title) > 20
-                    and title not in seen_ms
-                    and len(seen_ms) < max_per_source
-                ):
+                if len(title) > 20 and title not in seen_ms and len(seen_ms) < max_per_source:
                     seen_ms.add(title)
-                    results.append({
-                        "title": title,
-                        "url": a.get("href", ""),
-                        "source": "Microsoft AI",
-                    })
+                    results.append(
+                        {
+                            "title": title,
+                            "url": a.get("href", ""),
+                            "source": "Microsoft AI",
+                        }
+                    )
     except Exception as e:
         logger.debug("Failed to fetch Microsoft AI news: %s", e)
 
@@ -322,21 +358,18 @@ def fetch_ai_company_news(max_per_source: int = 5) -> list[dict]:
             for a in soup.select("a[href*='/blog/']"):
                 title = a.get_text(strip=True)
                 href = a.get("href", "")
-                if (
-                    len(title) > 20
-                    and href != "/blog/"
-                    and title not in seen_v
-                    and len(seen_v) < max_per_source
-                ):
+                if len(title) > 20 and href != "/blog/" and title not in seen_v and len(seen_v) < max_per_source:
                     combined = title.lower()
                     if any(kw in combined for kw in ["ai", "model", "sdk", "next", "v0", "agent"]):
                         seen_v.add(title)
                         url = f"https://vercel.com{href}" if href.startswith("/") else href
-                        results.append({
-                            "title": title,
-                            "url": url,
-                            "source": "Vercel",
-                        })
+                        results.append(
+                            {
+                                "title": title,
+                                "url": url,
+                                "source": "Vercel",
+                            }
+                        )
     except Exception as e:
         logger.debug("Failed to fetch Vercel blog: %s", e)
 
@@ -406,20 +439,21 @@ def fetch_ai_tools_releases(max_items: int = 10) -> list[dict]:
                 tag = rel.get("tag_name", "")
                 body = (rel.get("body") or "")[:body_chars]
                 published = rel.get("published_at", "")[:10]
-                results.append({
-                    "title": f"{name} {tag}",
-                    "version": tag,
-                    "published": published,
-                    "changelog": body,
-                    "url": rel.get("html_url", ""),
-                    "source": "GitHub Releases",
-                    "priority": priority,
-                })
+                results.append(
+                    {
+                        "title": f"{name} {tag}",
+                        "version": tag,
+                        "published": published,
+                        "changelog": body,
+                        "url": rel.get("html_url", ""),
+                        "source": "GitHub Releases",
+                        "priority": priority,
+                    }
+                )
         except Exception:
             continue
 
-    logger.info("Fetched %d AI tool releases (%d priority)",
-                len(results), sum(1 for r in results if r.get("priority")))
+    logger.info("Fetched %d AI tool releases (%d priority)", len(results), sum(1 for r in results if r.get("priority")))
     return results
 
 
@@ -436,39 +470,26 @@ def format_all_sources(
     if hn:
         parts.append("=== Hacker News (AI関連トップストーリー) ===")
         for item in hn:
-            parts.append(
-                f"- [{item['score']}pts, {item['comments']}comments] {item['title']}\n"
-                f"  URL: {item['url']}"
-            )
+            parts.append(f"- [{item['score']}pts, {item['comments']}comments] {item['title']}\n  URL: {item['url']}")
 
     if github:
         parts.append("\n=== GitHub Trending (AI関連リポジトリ) ===")
         for repo in github:
             lang = f" [{repo['language']}]" if repo.get("language") else ""
             stars = f" ({repo['stars_today']})" if repo.get("stars_today") else ""
-            parts.append(
-                f"- {repo['name']}{lang}{stars}\n"
-                f"  {repo['description']}\n"
-                f"  URL: {repo['url']}"
-            )
+            parts.append(f"- {repo['name']}{lang}{stars}\n  {repo['description']}\n  URL: {repo['url']}")
 
     if arxiv:
         parts.append("\n=== arXiv (最新AI/ML論文) ===")
         for paper in arxiv:
             parts.append(
-                f"- {paper['title']}\n"
-                f"  著者: {paper['authors']}\n"
-                f"  概要: {paper['summary']}\n"
-                f"  URL: {paper['url']}"
+                f"- {paper['title']}\n  著者: {paper['authors']}\n  概要: {paper['summary']}\n  URL: {paper['url']}"
             )
 
     if company_news:
         parts.append("\n=== AI企業公式ニュース (Anthropic / OpenAI / Google) ===")
         for item in company_news:
-            parts.append(
-                f"- [{item['source']}] {item['title']}\n"
-                f"  URL: {item['url']}"
-            )
+            parts.append(f"- [{item['source']}] {item['title']}\n  URL: {item['url']}")
 
     if tool_releases:
         # Split priority releases into a separate must-cover section so the
@@ -477,9 +498,7 @@ def format_all_sources(
         other_items = [r for r in tool_releases if not r.get("priority")]
 
         if priority_items:
-            parts.append(
-                "\n=== 【必須掲載】Claude Code / Codex / Gemini CLI 等の最新リリース ==="
-            )
+            parts.append("\n=== 【必須掲載】Claude Code / Codex / Gemini CLI 等の最新リリース ===")
             parts.append(
                 "※ これらは利用ツールの中核であり、毎回 digest に必ず1項目以上掲載すること。"
                 "リリース内容の新機能・破壊的変更・バグ修正を簡潔に要約。"

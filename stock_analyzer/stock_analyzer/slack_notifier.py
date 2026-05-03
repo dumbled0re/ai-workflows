@@ -8,7 +8,11 @@ logger = logging.getLogger(__name__)
 
 _MAX_BLOCKS_PER_MESSAGE = 50
 _PREDICTION_EMOJI = {"UP": ":chart_with_upwards_trend:", "DOWN": ":chart_with_downwards_trend:"}
-_CONFIDENCE_EMOJI = {"HIGH": ":large_green_circle:", "MEDIUM": ":large_yellow_circle:", "LOW": ":red_circle:"}
+_CONFIDENCE_EMOJI = {
+    "HIGH": ":large_green_circle:",
+    "MEDIUM": ":large_yellow_circle:",
+    "LOW": ":red_circle:",
+}
 _SLACK_POST_URL = "https://slack.com/api/chat.postMessage"
 
 
@@ -51,7 +55,10 @@ def send_market_closed_to_slack(bot_token: str, channel: str, date_str: str) -> 
         {"type": "header", "text": {"type": "plain_text", "text": f"本日休場 - {date_str}"}},
         {
             "type": "section",
-            "text": {"type": "mrkdwn", "text": "本日は東京証券取引所の休場日のため、分析はスキップしました。"},
+            "text": {
+                "type": "mrkdwn",
+                "text": "本日は東京証券取引所の休場日のため、分析はスキップしました。",
+            },
         },
     ]
     return _post_message(bot_token, channel, blocks, fallback_text=f"本日休場 - {date_str}")
@@ -60,7 +67,10 @@ def send_market_closed_to_slack(bot_token: str, channel: str, date_str: str) -> 
 def send_save_failure_to_slack(bot_token: str, channel: str) -> bool:
     """Notify Slack when prediction-tracking data fails to commit/push."""
     blocks = [
-        {"type": "header", "text": {"type": "plain_text", "text": ":rotating_light: データ保存失敗"}},
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": ":rotating_light: データ保存失敗"},
+        },
         {
             "type": "section",
             "text": {
@@ -93,43 +103,55 @@ def _build_blocks(
     blocks: list[dict] = []
 
     # Header
-    blocks.append({
-        "type": "header",
-        "text": {"type": "plain_text", "text": f"日本株AI分析レポート - {date_str} {timing_label}"},
-    })
+    blocks.append(
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": f"日本株AI分析レポート - {date_str} {timing_label}",
+            },
+        }
+    )
 
     # Data quality info (Codex review feedback: make partial failures visible)
     if data_quality:
         quality_text = (
-            f":bar_chart: データ品質: "
-            f"成功 {data_quality.get('success', 0)} / "
-            f"失敗 {data_quality.get('failed', 0)} 銘柄"
+            f":bar_chart: データ品質: 成功 {data_quality.get('success', 0)} / 失敗 {data_quality.get('failed', 0)} 銘柄"
         )
         if data_quality.get("failed", 0) > 0:
             quality_text += " :warning:"
-        blocks.append({
-            "type": "context",
-            "elements": [{"type": "mrkdwn", "text": quality_text}],
-        })
+        blocks.append(
+            {
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": quality_text}],
+            }
+        )
 
     blocks.append({"type": "divider"})
 
     # Market overview
     market_overview = holdings_analysis.get("market_overview", "")
     if market_overview:
-        blocks.append({
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": f"*:earth_asia: マーケット概況*\n>{market_overview}"},
-        })
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*:earth_asia: マーケット概況*\n>{market_overview}",
+                },
+            }
+        )
         blocks.append({"type": "divider"})
 
     # Holdings analysis
     holdings = holdings_analysis.get("holdings_analysis", [])
     if holdings:
-        blocks.append({
-            "type": "header",
-            "text": {"type": "plain_text", "text": "保有銘柄分析"},
-        })
+        blocks.append(
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "保有銘柄分析"},
+            }
+        )
         for h in holdings:
             blocks.append(_format_holding_block(h))
 
@@ -141,10 +163,12 @@ def _build_blocks(
     if not short_term:
         short_term = discovery_results.get("recommended_stocks", [])
     if short_term:
-        blocks.append({
-            "type": "header",
-            "text": {"type": "plain_text", "text": "短期トレード候補（1-4週間）"},
-        })
+        blocks.append(
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "短期トレード候補（1-4週間）"},
+            }
+        )
         for r in short_term:
             blocks.append(_format_discovery_block(r))
 
@@ -153,10 +177,12 @@ def _build_blocks(
     # Long-term picks
     long_term = discovery_results.get("long_term_picks", [])
     if long_term:
-        blocks.append({
-            "type": "header",
-            "text": {"type": "plain_text", "text": "長期投資候補（3-12ヶ月）"},
-        })
+        blocks.append(
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "長期投資候補（3-12ヶ月）"},
+            }
+        )
         for r in long_term:
             blocks.append(_format_long_term_block(r))
 
@@ -164,25 +190,32 @@ def _build_blocks(
     market_cond = discovery_results.get("market_condition", "")
     if market_cond:
         blocks.append({"type": "divider"})
-        blocks.append({
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": f"*:crystal_ball: 市場環境評価*\n>{market_cond}"},
-        })
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*:crystal_ball: 市場環境評価*\n>{market_cond}",
+                },
+            }
+        )
 
     # Footer
     blocks.append({"type": "divider"})
-    blocks.append({
-        "type": "context",
-        "elements": [
-            {
-                "type": "mrkdwn",
-                "text": (
-                    ":robot_face: Claude AI分析 | Yahoo Financeデータ | "
-                    "*投資助言ではありません。投資判断はご自身の責任で行ってください。*"
-                ),
-            }
-        ],
-    })
+    blocks.append(
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": (
+                        ":robot_face: Claude AI分析 | Yahoo Financeデータ | "
+                        "*投資助言ではありません。投資判断はご自身の責任で行ってください。*"
+                    ),
+                }
+            ],
+        }
+    )
 
     return blocks
 

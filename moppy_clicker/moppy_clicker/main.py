@@ -147,9 +147,7 @@ def cmd_run(cfg: Config, dry_run: bool, max_messages: int | None, notify: bool) 
             state.save()
 
             if state.is_message_complete(msg_id, cfg.max_attempts) and all(
-                r.final_status == "success"
-                for r in all_results
-                if r.candidate.url in {c.url for c in new_candidates}
+                r.final_status == "success" for r in all_results if r.candidate.url in {c.url for c in new_candidates}
             ):
                 gmail.mark_as_read(msg_id)
                 gmail.add_label(msg_id, cfg.moppy_label)

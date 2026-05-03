@@ -4,8 +4,8 @@ import logging
 
 from stock_analyzer.config_loader import Settings
 from stock_analyzer.data_fetcher import fetch_batch
-from stock_analyzer.nikkei225_components import NIKKEI_225_TICKERS
 from stock_analyzer.jpx400_components import JPX400_TICKERS
+from stock_analyzer.nikkei225_components import NIKKEI_225_TICKERS
 from stock_analyzer.technical_indicators import compute_indicators, compute_screening_score
 
 logger = logging.getLogger(__name__)
@@ -57,9 +57,7 @@ def screen_stocks(
     total_screened = len(data_dict)
     failed_count = len(failed_tickers)
 
-    logger.info(
-        "Data fetched: %d successful, %d failed", total_screened, failed_count
-    )
+    logger.info("Data fetched: %d successful, %d failed", total_screened, failed_count)
 
     # Score each stock
     scored: list[tuple[str, float]] = []
@@ -99,9 +97,7 @@ def screen_stocks(
             summary["sector"] = info.get("sector", "不明")
             candidates.append(summary)
         except Exception:
-            logger.warning(
-                "Full indicator computation failed for %s", ticker, exc_info=True
-            )
+            logger.warning("Full indicator computation failed for %s", ticker, exc_info=True)
 
     logger.info("Screening complete: %d candidates with full indicators", len(candidates))
     return candidates, total_screened, failed_count, fundamentals, ticker_info

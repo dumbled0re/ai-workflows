@@ -106,9 +106,7 @@ def format_strategy_notes_for_prompt(notes_data: dict) -> str:
         label = category_labels.get(cat, cat)
         lines.append(f"【{label}】")
         for note in cat_notes:
-            confidence_mark = {"HIGH": "★★★", "MEDIUM": "★★", "LOW": "★"}.get(
-                note.get("confidence", ""), "★"
-            )
+            confidence_mark = {"HIGH": "★★★", "MEDIUM": "★★", "LOW": "★"}.get(note.get("confidence", ""), "★")
             lines.append(f"  {confidence_mark} {note['insight']}")
             if note.get("evidence"):
                 lines.append(f"    根拠: {note['evidence']}")
@@ -136,9 +134,7 @@ def build_weekly_review_prompt(predictions_history: dict, strategy_notes: dict) 
     current_notes = strategy_notes.get("notes", [])
 
     resolved = [p for p in predictions if p["status"] in ("win", "loss")]
-    recent_resolved = sorted(
-        resolved, key=lambda p: p.get("reviewed_date", ""), reverse=True
-    )[:20]
+    recent_resolved = sorted(resolved, key=lambda p: p.get("reviewed_date", ""), reverse=True)[:20]
 
     wins = [p for p in recent_resolved if p["status"] == "win"]
     losses = [p for p in recent_resolved if p["status"] == "loss"]
@@ -148,7 +144,7 @@ def build_weekly_review_prompt(predictions_history: dict, strategy_notes: dict) 
 過去の予測結果を深く分析し、戦略を改善するための具体的な教訓を抽出してください。
 
 === 全体パフォーマンス ===
-通算: {stats.get('wins', 0)}勝 {stats.get('losses', 0)}敗 (勝率{stats.get('accuracy_pct', 'N/A')}%)
+通算: {stats.get("wins", 0)}勝 {stats.get("losses", 0)}敗 (勝率{stats.get("accuracy_pct", "N/A")}%)
 """
 
     # Confidence breakdown
@@ -189,29 +185,29 @@ def build_weekly_review_prompt(predictions_history: dict, strategy_notes: dict) 
             valid = "有効" if note.get("still_valid", True) else "要検証"
             prompt += f"- [{valid}] {note['insight']} (根拠: {note.get('evidence', 'N/A')})\n"
 
-    prompt += f"""
+    prompt += """
 === タスク ===
 上記の予測結果を分析し、以下のJSON形式で回答してください:
 
-{{
+{
   "analysis_summary": "全体的な傾向の分析（3-5文）",
   "notes": [
-    {{
+    {
       "insight": "具体的な教訓（例：出来高が2倍以上の銘柄はRSI30台からの反発確率が高い）",
       "evidence": "根拠となるデータ（例：該当5件中4件的中）",
       "confidence": "HIGH/MEDIUM/LOW",
       "category": "technical_pattern/fundamental_insight/market_regime/sector_insight/risk_management",
       "still_valid": true
-    }}
+    }
   ],
   "deprecated_notes": ["無効になった既存メモのinsight文"],
-  "regime_strategies": {{
+  "regime_strategies": {
     "上昇トレンド": "この局面での推奨戦略",
     "下降トレンド": "この局面での推奨戦略",
     "レンジ相場": "この局面での推奨戦略",
     "高ボラティリティ": "この局面での推奨戦略"
-  }},
-  "screening_weight_adjustments": {{
+  },
+  "screening_weight_adjustments": {
     "rsi_oversold_recovery": 20,
     "rsi_healthy_momentum": 15,
     "volume_spike": 20,
@@ -223,9 +219,9 @@ def build_weekly_review_prompt(predictions_history: dict, strategy_notes: dict) 
     "roe_profitable": 10,
     "dividend_yield": 5,
     "revenue_growth": 5
-  }},
+  },
   "confidence_calibration": "信頼度の使い方についてのアドバイス（例：HIGH は70%以上確信がある場合のみ使う）"
-}}
+}
 
 重要:
 - 教訓は具体的かつ再現可能なものにしてください（「気をつける」ではなく「PER20以上の銘柄のUP予測は避ける」）

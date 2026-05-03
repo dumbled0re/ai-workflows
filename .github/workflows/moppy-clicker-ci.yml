@@ -1,29 +1,29 @@
-name: moppy-clicker CI
+name: moppy-clicker mypy
+
+# moppy_clicker is the only project with strict mypy enforced today.
+# General ruff/pytest checks for all projects live in ci.yml.
 
 on:
   pull_request:
     paths:
       - "moppy_clicker/**"
-      - ".github/workflows/moppy-clicker*.yml"
+      - ".github/workflows/moppy-clicker-ci.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  lint-and-test:
+  mypy:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
       run:
         working-directory: moppy_clicker
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
-      - run: uv sync --frozen
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
+      - run: uv sync --frozen --group dev
       - run: uv run mypy moppy_clicker
-      - run: uv run pytest -q

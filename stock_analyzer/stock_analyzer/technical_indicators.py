@@ -98,9 +98,7 @@ def compute_indicators(
 
     if avg_cost is not None:
         summary["avg_cost"] = avg_cost
-        summary["unrealized_pnl_pct"] = round(
-            ((current_price - avg_cost) / avg_cost) * 100, 2
-        )
+        summary["unrealized_pnl_pct"] = round(((current_price - avg_cost) / avg_cost) * 100, 2)
 
     # Fundamental data (when available)
     if fundamentals:
@@ -184,11 +182,15 @@ def compute_screening_score(df: pd.DataFrame, fundamentals: dict | None = None, 
     if sma_25 is not None and len(close) >= 4:
         recent_prices = close.iloc[-3:]
         sma_25_series = SMAIndicator(close, window=25).sma_indicator().iloc[-3:]
-        breakout = any(
-            p > s and close.iloc[-4] <= SMAIndicator(close, window=25).sma_indicator().iloc[-4]
-            for p, s in zip(recent_prices, sma_25_series, strict=False)
-            if pd.notna(p) and pd.notna(s)
-        ) if len(close) > 4 and pd.notna(SMAIndicator(close, window=25).sma_indicator().iloc[-4]) else False
+        breakout = (
+            any(
+                p > s and close.iloc[-4] <= SMAIndicator(close, window=25).sma_indicator().iloc[-4]
+                for p, s in zip(recent_prices, sma_25_series, strict=False)
+                if pd.notna(p) and pd.notna(s)
+            )
+            if len(close) > 4 and pd.notna(SMAIndicator(close, window=25).sma_indicator().iloc[-4])
+            else False
+        )
         if breakout:
             score += w["sma25_breakout"]
 
@@ -204,7 +206,7 @@ def compute_screening_score(df: pd.DataFrame, fundamentals: dict | None = None, 
                 score += w["macd_crossover"]
 
     # Near Bollinger Band lower (within 5%)
-    _, _, bb_lower, bb_pos = _safe_bollinger(close)
+    _, _, _bb_lower, bb_pos = _safe_bollinger(close)
     if bb_pos is not None and bb_pos <= 0.15:
         score += w["bollinger_lower"]
 
@@ -308,9 +310,7 @@ def _round_or_none(val: float | None, decimals: int = 2) -> float | None:
     return round(val, decimals) if val is not None else None
 
 
-def _determine_trend(
-    sma_5: float | None, sma_25: float | None, sma_75: float | None
-) -> str:
+def _determine_trend(sma_5: float | None, sma_25: float | None, sma_75: float | None) -> str:
     vals = [sma_5, sma_25, sma_75]
     if any(v is None for v in vals):
         return "データ不足"

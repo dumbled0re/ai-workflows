@@ -71,8 +71,7 @@ class Config:
         cleaned_password = gmail_app_password.replace(" ", "")
         if len(cleaned_password) != 16:
             raise ConfigError(
-                f"GMAIL_APP_PASSWORD must be 16 characters (after stripping spaces); "
-                f"got {len(cleaned_password)}"
+                f"GMAIL_APP_PASSWORD must be 16 characters (after stripping spaces); got {len(cleaned_password)}"
             )
 
         interval_min = _env_int("MOPPY_CLICK_INTERVAL_MIN", 5, low=1, high=600)

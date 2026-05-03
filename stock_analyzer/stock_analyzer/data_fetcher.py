@@ -65,20 +65,14 @@ def fetch_batch(
                 fundamentals[ticker] = info
         else:
             if data is not None and not data.empty:
-                logger.warning(
-                    "Insufficient data for %s (%d rows)", ticker, len(data)
-                )
+                logger.warning("Insufficient data for %s (%d rows)", ticker, len(data))
             failed.append(ticker)
 
-    logger.info(
-        "Data fetch complete: %d succeeded, %d failed", len(results), len(failed)
-    )
+    logger.info("Data fetch complete: %d succeeded, %d failed", len(results), len(failed))
     return results, failed, fundamentals
 
 
-def _download_ticker(
-    ticker: str, period: str, fetch_fundamentals: bool
-) -> tuple[pd.DataFrame | None, dict | None]:
+def _download_ticker(ticker: str, period: str, fetch_fundamentals: bool) -> tuple[pd.DataFrame | None, dict | None]:
     """Download a single ticker from Yahoo Finance via yfinance."""
     for attempt in range(_MAX_RETRIES):
         try:

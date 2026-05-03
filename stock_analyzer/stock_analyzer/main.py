@@ -24,9 +24,7 @@ def is_market_day(date: datetime) -> bool:
     d = date.date()
     if d.weekday() >= 5:
         return False
-    if jpholiday.is_holiday(d):
-        return False
-    return True
+    return not jpholiday.is_holiday(d)
 
 
 def phase_prepare() -> None:
@@ -35,7 +33,13 @@ def phase_prepare() -> None:
     from stock_analyzer.config_loader import load_config
     from stock_analyzer.data_fetcher import fetch_batch
     from stock_analyzer.market_context import fetch_market_context, format_market_context
-    from stock_analyzer.news_fetcher import fetch_margin_data, fetch_market_news, fetch_stock_news, format_market_news, format_stock_news
+    from stock_analyzer.news_fetcher import (
+        fetch_margin_data,
+        fetch_market_news,
+        fetch_stock_news,
+        format_market_news,
+        format_stock_news,
+    )
     from stock_analyzer.sector_analysis import compute_sector_rankings, format_sector_ranking
     from stock_analyzer.slack_notifier import send_market_closed_to_slack
     from stock_analyzer.stock_screener import screen_stocks
@@ -63,7 +67,6 @@ def phase_prepare() -> None:
 
     # Track data quality
     import json
-    from pathlib import Path
 
     data_quality: dict = {"success": 0, "failed": 0}
 
@@ -239,7 +242,6 @@ def phase_prepare() -> None:
 def phase_notify() -> None:
     """Phase 3: Read Claude's analysis results, save predictions, send to Slack."""
     import json
-    from pathlib import Path
 
     from stock_analyzer.ai_analyzer import load_analysis_results
     from stock_analyzer.performance_tracker import load_history, save_history, save_new_predictions
@@ -271,18 +273,6 @@ def phase_notify() -> None:
     perf_history = load_history()
     # Load current prices from the analysis input (saved during prepare phase)
     current_prices: dict[str, float] = {}
-    input_path = _DATA_DIR / "analysis_input.json"
-    if input_path.exists():
-        try:
-            with open(input_path, encoding="utf-8") as f:
-                analysis_input = json.load(f)
-            # Extract prices from the prompt text is unreliable;
-            # instead, parse from holdings/discovery results
-            for h in holdings_result.get("holdings_analysis", []):
-                # We'll use entry prices from the prediction itself
-                pass
-        except Exception:
-            pass
 
     # Extract current prices from meta or re-derive from results
     # The simplest approach: load from the previously saved candidates data
@@ -295,9 +285,7 @@ def phase_notify() -> None:
             pass
 
     if current_prices:
-        perf_history = save_new_predictions(
-            perf_history, holdings_result, discovery_result, current_prices
-        )
+        perf_history = save_new_predictions(perf_history, holdings_result, discovery_result, current_prices)
         save_history(perf_history)
         logger.info("New predictions saved to tracking history")
     else:
@@ -326,7 +314,6 @@ def phase_notify() -> None:
 
 def phase_review() -> None:
     """Build the weekly review prompt for Claude to analyze past performance."""
-    from pathlib import Path
 
     from stock_analyzer.performance_tracker import load_history
     from stock_analyzer.strategy_learner import build_weekly_review_prompt, load_strategy_notes
@@ -349,7 +336,6 @@ def phase_review() -> None:
 def phase_apply_review() -> None:
     """Apply Claude's weekly review results to strategy notes and weights."""
     import json
-    from pathlib import Path
 
     from stock_analyzer.strategy_learner import (
         apply_review_results,
@@ -388,9 +374,7 @@ def phase_apply_review() -> None:
     strategy_notes = load_strategy_notes()
     screening_weights = load_screening_weights()
 
-    strategy_notes, screening_weights = apply_review_results(
-        review_result, strategy_notes, screening_weights
-    )
+    strategy_notes, screening_weights = apply_review_results(review_result, strategy_notes, screening_weights)
 
     save_strategy_notes(strategy_notes)
     save_screening_weights(screening_weights)
@@ -442,6 +426,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    import contextlib
+
     from stock_analyzer.slack_notifier import send_error_to_slack
 
     try:
@@ -451,8 +437,6 @@ if __name__ == "__main__":
         token = os.environ.get("SLACK_BOT_TOKEN")
         channel = os.environ.get("SLACK_CHANNEL_STOCK")
         if token and channel:
-            try:
+            with contextlib.suppress(Exception):
                 send_error_to_slack(token, channel, str(e))
-            except Exception:
-                pass
         sys.exit(1)

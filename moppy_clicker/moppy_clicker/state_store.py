@@ -93,9 +93,7 @@ class StateStore:
         msg = self._state.messages.get(message_id)
         if msg is None:
             now = datetime.now(UTC)
-            self._state.messages[message_id] = MessageState(
-                first_seen=now, last_attempt=now, attempt_count=1
-            )
+            self._state.messages[message_id] = MessageState(first_seen=now, last_attempt=now, attempt_count=1)
             return
         msg.attempt_count += 1
         msg.last_attempt = datetime.now(UTC)
@@ -106,9 +104,7 @@ class StateStore:
 
     def prune_old(self, days: int = _PRUNE_DAYS_DEFAULT) -> int:
         cutoff = datetime.now(UTC).timestamp() - days * 86400
-        to_remove = [
-            mid for mid, m in self._state.messages.items() if m.last_attempt.timestamp() < cutoff
-        ]
+        to_remove = [mid for mid, m in self._state.messages.items() if m.last_attempt.timestamp() < cutoff]
         for mid in to_remove:
             del self._state.messages[mid]
         return len(to_remove)

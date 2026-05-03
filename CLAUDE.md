@@ -6,25 +6,41 @@ GitHub ActionsとClaudeを活用した自動化ワークフロー集。各プロ
 
 ```
 ai-workflows/
-├── stock_analyzer/         ← 日本株分析（独立プロジェクト・本番稼働中）
-│   ├── requirements.txt
-│   ├── config/stocks.yml   ← ユーザー設定（保有銘柄）
-│   ├── data/               ← 永続データ（git管理）
+├── stock_analyzer/                 ← 日本株分析
+│   ├── pyproject.toml / uv.lock    ← uv 管理
+│   ├── config/stocks.yml           ← ユーザー設定（保有銘柄）
+│   ├── data/                       ← 永続データ（git管理対象）
 │   │   ├── investment_rules.json
 │   │   ├── predictions_history.json
 │   │   ├── strategy_notes.json
 │   │   └── screening_weights.json
-│   └── *.py (main, ai_analyzer, data_fetcher, etc.)
+│   └── stock_analyzer/             ← パッケージ本体（main, ai_analyzer, …）
 │
-├── tech_catchup/           ← AI技術キャッチアップ（独立プロジェクト・本番稼働中）
-│   ├── requirements.txt
-│   ├── main.py
-│   └── sources.py
+├── tech_catchup/                   ← AI技術キャッチアップ
+│   ├── pyproject.toml / uv.lock
+│   ├── data/                       ← Claudeとのやり取り用 JSON（gitignore）
+│   └── tech_catchup/
+│       ├── main.py
+│       └── sources.py
 │
-├── .github/workflows/      ← ワークフロー定義
-│   ├── stock-analysis.yml  ← 株分析（毎日 朝8時/夕16時 JST）
-│   ├── weekly-review.yml   ← 戦略レビュー（土曜10時 JST）
-│   └── tech-catchup.yml    ← AIキャッチアップ（毎朝7:30 JST）
+├── moppy_clicker/                  ← モッピー自動クリック
+│   ├── pyproject.toml / uv.lock
+│   ├── DESIGN.md                   ← 設計詳細
+│   ├── tests/                      ← pytest（fixture ベース）
+│   └── moppy_clicker/              ← パッケージ本体
+│
+├── todo/                           ← 個人 TODO リスト
+│   ├── pyproject.toml / uv.lock
+│   ├── todos.md                    ← TODO 本体（Claude skill が編集）
+│   └── todo/main.py
+│
+├── .github/workflows/              ← cron + workflow_dispatch
+│   ├── stock-analysis.yml          ← 株分析（毎日 朝8時/夕16時 JST）
+│   ├── weekly-review.yml           ← 戦略レビュー（土曜10時 JST）
+│   ├── tech-catchup.yml            ← AIキャッチアップ（毎朝7:30 JST）
+│   ├── moppy-clicker.yml           ← モッピークリック（毎日 朝8時 JST）
+│   ├── moppy-clicker-ci.yml        ← moppy_clicker の lint/test（PR時）
+│   └── todo.yml                    ← TODO リマインダー（毎朝9時 JST）
 │
 ├── CLAUDE.md
 └── README.md
@@ -102,6 +118,69 @@ uv run python -m todo.main notify             # Slack通知
 ```
 
 ローカル実行は常に `uv run python -m <project>.main <subcommand>`。`pip install` 直接実行は禁止。新しい依存追加は `uv add <pkg>`。
+
+### データパスの解決パターン
+コード内で `data/` や `config/` を参照する場合は **常に `Path(__file__).parent.parent` から絶対パスを組み立てる**。理由は cwd が呼び出し方によって変わるため。
+
+```python
+# Good
+_DATA_DIR = Path(__file__).parent.parent / "data"
+HISTORY_FILE = _DATA_DIR / "predictions.json"
+
+# Bad (cwd 依存・GitHub Actions の working-directory 切り替えで壊れる)
+HISTORY_FILE = Path("stock_analyzer/data/predictions.json")
+```
+
+## コード品質 / Lint・Format・Type・Test
+
+| ツール | 適用範囲 | 強制 |
+|---|---|---|
+| ruff check | 全プロジェクト | ✅ CI で必須 |
+| ruff format --check | 全プロジェクト | ✅ CI で必須 |
+| mypy (strict) | moppy_clicker のみ | ✅ CI で必須 |
+| mypy (lenient) | 他3プロジェクト | ⏳ 将来 strict 化目標 |
+| pytest | tests/ がある場合のみ | ✅ CI で必須 |
+
+全プロジェクト共通の ruff 設定（`[tool.ruff]` / `[tool.ruff.lint]`）:
+- `line-length = 120`
+- `target-version = "py312"`
+- `select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]`
+- `ignore = ["RUF001", "RUF002", "RUF003"]`（日本語の全角記号誤検出を回避）
+
+### エージェント向けコミット前チェックリスト
+コミット前に **対象プロジェクトのディレクトリで** 以下を実行する。CI と同じコマンドなので、ローカルで通れば CI も通る:
+
+```bash
+cd <project>                       # 例: cd stock_analyzer
+uv sync --frozen --group dev       # 依存とdev tools同期
+uv run ruff check .                # lint
+uv run ruff format --check .       # フォーマット確認（修正は format . で）
+uv run pytest                      # tests/ がある場合のみ
+# moppy_clicker のみ:
+uv run mypy moppy_clicker
+```
+
+設計や非自明な変更は **codex review でセカンドオピニオンを取る**。コミット前に:
+```bash
+git add -A
+codex review --uncommitted        # 設計・整合性・落とし穴を指摘してもらう
+```
+
+迷ったら codex に投げる方がコスト安い。特に:
+- 共通ライブラリ・パターンの導入
+- ファイル/ディレクトリ構造の変更
+- セキュリティ関連（secrets、外部API、認証フロー）
+- 失敗時の挙動・エラーパス
+
+## 新規プロジェクト追加チェックリスト
+1. `mkdir <project>/<project>` でネスト構造を作る（`<project>/__init__.py`, `<project>/main.py`）
+2. `<project>/pyproject.toml` を作成（既存の `todo/pyproject.toml` をテンプレに `name`/`description`/`dependencies` だけ書き換え）
+3. `cd <project> && uv sync` で `.venv` と `uv.lock` 生成
+4. データパス参照は `Path(__file__).parent.parent / "data" / "..."` パターン
+5. `.github/workflows/<project>.yml` を作成（既存ワークフローをテンプレに、`working-directory: <project>` と `SLACK_BOT_TOKEN` / `SLACK_CHANNEL_<NAME>` を設定）
+6. Slack 用に `SLACK_CHANNEL_<NAME>` Secret を GitHub に追加し、bot を招待
+7. `CLAUDE.md` と `README.md` のテーブルに新プロジェクトを追記
+8. `git add -A` → `codex review --uncommitted` → 指摘あれば修正 → commit
 
 ## 必要なSecrets
 
