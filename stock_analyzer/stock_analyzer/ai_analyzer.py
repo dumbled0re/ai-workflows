@@ -7,6 +7,8 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+_DATA_DIR = Path(__file__).parent.parent / "data"
+
 SYSTEM_PROMPT = """\
 あなたはプロの短期投資家兼アナリストです。東京証券取引所に上場する銘柄を、
 テクニカル分析とファンダメンタル分析の両面から総合的に評価します。
@@ -169,7 +171,7 @@ def prepare_prompts(
     candidates: list[dict],
     timing: str,
     top_n: int,
-    output_dir: str = "stock_analyzer/data",
+    output_dir: str | Path | None = None,
     market_context: str = "",
     market_news: str = "",
     performance_feedback: str = "",
@@ -183,7 +185,7 @@ def prepare_prompts(
     Returns:
         Path to the generated prompt file
     """
-    out = Path(output_dir)
+    out = Path(output_dir) if output_dir is not None else _DATA_DIR
     out.mkdir(exist_ok=True)
 
     holdings_text = _format_stock_data(holdings_summaries)
@@ -232,13 +234,13 @@ def prepare_prompts(
     return prompt_file
 
 
-def load_analysis_results(output_dir: str = "stock_analyzer/data") -> tuple[dict, dict]:
+def load_analysis_results(output_dir: str | Path | None = None) -> tuple[dict, dict]:
     """Load analysis results written by Claude Code Action.
 
     Returns:
         tuple of (holdings_analysis, discovery_results)
     """
-    out = Path(output_dir)
+    out = Path(output_dir) if output_dir is not None else _DATA_DIR
 
     holdings_file = out / "holdings_result.json"
     discovery_file = out / "discovery_result.json"

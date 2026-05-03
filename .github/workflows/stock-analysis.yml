@@ -16,6 +16,9 @@ jobs:
   analyze:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: stock_analyzer
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -23,20 +26,20 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: true
 
-      - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
         with:
-          python-version: '3.12'
-          cache: 'pip'
+          enable-cache: true
 
-      - name: Install dependencies
-        run: pip install -r stock_analyzer/requirements.txt
+      - name: Sync deps
+        run: uv sync --frozen
 
       # Phase 1: Fetch stock data & compute indicators → save prompts to data/
       - name: Prepare analysis data
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        run: python -m stock_analyzer.main prepare
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_STOCK: ${{ secrets.SLACK_CHANNEL_STOCK }}
+        run: uv run python -m stock_analyzer.main prepare
 
       # Phase 2: Claude Code Action reads prompts and generates analysis
       - name: Analyze with Claude AI (Holdings)
@@ -73,13 +76,14 @@ jobs:
       # Phase 3: Send results to Slack & save predictions for tracking
       - name: Send results to Slack
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        run: python -m stock_analyzer.main notify
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_STOCK: ${{ secrets.SLACK_CHANNEL_STOCK }}
+        run: uv run python -m stock_analyzer.main notify
 
       # Phase 4: Evening strategy review (only on evening runs: 07:00 UTC = 16:00 JST)
       - name: Build strategy review prompt
         if: github.event.schedule == '0 7 * * 1-5' || github.event_name == 'workflow_dispatch'
-        run: python -m stock_analyzer.main review
+        run: uv run python -m stock_analyzer.main review
 
       - name: Strategy review with Claude AI
         if: github.event.schedule == '0 7 * * 1-5' || github.event_name == 'workflow_dispatch'
@@ -94,7 +98,7 @@ jobs:
 
       - name: Apply strategy review results
         if: github.event.schedule == '0 7 * * 1-5' || github.event_name == 'workflow_dispatch'
-        run: python -m stock_analyzer.main apply-review
+        run: uv run python -m stock_analyzer.main apply-review
 
       # Phase 5: Commit all tracking & strategy data back to repo
       - name: Save tracking and strategy data
@@ -105,7 +109,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git
-          git add -f stock_analyzer/data/predictions_history.json stock_analyzer/data/strategy_notes.json stock_analyzer/data/screening_weights.json 2>/dev/null || true
+          git add -f data/predictions_history.json data/strategy_notes.json data/screening_weights.json 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No data changes to commit"
             echo "push_status=skipped" >> "$GITHUB_OUTPUT"
@@ -122,8 +126,6 @@ jobs:
       - name: Notify push failure
         if: steps.save_data.outputs.push_status == 'failed'
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        run: |
-          curl -X POST "$SLACK_WEBHOOK_URL" \
-            -H "Content-Type: application/json" \
-            -d '{"blocks":[{"type":"header","text":{"type":"plain_text","text":":rotating_light: データ保存失敗"}},{"type":"section","text":{"type":"mrkdwn","text":"予測追跡データのgit pushが失敗しました。\n改善ループが停止しています。\n\nGitHub Actionsのログを確認してください。"}}]}'
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_STOCK: ${{ secrets.SLACK_CHANNEL_STOCK }}
+        run: uv run python -m stock_analyzer.main notify-save-failure

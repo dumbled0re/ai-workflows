@@ -39,13 +39,14 @@ ai-workflows/
 
 **実行:**
 ```bash
-python -m stock_analyzer.main prepare   # データ収集・指標計算
-python -m stock_analyzer.main notify    # Slack通知
-python -m stock_analyzer.main review    # 戦略レビュー
-python -m stock_analyzer.main apply-review
+cd stock_analyzer
+uv run python -m stock_analyzer.main prepare   # データ収集・指標計算
+uv run python -m stock_analyzer.main notify    # Slack通知
+uv run python -m stock_analyzer.main review    # 戦略レビュー
+uv run python -m stock_analyzer.main apply-review
 ```
 
-**Slack通知:** `SLACK_WEBHOOK_URL`（株専用チャンネル）
+**Slack通知:** `SLACK_BOT_TOKEN` + `SLACK_CHANNEL_STOCK`（株専用チャンネル）
 
 #### Claude Code Actionでの分析時の注意
 - `stock_analyzer/data/investment_rules.json` を必ず読み、ルールに従うこと
@@ -73,10 +74,10 @@ uv run python -m tech_catchup.main notify   # Slack通知
 ```bash
 cd todo
 uv run python -m todo.main notify --dry-run   # ローカル確認
-uv run python -m todo.main notify             # Slack通知（要 SLACK_WEBHOOK_URL）
+uv run python -m todo.main notify             # Slack通知
 ```
 
-**Slack通知:** `SLACK_WEBHOOK_URL_TODO`（TODO専用チャンネル）
+**Slack通知:** `SLACK_BOT_TOKEN` + `SLACK_CHANNEL_TODO`（TODO専用チャンネル）
 
 ## 環境管理ポリシー
 
@@ -84,7 +85,7 @@ uv run python -m todo.main notify             # Slack通知（要 SLACK_WEBHOOK_
 
 | プロジェクト | 管理方法 | 状態 |
 |---|---|---|
-| stock_analyzer | requirements.txt | uv へ移行予定 |
+| stock_analyzer | uv + pyproject.toml + uv.lock | ✅ |
 | tech_catchup | uv + pyproject.toml + uv.lock | ✅ |
 | moppy_clicker | uv + pyproject.toml + uv.lock | ✅ |
 | todo | uv + pyproject.toml + uv.lock | ✅ |
@@ -111,13 +112,13 @@ uv run python -m todo.main notify             # Slack通知（要 SLACK_WEBHOOK_
 | `SLACK_CHANNEL_TODO` | TODO通知先チャンネル（例: `#todo` または ID） |
 | `SLACK_CHANNEL_TECH` | AI Tech Catchupの通知先チャンネル |
 | `SLACK_CHANNEL_MOPPY` | モッピー自動クリックの通知先チャンネル |
-| `SLACK_WEBHOOK_URL` | 株分析の通知先（旧方式・Bot移行予定） |
+| `SLACK_CHANNEL_STOCK` | 株分析の通知先チャンネル |
 | `GMAIL_USER` / `GMAIL_APP_PASSWORD` | モッピーメール受信用 |
 
 ### Slack通知の方針
-- 新規プロジェクトは **Bot Token方式**（`SLACK_BOT_TOKEN` + `SLACK_CHANNEL_<PROJECT>`）。1個のBot Tokenを全プロジェクトで共有し、チャンネルだけ分ける。
-- 既存のWebhook方式（`SLACK_WEBHOOK_URL_*`）はuv移行と合わせてBot方式に統一する。
+- 全プロジェクトで **Bot Token方式**（`SLACK_BOT_TOKEN` + `SLACK_CHANNEL_<PROJECT>`）に統一済み。1個のBot Tokenを共有し、チャンネルだけ分ける。
 - Bot Token取得手順: https://api.slack.com/apps → Create New App → OAuth & Permissions で `chat:write` と `chat:write.public`（公開チャンネルに招待なしで投稿する場合）を付与 → Install to Workspace → Bot User OAuth Token をコピー。
+- 新規プロジェクトを追加する際は `SLACK_CHANNEL_<NAME>` Secret を追加し、bot を該当チャンネルに招待するだけでよい（Webhook 発行は不要）。
 
 ## 重要な技術的決定（履歴）
 

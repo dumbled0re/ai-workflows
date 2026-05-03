@@ -38,8 +38,11 @@ def _validate_ticker(ticker: str) -> None:
         )
 
 
-def load_config(path: str | Path = "stock_analyzer/config/stocks.yml") -> Config:
-    config_path = Path(path)
+_DEFAULT_CONFIG_PATH = Path(__file__).parent.parent / "config" / "stocks.yml"
+
+
+def load_config(path: str | Path | None = None) -> Config:
+    config_path = Path(path) if path is not None else _DEFAULT_CONFIG_PATH
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
 

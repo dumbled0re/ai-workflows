@@ -9,10 +9,12 @@ logger = logging.getLogger(__name__)
 _MAX_BLOCKS_PER_MESSAGE = 50
 _PREDICTION_EMOJI = {"UP": ":chart_with_upwards_trend:", "DOWN": ":chart_with_downwards_trend:"}
 _CONFIDENCE_EMOJI = {"HIGH": ":large_green_circle:", "MEDIUM": ":large_yellow_circle:", "LOW": ":red_circle:"}
+_SLACK_POST_URL = "https://slack.com/api/chat.postMessage"
 
 
 def send_analysis_to_slack(
-    webhook_url: str,
+    bot_token: str,
+    channel: str,
     holdings_analysis: dict,
     discovery_results: dict,
     timing: str,
@@ -21,7 +23,8 @@ def send_analysis_to_slack(
     """Format and send the analysis report to Slack.
 
     Args:
-        webhook_url: Slack Incoming Webhook URL
+        bot_token: Slack Bot User OAuth Token (xoxb-...)
+        channel: Slack channel ID or #name
         holdings_analysis: Claude holdings analysis result
         discovery_results: Claude discovery result
         timing: "morning" or "evening"
@@ -31,18 +34,18 @@ def send_analysis_to_slack(
         True if sent successfully
     """
     if holdings_analysis.get("error"):
-        return _send_error(webhook_url, holdings_analysis.get("message", "不明なエラー"))
+        return _send_error(bot_token, channel, holdings_analysis.get("message", "不明なエラー"))
 
     blocks = _build_blocks(holdings_analysis, discovery_results, timing, data_quality)
-    return _send_blocks(webhook_url, blocks)
+    return _send_blocks(bot_token, channel, blocks)
 
 
-def send_error_to_slack(webhook_url: str, error_message: str) -> bool:
+def send_error_to_slack(bot_token: str, channel: str, error_message: str) -> bool:
     """Send error notification to Slack."""
-    return _send_error(webhook_url, error_message)
+    return _send_error(bot_token, channel, error_message)
 
 
-def send_market_closed_to_slack(webhook_url: str, date_str: str) -> bool:
+def send_market_closed_to_slack(bot_token: str, channel: str, date_str: str) -> bool:
     """Send market closed notification."""
     blocks = [
         {"type": "header", "text": {"type": "plain_text", "text": f"本日休場 - {date_str}"}},
@@ -51,7 +54,26 @@ def send_market_closed_to_slack(webhook_url: str, date_str: str) -> bool:
             "text": {"type": "mrkdwn", "text": "本日は東京証券取引所の休場日のため、分析はスキップしました。"},
         },
     ]
-    return _post_webhook(webhook_url, {"blocks": blocks})
+    return _post_message(bot_token, channel, blocks, fallback_text=f"本日休場 - {date_str}")
+
+
+def send_save_failure_to_slack(bot_token: str, channel: str) -> bool:
+    """Notify Slack when prediction-tracking data fails to commit/push."""
+    blocks = [
+        {"type": "header", "text": {"type": "plain_text", "text": ":rotating_light: データ保存失敗"}},
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    "予測追跡データのgit pushが失敗しました。\n"
+                    "改善ループが停止しています。\n\n"
+                    "GitHub Actionsのログを確認してください。"
+                ),
+            },
+        },
+    ]
+    return _post_message(bot_token, channel, blocks, fallback_text="データ保存失敗")
 
 
 def _build_blocks(
@@ -251,21 +273,21 @@ def _format_long_term_block(r: dict) -> dict:
     return {"type": "section", "text": {"type": "mrkdwn", "text": text}}
 
 
-def _send_blocks(webhook_url: str, blocks: list[dict]) -> bool:
+def _send_blocks(bot_token: str, channel: str, blocks: list[dict]) -> bool:
     """Send blocks to Slack, splitting into multiple messages if needed."""
     if len(blocks) <= _MAX_BLOCKS_PER_MESSAGE:
-        return _post_webhook(webhook_url, {"blocks": blocks})
+        return _post_message(bot_token, channel, blocks, fallback_text="日本株AI分析レポート")
 
     # Split into chunks
     success = True
     for i in range(0, len(blocks), _MAX_BLOCKS_PER_MESSAGE):
         chunk = blocks[i : i + _MAX_BLOCKS_PER_MESSAGE]
-        if not _post_webhook(webhook_url, {"blocks": chunk}):
+        if not _post_message(bot_token, channel, chunk, fallback_text="日本株AI分析レポート"):
             success = False
     return success
 
 
-def _send_error(webhook_url: str, message: str) -> bool:
+def _send_error(bot_token: str, channel: str, message: str) -> bool:
     """Send an error notification to Slack."""
     # Sanitize error message to avoid leaking secrets
     sanitized = _sanitize_error(message)
@@ -277,7 +299,7 @@ def _send_error(webhook_url: str, message: str) -> bool:
             "elements": [{"type": "mrkdwn", "text": "GitHub Actionsのログを確認してください。"}],
         },
     ]
-    return _post_webhook(webhook_url, {"blocks": blocks})
+    return _post_message(bot_token, channel, blocks, fallback_text="株分析エラー")
 
 
 def _sanitize_error(message: str) -> str:
@@ -292,14 +314,26 @@ def _sanitize_error(message: str) -> str:
     return sanitized[:500]  # Limit length
 
 
-def _post_webhook(webhook_url: str, payload: dict) -> bool:
-    """POST to Slack webhook."""
+def _post_message(bot_token: str, channel: str, blocks: list[dict], *, fallback_text: str) -> bool:
+    """POST to Slack chat.postMessage with bot token."""
     try:
-        resp = requests.post(webhook_url, json=payload, timeout=10)
-        if resp.status_code == 200:
-            return True
-        logger.error("Slack webhook failed: %d %s", resp.status_code, resp.text)
-        return False
+        resp = requests.post(
+            _SLACK_POST_URL,
+            headers={
+                "Authorization": f"Bearer {bot_token}",
+                "Content-Type": "application/json; charset=utf-8",
+            },
+            json={"channel": channel, "text": fallback_text, "blocks": blocks},
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            logger.error("Slack HTTP failed: %d %s", resp.status_code, resp.text)
+            return False
+        body = resp.json()
+        if not body.get("ok"):
+            logger.error("Slack API error: %s", body.get("error", "unknown"))
+            return False
+        return True
     except requests.RequestException:
-        logger.error("Slack webhook request failed", exc_info=True)
+        logger.error("Slack request failed", exc_info=True)
         return False

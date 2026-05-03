@@ -5,10 +5,12 @@ import logging
 import os
 import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import jpholiday
 
 JST = timezone(timedelta(hours=9))
+_DATA_DIR = Path(__file__).parent.parent / "data"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,13 +47,14 @@ def phase_prepare() -> None:
 
     logger.info("Phase 1 (Prepare): %s (%s)", date_str, timing)
 
-    slack_webhook = os.environ.get("SLACK_WEBHOOK_URL")
+    slack_token = os.environ.get("SLACK_BOT_TOKEN")
+    slack_channel = os.environ.get("SLACK_CHANNEL_STOCK")
 
     # Market calendar check
     if not is_market_day(now_jst):
         logger.info("Market is closed today (%s)", date_str)
-        if slack_webhook:
-            send_market_closed_to_slack(slack_webhook, date_str)
+        if slack_token and slack_channel:
+            send_market_closed_to_slack(slack_token, slack_channel, date_str)
         sys.exit(0)
 
     # Load config
@@ -221,7 +224,7 @@ def phase_prepare() -> None:
     )
 
     # Save current prices for Phase 3 (prediction tracking)
-    meta_dir = Path("stock_analyzer/data")
+    meta_dir = _DATA_DIR
     meta_dir.mkdir(exist_ok=True)
     with open(meta_dir / "current_prices.json", "w", encoding="utf-8") as f:
         json.dump(current_prices, f)
@@ -244,13 +247,17 @@ def phase_notify() -> None:
 
     logger.info("Phase 3 (Notify): Sending results to Slack")
 
-    slack_webhook = os.environ.get("SLACK_WEBHOOK_URL")
-    if not slack_webhook:
-        logger.error("SLACK_WEBHOOK_URL not set")
+    slack_token = os.environ.get("SLACK_BOT_TOKEN")
+    slack_channel = os.environ.get("SLACK_CHANNEL_STOCK")
+    if not slack_token:
+        logger.error("SLACK_BOT_TOKEN not set")
+        sys.exit(1)
+    if not slack_channel:
+        logger.error("SLACK_CHANNEL_STOCK not set")
         sys.exit(1)
 
     # Load metadata
-    meta_path = Path("stock_analyzer/data/meta.json")
+    meta_path = _DATA_DIR / "meta.json"
     if meta_path.exists():
         with open(meta_path, encoding="utf-8") as f:
             meta = json.load(f)
@@ -264,7 +271,7 @@ def phase_notify() -> None:
     perf_history = load_history()
     # Load current prices from the analysis input (saved during prepare phase)
     current_prices: dict[str, float] = {}
-    input_path = Path("stock_analyzer/data/analysis_input.json")
+    input_path = _DATA_DIR / "analysis_input.json"
     if input_path.exists():
         try:
             with open(input_path, encoding="utf-8") as f:
@@ -279,7 +286,7 @@ def phase_notify() -> None:
 
     # Extract current prices from meta or re-derive from results
     # The simplest approach: load from the previously saved candidates data
-    prices_path = Path("stock_analyzer/data/current_prices.json")
+    prices_path = _DATA_DIR / "current_prices.json"
     if prices_path.exists():
         try:
             with open(prices_path, encoding="utf-8") as f:
@@ -298,7 +305,8 @@ def phase_notify() -> None:
 
     # Send to Slack
     success = send_analysis_to_slack(
-        webhook_url=slack_webhook,
+        bot_token=slack_token,
+        channel=slack_channel,
         holdings_analysis=holdings_result,
         discovery_results=discovery_result,
         timing=meta["timing"],
@@ -330,7 +338,7 @@ def phase_review() -> None:
 
     prompt = build_weekly_review_prompt(perf_history, strategy_notes)
 
-    out = Path("stock_analyzer/data")
+    out = _DATA_DIR
     out.mkdir(exist_ok=True)
     with open(out / "review_prompt.txt", "w", encoding="utf-8") as f:
         f.write(prompt)
@@ -353,7 +361,7 @@ def phase_apply_review() -> None:
 
     logger.info("Applying weekly review results")
 
-    review_path = Path("stock_analyzer/data/review_result.json")
+    review_path = _DATA_DIR / "review_result.json"
     if not review_path.exists():
         logger.error("Review result not found: %s", review_path)
         sys.exit(1)
@@ -393,16 +401,30 @@ def phase_apply_review() -> None:
     )
 
 
+def phase_notify_save_failure() -> None:
+    """Slack-notify when prediction-tracking data fails to commit/push."""
+    from stock_analyzer.slack_notifier import send_save_failure_to_slack
+
+    token = os.environ.get("SLACK_BOT_TOKEN")
+    channel = os.environ.get("SLACK_CHANNEL_STOCK")
+    if not token or not channel:
+        logger.error("SLACK_BOT_TOKEN / SLACK_CHANNEL_STOCK not set")
+        sys.exit(1)
+    if not send_save_failure_to_slack(token, channel):
+        sys.exit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="JP Stock Analyzer")
     parser.add_argument(
         "phase",
-        choices=["prepare", "notify", "review", "apply-review"],
+        choices=["prepare", "notify", "review", "apply-review", "notify-save-failure"],
         help=(
             "Phase to run: 'prepare' (fetch data & build prompts), "
             "'notify' (send results to Slack), "
             "'review' (build weekly review prompt), "
-            "'apply-review' (apply review results)"
+            "'apply-review' (apply review results), "
+            "'notify-save-failure' (notify Slack about a tracking-data push failure)"
         ),
     )
     args = parser.parse_args()
@@ -415,6 +437,8 @@ def main() -> None:
         phase_review()
     elif args.phase == "apply-review":
         phase_apply_review()
+    elif args.phase == "notify-save-failure":
+        phase_notify_save_failure()
 
 
 if __name__ == "__main__":
@@ -424,10 +448,11 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         logger.exception("Fatal error in stock analysis")
-        webhook = os.environ.get("SLACK_WEBHOOK_URL")
-        if webhook:
+        token = os.environ.get("SLACK_BOT_TOKEN")
+        channel = os.environ.get("SLACK_CHANNEL_STOCK")
+        if token and channel:
             try:
-                send_error_to_slack(webhook, str(e))
+                send_error_to_slack(token, channel, str(e))
             except Exception:
                 pass
         sys.exit(1)

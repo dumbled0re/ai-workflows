@@ -7,8 +7,9 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_STRATEGY_NOTES_FILE = "stock_analyzer/data/strategy_notes.json"
-_SCREENING_WEIGHTS_FILE = "stock_analyzer/data/screening_weights.json"
+_DATA_DIR = Path(__file__).parent.parent / "data"
+_STRATEGY_NOTES_FILE = str(_DATA_DIR / "strategy_notes.json")
+_SCREENING_WEIGHTS_FILE = str(_DATA_DIR / "screening_weights.json")
 
 # Default screening weights (used when no tuned weights exist)
 DEFAULT_WEIGHTS = {
