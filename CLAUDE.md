@@ -58,11 +58,12 @@ Hacker News、GitHub Trending、arXiv、AI企業公式ブログ（Anthropic/Open
 
 **実行:**
 ```bash
-python -m tech_catchup.main gather   # ニュース収集
-python -m tech_catchup.main notify   # Slack通知
+cd tech_catchup
+uv run python -m tech_catchup.main gather   # ニュース収集
+uv run python -m tech_catchup.main notify   # Slack通知
 ```
 
-**Slack通知:** `SLACK_WEBHOOK_URL_TECH`（AI専用チャンネル）
+**Slack通知:** `SLACK_BOT_TOKEN` + `SLACK_CHANNEL_TECH`（AI専用チャンネル）
 
 ### todo
 
@@ -84,7 +85,7 @@ uv run python -m todo.main notify             # Slack通知（要 SLACK_WEBHOOK_
 | プロジェクト | 管理方法 | 状態 |
 |---|---|---|
 | stock_analyzer | requirements.txt | uv へ移行予定 |
-| tech_catchup | requirements.txt | uv へ移行予定 |
+| tech_catchup | uv + pyproject.toml + uv.lock | ✅ |
 | moppy_clicker | uv + pyproject.toml + uv.lock | ✅ |
 | todo | uv + pyproject.toml + uv.lock | ✅ |
 
@@ -108,9 +109,9 @@ uv run python -m todo.main notify             # Slack通知（要 SLACK_WEBHOOK_
 | `CLAUDE_CODE_OAUTH_TOKEN` | Claude Code Action認証 |
 | `SLACK_BOT_TOKEN` | Slack Bot User OAuth Token (`xoxb-...`)。全プロジェクト共有 |
 | `SLACK_CHANNEL_TODO` | TODO通知先チャンネル（例: `#todo` または ID） |
+| `SLACK_CHANNEL_TECH` | AI Tech Catchupの通知先チャンネル |
 | `SLACK_CHANNEL_MOPPY` | モッピー自動クリックの通知先チャンネル |
 | `SLACK_WEBHOOK_URL` | 株分析の通知先（旧方式・Bot移行予定） |
-| `SLACK_WEBHOOK_URL_TECH` | AI Tech Catchupの通知先（旧方式・Bot移行予定） |
 | `GMAIL_USER` / `GMAIL_APP_PASSWORD` | モッピーメール受信用 |
 
 ### Slack通知の方針

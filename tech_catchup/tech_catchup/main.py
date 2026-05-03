@@ -90,7 +90,7 @@ def phase_gather() -> None:
   （これらはユーザの日常開発に直結する must-watch ツール）
 """
 
-    out = Path("tech_catchup/data")
+    out = Path(__file__).parent.parent / "data"
     out.mkdir(exist_ok=True)
     with open(out / "tech_catchup_prompt.txt", "w", encoding="utf-8") as f:
         f.write(prompt)
@@ -100,16 +100,18 @@ def phase_gather() -> None:
 
 def phase_notify() -> None:
     """Read Claude's tech summary and send to Slack."""
-    import requests
-
     logger.info("Sending tech catchup to Slack")
 
-    slack_webhook = os.environ.get("SLACK_WEBHOOK_URL")
-    if not slack_webhook:
-        logger.error("SLACK_WEBHOOK_URL not set")
+    slack_token = os.environ.get("SLACK_BOT_TOKEN")
+    slack_channel = os.environ.get("SLACK_CHANNEL_TECH")
+    if not slack_token:
+        logger.error("SLACK_BOT_TOKEN not set")
+        sys.exit(1)
+    if not slack_channel:
+        logger.error("SLACK_CHANNEL_TECH not set")
         sys.exit(1)
 
-    result_path = Path("tech_catchup/data/tech_catchup_result.json")
+    result_path = Path(__file__).parent.parent / "data" / "tech_catchup_result.json"
     if not result_path.exists():
         logger.error("Tech catchup result not found")
         sys.exit(1)
@@ -134,7 +136,7 @@ def phase_notify() -> None:
             sys.exit(1)
 
     blocks = _build_slack_blocks(result)
-    _send_to_slack(slack_webhook, blocks)
+    _send_to_slack(slack_token, slack_channel, blocks, result.get("date", ""))
 
 
 def _build_slack_blocks(result: dict) -> list[dict]:
@@ -186,17 +188,31 @@ def _build_slack_blocks(result: dict) -> list[dict]:
     return blocks
 
 
-def _send_to_slack(webhook_url: str, blocks: list[dict]) -> None:
-    """Send blocks to Slack."""
+def _send_to_slack(bot_token: str, channel: str, blocks: list[dict], date_str: str) -> None:
+    """Post blocks to Slack via chat.postMessage (bot token)."""
     import requests as req
 
-    resp = req.post(webhook_url, json={"blocks": blocks}, timeout=10)
-    if resp.status_code == 200:
-        logger.info("Tech catchup sent to Slack")
-    else:
-        logger.error("Slack webhook failed: %d %s", resp.status_code, resp.text)
+    resp = req.post(
+        "https://slack.com/api/chat.postMessage",
+        headers={
+            "Authorization": f"Bearer {bot_token}",
+            "Content-Type": "application/json; charset=utf-8",
+        },
+        json={
+            "channel": channel,
+            "text": f"AI Tech Catchup - {date_str}",
+            "blocks": blocks,
+        },
+        timeout=15,
+    )
+    resp.raise_for_status()
+    body = resp.json()
+    if not body.get("ok"):
+        logger.error("Slack API error: %s", body.get("error", "unknown"))
         # Print result as fallback
         print(json.dumps(blocks, ensure_ascii=False, indent=2))
+        sys.exit(1)
+    logger.info("Tech catchup sent to Slack channel=%s (%d blocks)", channel, len(blocks))
 
 
 def main() -> None:

@@ -7,7 +7,7 @@ GitHub Actions と Claude を活用した個人用自動化ワークフロー集
 | プロジェクト | 概要 | 実行頻度 | 通知方式 |
 |---|---|---|---|
 | [`stock_analyzer/`](./stock_analyzer/) | 日本株の短期投資分析（テクニカル + ファンダ + ニュース + 信用残）。自律改善ループ（予測記録 → 検証 → 戦略更新）付き | 毎日 8:00 / 16:00 JST、土曜 10:00 JST にレビュー | Webhook（Bot移行予定） |
-| [`tech_catchup/`](./tech_catchup/) | AI 業界のニュース・新リリースを Hacker News / GitHub Trending / arXiv / AI 企業公式ブログから収集して要約 | 毎朝 7:30 JST | Webhook（Bot移行予定） |
+| [`tech_catchup/`](./tech_catchup/) | AI 業界のニュース・新リリースを Hacker News / GitHub Trending / arXiv / AI 企業公式ブログから収集して要約 | 毎朝 7:30 JST | Bot Token + `SLACK_CHANNEL_TECH` |
 | [`moppy_clicker/`](./moppy_clicker/) | モッピーの「クリックでポイント」メールを IMAP で取得し、自動クリック（HTTP GET）して Slack 通知 | 毎日 9:00 JST | Bot Token + `SLACK_CHANNEL_MOPPY` |
 | [`todo/`](./todo/) | 個人 TODO リスト。Claude Code の `todo` skill で `todos.md` を編集し、毎朝 Slack に未完了タスクを通知 | 毎朝 9:00 JST | Bot Token + `SLACK_CHANNEL_TODO` |
 
@@ -27,9 +27,9 @@ GitHub Actions と Claude を活用した個人用自動化ワークフロー集
 | `CLAUDE_CODE_OAUTH_TOKEN` | 全 Claude Code Action 共通の認証 |
 | `SLACK_BOT_TOKEN` | Slack Bot User OAuth Token (`xoxb-...`)。新方式・全プロジェクト共有 |
 | `SLACK_CHANNEL_TODO` | TODO 通知先チャンネル |
+| `SLACK_CHANNEL_TECH` | AI ニュースの通知先チャンネル |
 | `SLACK_CHANNEL_MOPPY` | モッピー自動クリックの通知先チャンネル |
 | `SLACK_WEBHOOK_URL` | 株分析の通知（旧方式・Bot 移行予定） |
-| `SLACK_WEBHOOK_URL_TECH` | AI ニュースの通知（旧方式・Bot 移行予定） |
 | `MOPPY_IMAP_USER` / `MOPPY_IMAP_PASS` | モッピーメール受信用 IMAP 認証（Gmail App Password など） |
 
 ## ローカル実行
@@ -41,9 +41,10 @@ GitHub Actions と Claude を活用した個人用自動化ワークフロー集
 python -m stock_analyzer.main prepare    # データ収集・指標計算
 python -m stock_analyzer.main notify     # Slack 通知
 
-# AI ニュースキャッチアップ
-python -m tech_catchup.main gather       # ニュース収集
-python -m tech_catchup.main notify       # Slack 通知
+# AI ニュースキャッチアップ（uv 管理）
+cd tech_catchup && uv sync
+uv run python -m tech_catchup.main gather       # ニュース収集
+uv run python -m tech_catchup.main notify       # Slack 通知
 
 # モッピー自動クリック（uv 管理）
 cd moppy_clicker && uv sync
