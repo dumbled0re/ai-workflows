@@ -234,7 +234,7 @@ https://pc.moppy.jp/cc/c?t=<base64-ish token>
 
 ### 6. `notifier.py`
 
-**通知先:** 専用 webhook `SLACK_WEBHOOK_URL_MOPPY`（株分析と兼用にしない）
+**通知先:** Slack Bot Token (`SLACK_BOT_TOKEN`) + 専用チャンネル (`SLACK_CHANNEL_MOPPY`)。Bot Token は ai-workflows 全プロジェクト共有、チャンネルだけ分ける。
 
 **通常時:**
 ```
@@ -277,7 +277,8 @@ def redact_subject(subject: str, prefix_len: int = 5) -> str:
 |---|---|---|---|
 | `GMAIL_USER` | ◯ | - | Gmail アドレス（フル） |
 | `GMAIL_APP_PASSWORD` | ◯ | - | 16文字 app password（空白OK・自動strip） |
-| `SLACK_WEBHOOK_URL_MOPPY` | ◯ | - | Slack通知先 |
+| `SLACK_BOT_TOKEN` | ◯ | - | Slack Bot User OAuth Token (`xoxb-...`)。全プロジェクト共有 |
+| `SLACK_CHANNEL_MOPPY` | ◯ | - | Slack 通知先チャンネル ID または `#channel-name` |
 | `MOPPY_GMAIL_QUERY` | - | `from:moppy.jp -label:moppy-clicked newer_than:3d` | Gmail検索クエリ（X-GM-RAW構文） |
 | `MOPPY_DRY_RUN` | - | `0` | `1` でクリック実行せず候補一覧のみ通知 |
 | `MOPPY_CLICK_INTERVAL_MIN` | - | `5` | クリック間隔最小秒（≥1） |
@@ -292,8 +293,9 @@ def redact_subject(subject: str, prefix_len: int = 5) -> str:
 - `GMAIL_USER`: `@` を含むこと
 - `GMAIL_APP_PASSWORD`: 空白除去後 16文字
 - 数値: 型チェック + 範囲（INTERVAL_MIN ≥ 1, MIN ≤ MAX, MAX_ATTEMPTS 1-10, MAX_MESSAGES 1-500）
-- `SLACK_WEBHOOK_URL_MOPPY`: `https://hooks.slack.com/` で始まること
-- 失敗時 fail-fast、Slack 通知は出さない（webhook 自体が無効な可能性）
+- `SLACK_BOT_TOKEN`: `xoxb-` で始まること
+- `SLACK_CHANNEL_MOPPY`: 必須（チャンネル ID または `#name`）
+- 失敗時 fail-fast、Slack 通知は出さない（token/channel 自体が無効な可能性）
 
 ## CLI
 
@@ -301,11 +303,13 @@ def redact_subject(subject: str, prefix_len: int = 5) -> str:
 cd moppy_clicker && uv sync
 
 # dry-run: クリックせず、候補一覧を Slack に通知
-GMAIL_USER=... GMAIL_APP_PASSWORD=... SLACK_WEBHOOK_URL_MOPPY=... \
+GMAIL_USER=... GMAIL_APP_PASSWORD=... \
+  SLACK_BOT_TOKEN=xoxb-... SLACK_CHANNEL_MOPPY=#moppy \
   uv run python -m moppy_clicker.main run --dry-run
 
 # 本番実行
-GMAIL_USER=... GMAIL_APP_PASSWORD=... SLACK_WEBHOOK_URL_MOPPY=... \
+GMAIL_USER=... GMAIL_APP_PASSWORD=... \
+  SLACK_BOT_TOKEN=xoxb-... SLACK_CHANNEL_MOPPY=#moppy \
   uv run python -m moppy_clicker.main run
 
 # 単一URL手動テスト（scheme/host が moppy 配下のみ受理）
@@ -328,7 +332,8 @@ uv run python -m moppy_clicker.main state --message-id <uid>
 |---|---|
 | `GMAIL_USER` | Gmail アドレス（フル） |
 | `GMAIL_APP_PASSWORD` | アプリパスワード（16文字、空白含んでもOK） |
-| `SLACK_WEBHOOK_URL_MOPPY` | Slack incoming webhook URL |
+| `SLACK_BOT_TOKEN` | Slack Bot User OAuth Token (`xoxb-...`)。ai-workflows 全プロジェクト共有 |
+| `SLACK_CHANNEL_MOPPY` | Slack 通知先チャンネル（ID または `#name`） |
 
 **安全策:**
 - `concurrency` で cron×手動の二重起動を防止
@@ -355,11 +360,12 @@ uv run python -m moppy_clicker.main state --message-id <uid>
 
 1. **Gmail で 2段階認証を ON**: https://myaccount.google.com/security
 2. **アプリパスワード生成**: https://myaccount.google.com/apppasswords → 16文字パスワードを発行
-3. **Slack incoming webhook 作成**（モッピー専用 channel 推奨、株分析と兼用しない）
+3. **Slack 通知先チャンネル準備**（モッピー専用、株分析等と兼用しない）。Bot を `/invite` で招待。Bot Token (`SLACK_BOT_TOKEN`) は ai-workflows 全プロジェクト共有のものを利用。
 4. **GitHub Secrets 登録**（リポジトリ Settings → Secrets and variables → Actions）:
    - `GMAIL_USER` = メアド
    - `GMAIL_APP_PASSWORD` = ステップ2で発行したパスワード
-   - `SLACK_WEBHOOK_URL_MOPPY` = ステップ3の URL
+   - `SLACK_BOT_TOKEN` = `xoxb-...`（既存の場合はそのまま）
+   - `SLACK_CHANNEL_MOPPY` = ステップ3で決めたチャンネル名（例: `#moppy`）または ID
 5. **手動 workflow_dispatch で dry-run** → Slack に候補リンクが届くか確認
 6. 問題なければ自動 cron 運用へ
 3. **Google Cloud Console** で OAuth client 作成 → Production 公開設定（refresh token 7日失効回避）

@@ -1,4 +1,4 @@
-"""Slack incoming-webhook notifier.
+"""Slack chat.postMessage notifier (bot-token based).
 
 Output is heavily redacted: subjects truncated to 5 chars, URLs reduced to host
 only. Body HTML is never forwarded to Slack.
@@ -17,22 +17,31 @@ from .redaction import host_only
 
 logger = logging.getLogger(__name__)
 
+SLACK_POST_URL = "https://slack.com/api/chat.postMessage"
+
 
 class Notifier:
-    def __init__(self, webhook_url: str) -> None:
-        self._webhook = webhook_url
+    def __init__(self, bot_token: str, channel: str) -> None:
+        self._token = bot_token
+        self._channel = channel
 
     def _post(self, payload: dict[str, str]) -> None:
-        data = json.dumps(payload).encode("utf-8")
+        body = {**payload, "channel": self._channel}
+        data = json.dumps(body).encode("utf-8")
         req = urllib.request.Request(
-            self._webhook,
+            SLACK_POST_URL,
             data=data,
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json; charset=utf-8",
+                "Authorization": f"Bearer {self._token}",
+            },
             method="POST",
         )
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
-                resp.read()
+                response = json.loads(resp.read().decode("utf-8"))
+                if not response.get("ok"):
+                    logger.warning("slack notify failed: %s", response.get("error", "unknown"))
         except (urllib.error.URLError, TimeoutError) as exc:
             logger.warning("slack notify failed: %s", exc)
 

@@ -107,10 +107,10 @@ uv run python -m todo.main notify             # Slack通知（要 SLACK_WEBHOOK_
 |---|---|
 | `CLAUDE_CODE_OAUTH_TOKEN` | Claude Code Action認証 |
 | `SLACK_BOT_TOKEN` | Slack Bot User OAuth Token (`xoxb-...`)。全プロジェクト共有 |
-| `SLACK_CHANNEL_TODO` | TODO通知先チャンネルID（例: `C0123ABCD`）または `#channel-name` |
+| `SLACK_CHANNEL_TODO` | TODO通知先チャンネル（例: `#todo` または ID） |
+| `SLACK_CHANNEL_MOPPY` | モッピー自動クリックの通知先チャンネル |
 | `SLACK_WEBHOOK_URL` | 株分析の通知先（旧方式・Bot移行予定） |
 | `SLACK_WEBHOOK_URL_TECH` | AI Tech Catchupの通知先（旧方式・Bot移行予定） |
-| `SLACK_WEBHOOK_URL_MOPPY` | モッピー自動クリックの通知先（旧方式・Bot移行予定） |
 | `GMAIL_USER` / `GMAIL_APP_PASSWORD` | モッピーメール受信用 |
 
 ### Slack通知の方針

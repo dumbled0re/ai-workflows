@@ -44,7 +44,8 @@ jobs:
 
       - name: Run
         env:
-          SLACK_WEBHOOK_URL_MOPPY: ${{ secrets.SLACK_WEBHOOK_URL_MOPPY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_MOPPY: ${{ secrets.SLACK_CHANNEL_MOPPY }}
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           MOPPY_DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}

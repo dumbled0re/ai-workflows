@@ -51,7 +51,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 def cmd_run(cfg: Config, dry_run: bool, max_messages: int | None, notify: bool) -> int:
     started_at = datetime.now(UTC)
-    notifier = Notifier(cfg.slack_webhook_url) if notify else None
+    notifier = Notifier(cfg.slack_bot_token, cfg.slack_channel) if notify else None
 
     try:
         gmail = GmailClient(cfg.gmail_user, cfg.gmail_app_password)

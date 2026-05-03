@@ -38,7 +38,8 @@ def _env_str(name: str, default: str | None = None, *, required: bool = False) -
 class Config:
     gmail_user: str
     gmail_app_password: str
-    slack_webhook_url: str
+    slack_bot_token: str
+    slack_channel: str
     gmail_query: str
     dry_run: bool
     click_interval_min: int
@@ -51,10 +52,13 @@ class Config:
 
     @classmethod
     def from_env(cls) -> Config:
-        webhook = _env_str("SLACK_WEBHOOK_URL_MOPPY", required=True)
-        assert webhook is not None
-        if not webhook.startswith("https://hooks.slack.com/"):
-            raise ConfigError("SLACK_WEBHOOK_URL_MOPPY must start with https://hooks.slack.com/")
+        bot_token = _env_str("SLACK_BOT_TOKEN", required=True)
+        assert bot_token is not None
+        if not bot_token.startswith("xoxb-"):
+            raise ConfigError("SLACK_BOT_TOKEN must start with xoxb-")
+
+        slack_channel = _env_str("SLACK_CHANNEL_MOPPY", required=True)
+        assert slack_channel is not None
 
         gmail_user = _env_str("GMAIL_USER", required=True)
         assert gmail_user is not None
@@ -83,7 +87,8 @@ class Config:
         return cls(
             gmail_user=gmail_user,
             gmail_app_password=cleaned_password,
-            slack_webhook_url=webhook,
+            slack_bot_token=bot_token,
+            slack_channel=slack_channel,
             gmail_query=_env_str(
                 "MOPPY_GMAIL_QUERY",
                 "from:moppy.jp -label:moppy-clicked -label:moppy-no-coins newer_than:3d",
