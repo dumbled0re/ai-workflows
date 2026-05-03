@@ -90,59 +90,123 @@ def sort_todos(todos: list[Todo]) -> list[Todo]:
     return sorted(todos, key=lambda t: (t.deadline or far_future, t.text))
 
 
-def format_for_slack(todos: list[Todo]) -> str:
-    today = datetime.now(JST).date()
-    if not todos:
-        return f":white_check_mark: *TODO ({today.isoformat()})*\n やることはありません！"
+WEEKDAY_JP = ["月", "火", "水", "木", "金", "土", "日"]
 
-    overdue: list[Todo] = []
-    today_items: list[Todo] = []
-    this_week: list[Todo] = []
-    later: list[Todo] = []
-    no_deadline: list[Todo] = []
+
+def _bucket(todos: list[Todo]) -> dict[str, list[Todo]]:
+    today = datetime.now(JST).date()
+    buckets: dict[str, list[Todo]] = {
+        "overdue": [],
+        "today": [],
+        "this_week": [],
+        "later": [],
+        "no_deadline": [],
+    }
     for t in todos:
         if t.deadline is None:
-            no_deadline.append(t)
+            buckets["no_deadline"].append(t)
         elif t.deadline < today:
-            overdue.append(t)
+            buckets["overdue"].append(t)
         elif t.deadline == today:
-            today_items.append(t)
+            buckets["today"].append(t)
         elif t.deadline <= today + timedelta(days=7):
-            this_week.append(t)
+            buckets["this_week"].append(t)
         else:
-            later.append(t)
-
-    parts = [f":memo: *TODO ({today.isoformat()})*"]
-
-    def section(title: str, items: list[Todo], show_date: bool = True) -> None:
-        if not items:
-            return
-        parts.append(f"\n*{title}*")
-        for t in items:
-            if show_date and t.deadline is not None:
-                days = t.days_until
-                suffix = ""
-                if days is not None:
-                    if days < 0:
-                        suffix = f"  _({-days}日超過)_"
-                    elif days == 0:
-                        suffix = "  _(今日)_"
-                    else:
-                        suffix = f"  _(あと{days}日)_"
-                parts.append(f"• `{t.deadline.isoformat()}` {t.text}{suffix}")
-            else:
-                parts.append(f"• {t.text}")
-
-    section(":rotating_light: 期限超過", overdue)
-    section(":fire: 今日", today_items)
-    section(":calendar: 今週中", this_week)
-    section(":date: それ以降", later)
-    section(":hourglass: 期限なし", no_deadline, show_date=False)
-
-    return "\n".join(parts)
+            buckets["later"].append(t)
+    return buckets
 
 
-def send_to_slack(text: str) -> None:
+def _format_item(t: Todo, *, show_date: bool) -> str:
+    if not show_date or t.deadline is None:
+        return f"•  {t.text}"
+    d = t.deadline
+    date_str = f"{d.month}/{d.day}({WEEKDAY_JP[d.weekday()]})"
+    days = t.days_until
+    if days is None:
+        suffix = ""
+    elif days < 0:
+        suffix = f"  _← {-days}日超過_"
+    elif days == 0:
+        suffix = "  _← 今日_"
+    else:
+        suffix = f"  _← あと{days}日_"
+    return f"•  `{date_str}`  {t.text}{suffix}"
+
+
+def _section_block(title_emoji: str, title: str, items: list[Todo], *, show_date: bool) -> dict | None:
+    if not items:
+        return None
+    lines = [f"{title_emoji}  *{title}*  ({len(items)})"]
+    lines.extend(_format_item(t, show_date=show_date) for t in items)
+    return {"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(lines)}}
+
+
+def format_for_slack_blocks(todos: list[Todo]) -> tuple[list[dict], str]:
+    """Return (blocks, fallback_text) for chat.postMessage."""
+    today = datetime.now(JST).date()
+    today_str = f"{today.isoformat()} ({WEEKDAY_JP[today.weekday()]})"
+
+    if not todos:
+        blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "📝 TODO リマインダー", "emoji": True},
+            },
+            {
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": today_str}],
+            },
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": ":white_check_mark:  *やることはありません！*"},
+            },
+        ]
+        return blocks, f"TODO ({today_str}) — やることはありません！"
+
+    b = _bucket(todos)
+    summary_parts = [f"*{today_str}*", f"計 {len(todos)} 件"]
+    if b["overdue"]:
+        summary_parts.append(f":rotating_light: 期限超過 {len(b['overdue'])}")
+    if b["today"]:
+        summary_parts.append(f":fire: 今日 {len(b['today'])}")
+    if b["this_week"]:
+        summary_parts.append(f":calendar: 今週 {len(b['this_week'])}")
+
+    blocks: list[dict] = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": "📝 TODO リマインダー", "emoji": True},
+        },
+        {
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": "  ·  ".join(summary_parts)}],
+        },
+        {"type": "divider"},
+    ]
+
+    sections = [
+        (":rotating_light:", "期限超過", b["overdue"], True),
+        (":fire:", "今日", b["today"], True),
+        (":calendar:", "今週中", b["this_week"], True),
+        (":date:", "それ以降", b["later"], True),
+        (":hourglass:", "期限なし", b["no_deadline"], False),
+    ]
+
+    first = True
+    for emoji, title, items, show_date in sections:
+        block = _section_block(emoji, title, items, show_date=show_date)
+        if block is None:
+            continue
+        if not first:
+            blocks.append({"type": "divider"})
+        blocks.append(block)
+        first = False
+
+    fallback_text = f"TODO ({today_str}) — 計 {len(todos)} 件"
+    return blocks, fallback_text
+
+
+def send_to_slack(blocks: list[dict], fallback_text: str) -> None:
     token = os.environ.get("SLACK_BOT_TOKEN")
     channel = os.environ.get("SLACK_CHANNEL_TODO")
     if not token:
@@ -157,7 +221,7 @@ def send_to_slack(text: str) -> None:
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json; charset=utf-8",
         },
-        json={"channel": channel, "text": text, "mrkdwn": True},
+        json={"channel": channel, "text": fallback_text, "blocks": blocks},
         timeout=15,
     )
     resp.raise_for_status()
@@ -165,23 +229,40 @@ def send_to_slack(text: str) -> None:
     if not body.get("ok"):
         logger.error("Slack API error: %s", body.get("error", "unknown"))
         sys.exit(1)
-    logger.info("Posted to Slack channel=%s (%d chars)", channel, len(text))
+    logger.info("Posted to Slack channel=%s (%d blocks)", channel, len(blocks))
+
+
+def _preview_blocks(blocks: list[dict]) -> str:
+    """Render Block Kit blocks as plaintext for terminal preview."""
+    out: list[str] = []
+    for blk in blocks:
+        t = blk.get("type")
+        if t == "header":
+            out.append("\n━━━ " + blk["text"]["text"] + " ━━━")
+        elif t == "context":
+            out.append("  " + " ".join(e.get("text", "") for e in blk.get("elements", [])))
+        elif t == "divider":
+            out.append("―" * 40)
+        elif t == "section":
+            out.append(blk["text"]["text"])
+    return "\n".join(out).lstrip("\n")
 
 
 def cmd_notify(args: argparse.Namespace) -> None:
     markdown = TODOS_PATH.read_text(encoding="utf-8")
     todos = sort_todos(parse_todos(markdown))
-    text = format_for_slack(todos)
+    blocks, fallback = format_for_slack_blocks(todos)
     if args.dry_run:
-        print(text)
+        print(_preview_blocks(blocks))
         return
-    send_to_slack(text)
+    send_to_slack(blocks, fallback)
 
 
 def cmd_list(args: argparse.Namespace) -> None:
     markdown = TODOS_PATH.read_text(encoding="utf-8")
     todos = sort_todos(parse_todos(markdown))
-    print(format_for_slack(todos))
+    blocks, _ = format_for_slack_blocks(todos)
+    print(_preview_blocks(blocks))
 
 
 def main() -> None:
