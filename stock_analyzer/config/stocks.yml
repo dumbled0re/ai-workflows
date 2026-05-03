@@ -13,6 +13,10 @@ holdings:
     name: "ジェリービーンズ"
     shares: 100
     avg_cost: 115
+  - ticker: "3133.T"
+    name: "海帆"
+    shares: 100
+    avg_cost: 354
   - ticker: "3350.T"
     name: "メタプラネット"
     shares: 200
@@ -31,8 +35,8 @@ holdings:
     avg_cost: 38
   - ticker: "4661.T"
     name: "OLC"
-    shares: 100
-    avg_cost: 3300
+    shares: 200
+    avg_cost: 2767
   - ticker: "4755.T"
     name: "楽天グループ"
     shares: 100
@@ -41,6 +45,14 @@ holdings:
     name: "SBIGアセットM"
     shares: 100
     avg_cost: 501
+  - ticker: "5129.T"
+    name: "FIXER"
+    shares: 100
+    avg_cost: 481
+  - ticker: "5721.T"
+    name: "エスクリプトエナジー"
+    shares: 100
+    avg_cost: 110
   - ticker: "7261.T"
     name: "マツダ"
     shares: 100
@@ -53,14 +65,18 @@ holdings:
     name: "アルメディオ"
     shares: 200
     avg_cost: 218
+  - ticker: "7974.T"
+    name: "任天堂"
+    shares: 10
+    avg_cost: 7530
   - ticker: "8173.T"
-    name: "上新電"
+    name: "Joshin"
     shares: 1
     avg_cost: 3320
   - ticker: "8202.T"
     name: "ラオックスHD"
     shares: 100
-    avg_cost: 199
+    avg_cost: 197
   - ticker: "8306.T"
     name: "三菱UFJ"
     shares: 100
