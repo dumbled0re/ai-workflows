@@ -34,6 +34,7 @@ class Clicker:
         read_timeout: float = 30.0,
         max_redirects: int = 10,
         user_agent: str = DEFAULT_USER_AGENT,
+        cookies: list[dict[str, object]] | None = None,
     ) -> None:
         self.interval_min = interval_min
         self.interval_max = interval_max
@@ -41,6 +42,42 @@ class Clicker:
         self.session = requests.Session()
         self.session.max_redirects = max_redirects
         self.session.headers.update({"User-Agent": user_agent})
+        self.authenticated = False
+        if cookies:
+            for c in cookies:
+                # ``secure`` defaults to True at the config layer so session
+                # cookies never travel over plain HTTP — important for the
+                # manual-click path which can be invoked with arbitrary URLs.
+                self.session.cookies.set(
+                    str(c["name"]),
+                    str(c["value"]),
+                    domain=str(c.get("domain", ".moppy.jp")),
+                    path=str(c.get("path", "/")),
+                    secure=bool(c.get("secure", True)),
+                )
+            self.authenticated = True
+
+    def verify_login(self, mypage_url: str = "https://pc.moppy.jp/mypage/") -> bool:
+        """GET mypage and check whether the session is logged in.
+
+        Heuristic: logged-in mypage contains 'ログアウト' (logout link); the
+        public landing redirects/returns a page without it. We avoid asserting
+        on a specific HTML structure to stay resilient to template changes.
+        """
+        try:
+            resp = self.session.get(mypage_url, timeout=self.timeout, allow_redirects=True)
+        except requests.RequestException as exc:
+            logger.warning("login verification request failed: %s", exc)
+            return False
+        if resp.status_code != 200:
+            logger.warning("login verification returned HTTP %d", resp.status_code)
+            return False
+        # If we landed back on a login/entry page, we are NOT logged in.
+        final_path = resp.url.lower() if resp.url else ""
+        if "login" in final_path or "/entry/" in final_path:
+            return False
+        body = resp.text
+        return "ログアウト" in body or "logout" in body.lower()
 
     def click(self, candidate: ClickCandidate) -> ClickResult:
         url_str = str(candidate.url)
@@ -104,12 +141,16 @@ ALLOWED_MANUAL_HOSTS = {
 
 
 def is_manual_url_allowed(url: str) -> bool:
-    """Restrict ``main click <URL>`` invocations to moppy hosts."""
+    """Restrict ``main click <URL>`` invocations to https moppy hosts.
+
+    Only ``https`` is accepted because authenticated clicks must never send
+    session cookies over plain HTTP.
+    """
     try:
         parsed = urlparse(url)
     except ValueError:
         return False
-    if parsed.scheme not in {"http", "https"}:
+    if parsed.scheme != "https":
         return False
     if not parsed.hostname:
         return False

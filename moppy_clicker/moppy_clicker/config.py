@@ -6,6 +6,7 @@ happens at process start (fail-fast).
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 
@@ -34,6 +35,47 @@ def _env_str(name: str, default: str | None = None, *, required: bool = False) -
     return value
 
 
+def _parse_cookies(raw: str | None) -> list[dict[str, object]] | None:
+    """Parse MOPPY_COOKIES env var (JSON-encoded list of cookie dicts).
+
+    Each entry must contain at least ``name`` and ``value``. ``domain``,
+    ``path`` and ``secure`` are optional (defaults: ``.moppy.jp`` / ``/`` /
+    ``True``). ``secure`` defaults to ``True`` so that an exported session
+    cookie is never accidentally sent over plain HTTP.
+    """
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ConfigError(f"MOPPY_COOKIES must be valid JSON: {exc}") from exc
+    if not isinstance(data, list):
+        raise ConfigError("MOPPY_COOKIES must be a JSON array of cookie objects")
+    cookies: list[dict[str, object]] = []
+    for i, item in enumerate(data):
+        if not isinstance(item, dict):
+            raise ConfigError(f"MOPPY_COOKIES[{i}] must be an object")
+        name = item.get("name")
+        value = item.get("value")
+        if not isinstance(name, str) or not name:
+            raise ConfigError(f"MOPPY_COOKIES[{i}].name must be a non-empty string")
+        if not isinstance(value, str):
+            raise ConfigError(f"MOPPY_COOKIES[{i}].value must be a string")
+        secure = item.get("secure", True)
+        if not isinstance(secure, bool):
+            raise ConfigError(f"MOPPY_COOKIES[{i}].secure must be a boolean")
+        cookies.append(
+            {
+                "name": name,
+                "value": value,
+                "domain": item.get("domain", ".moppy.jp"),
+                "path": item.get("path", "/"),
+                "secure": secure,
+            }
+        )
+    return cookies
+
+
 @dataclass(frozen=True)
 class Config:
     gmail_user: str
@@ -49,6 +91,7 @@ class Config:
     state_path: str
     log_level: str
     moppy_label: str
+    moppy_cookies: list[dict[str, object]] | None  # None = anonymous (no points credited)
 
     @classmethod
     def from_env(cls) -> Config:
@@ -83,11 +126,14 @@ class Config:
         if log_level not in {"DEBUG", "INFO", "WARNING", "ERROR"}:
             raise ConfigError(f"MOPPY_LOG_LEVEL invalid: {log_level}")
 
+        moppy_cookies = _parse_cookies(_env_str("MOPPY_COOKIES"))
+
         return cls(
             gmail_user=gmail_user,
             gmail_app_password=cleaned_password,
             slack_bot_token=bot_token,
             slack_channel=slack_channel,
+            moppy_cookies=moppy_cookies,
             gmail_query=_env_str(
                 "MOPPY_GMAIL_QUERY",
                 "from:moppy.jp -label:moppy-clicked -label:moppy-no-coins newer_than:3d",

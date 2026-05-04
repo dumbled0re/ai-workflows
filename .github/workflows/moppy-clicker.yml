@@ -1,8 +1,14 @@
 name: moppy-clicker
 
 on:
-  schedule:
-    - cron: "0 23 * * *"  # JST 朝8時
+  # NOTE: cron is intentionally disabled.
+  # Anonymous click (no login) returns HTTP 200 but Moppy does NOT credit
+  # points to the user's account. Re-enable the cron only after:
+  #   1) the existing 5000pt balance is cashed out, AND
+  #   2) MOPPY_COOKIES secret is registered (logged-in session injection).
+  # Until then, runs are manual via workflow_dispatch only.
+  # schedule:
+  #   - cron: "0 23 * * *"  # JST 朝8時
   workflow_dispatch:
     inputs:
       dry_run:
@@ -48,6 +54,7 @@ jobs:
           SLACK_CHANNEL_MOPPY: ${{ secrets.SLACK_CHANNEL_MOPPY }}
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          MOPPY_COOKIES: ${{ secrets.MOPPY_COOKIES }}
           MOPPY_DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
         run: uv run python -m moppy_clicker.main run
 

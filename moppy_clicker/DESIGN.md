@@ -288,6 +288,7 @@ def redact_subject(subject: str, prefix_len: int = 5) -> str:
 | `MOPPY_STATE_PATH` | - | `data/state.json` | 状態ファイルパス |
 | `MOPPY_LABEL` | - | `moppy-clicked` | 完了ラベル名 |
 | `MOPPY_LOG_LEVEL` | - | `INFO` | ログレベル |
+| `MOPPY_COOKIES` | - | （無し）= 匿名運用 | ブラウザでログイン後にエクスポートしたCookieのJSON配列。**未設定だと HTTP 200 が返ってもポイント未加算**（モッピー側で誰のクリックか識別不能）|
 
 **起動時 validation:**
 - `GMAIL_USER`: `@` を含むこと
@@ -295,7 +296,33 @@ def redact_subject(subject: str, prefix_len: int = 5) -> str:
 - 数値: 型チェック + 範囲（INTERVAL_MIN ≥ 1, MIN ≤ MAX, MAX_ATTEMPTS 1-10, MAX_MESSAGES 1-500）
 - `SLACK_BOT_TOKEN`: `xoxb-` で始まること
 - `SLACK_CHANNEL_MOPPY`: 必須（チャンネル ID または `#name`）
+- `MOPPY_COOKIES`: 未設定なら匿名運用（点未加算で警告ログ）。設定するなら有効な JSON 配列で `name`/`value` 必須
 - 失敗時 fail-fast、Slack 通知は出さない（token/channel 自体が無効な可能性）
+
+### ログイン（Cookie 注入）
+
+ポイント加算のためにはログイン済みセッションが必須。実装方針:
+
+1. `MOPPY_COOKIES` には Chrome の DevTools (Application → Storage → Cookies) または `Cookie-Editor` 拡張で **`.moppy.jp` ドメインの全 Cookie を JSON エクスポート** したもの (配列) を渡す
+2. `Clicker.__init__` でその Cookie を `requests.Session.cookies` に注入
+3. クリック開始前に `Clicker.verify_login()` で `https://pc.moppy.jp/mypage/` を GET し、`ログアウト` リンクの存在で判定
+4. ログイン未確認なら **クリックを開始せず** Slack に「Cookie 失効」通知 → 早期 abort
+5. Cookie 期限切れは ~30日（モッピー側設定次第）。失効時は再エクスポート → GitHub Secret 更新
+
+**Cookie JSON 形式（最小）:**
+```json
+[
+  {"name": "PHPSESSID", "value": "xxx"},
+  {"name": "user_token", "value": "yyy"}
+]
+```
+
+`domain` / `path` は省略時 `.moppy.jp` / `/`。
+
+**運用上の注意:**
+- 規約違反リスクは増す（自動クリックがアカウントに紐づくため検知された場合の影響大）。実運用前にポイント変換を済ませること
+- パスワードは保存しない（Cookie のみ。盗難時の被害は限定的）
+- Cookie 失効時は通知ベースで気付ける設計
 
 ## CLI
 
@@ -361,11 +388,17 @@ uv run python -m moppy_clicker.main state --message-id <uid>
 1. **Gmail で 2段階認証を ON**: https://myaccount.google.com/security
 2. **アプリパスワード生成**: https://myaccount.google.com/apppasswords → 16文字パスワードを発行
 3. **Slack 通知先チャンネル準備**（モッピー専用、株分析等と兼用しない）。Bot を `/invite` で招待。Bot Token (`SLACK_BOT_TOKEN`) は ai-workflows 全プロジェクト共有のものを利用。
-4. **GitHub Secrets 登録**（リポジトリ Settings → Secrets and variables → Actions）:
+4. **モッピーへブラウザでログイン → Cookie をエクスポート**:
+   - Chrome DevTools (F12) → Application タブ → Storage → Cookies → `.moppy.jp`
+   - もしくは "Cookie-Editor" 拡張でエクスポート
+   - 最低 `PHPSESSID` 等のセッション Cookie を `[{"name": "...", "value": "..."}]` の JSON 配列に整形
+5. **GitHub Secrets 登録**（リポジトリ Settings → Secrets and variables → Actions）:
    - `GMAIL_USER` = メアド
    - `GMAIL_APP_PASSWORD` = ステップ2で発行したパスワード
    - `SLACK_BOT_TOKEN` = `xoxb-...`（既存の場合はそのまま）
    - `SLACK_CHANNEL_MOPPY` = ステップ3で決めたチャンネル名（例: `#moppy`）または ID
+   - `MOPPY_COOKIES` = ステップ4で書き出した JSON（**未設定だとポイント加算されない**）
+6. **`.github/workflows/moppy-clicker.yml` の cron 行のコメントを外す** → 定期実行開始
 5. **手動 workflow_dispatch で dry-run** → Slack に候補リンクが届くか確認
 6. 問題なければ自動 cron 運用へ
 3. **Google Cloud Console** で OAuth client 作成 → Production 公開設定（refresh token 7日失効回避）

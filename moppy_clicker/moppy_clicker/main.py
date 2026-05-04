@@ -73,7 +73,33 @@ def cmd_run(cfg: Config, dry_run: bool, max_messages: int | None, notify: bool) 
     clicker = Clicker(
         interval_min=cfg.click_interval_min,
         interval_max=cfg.click_interval_max,
+        cookies=cfg.moppy_cookies,
     )
+
+    if not dry_run and not clicker.authenticated:
+        # Anonymous clicks return HTTP 200 but Moppy does NOT credit points.
+        # Recording these as "clicked" would also block later credited retries
+        # because the email would already be labeled `moppy-clicked` and skipped.
+        msg = (
+            "MOPPY_COOKIES is not set; refusing to run. Anonymous clicks would "
+            "be marked as completed without crediting points, blocking future "
+            "credited retries. Set MOPPY_COOKIES or use --dry-run."
+        )
+        logger.error(msg)
+        if notifier:
+            notifier.send_auth_error(msg)
+        return 1
+    if not dry_run and clicker.authenticated:
+        if not clicker.verify_login():
+            msg = (
+                "Moppy login verification failed: cookies are stale or invalid. "
+                "Re-export them from the browser and update the MOPPY_COOKIES secret."
+            )
+            logger.error(msg)
+            if notifier:
+                notifier.send_auth_error(msg)
+            return 1
+        logger.info("Moppy login verified — clicks will be credited to the account")
 
     try:
         msg_ids = gmail.search_messages(
@@ -184,6 +210,13 @@ def cmd_click(cfg: Config, url: str) -> int:
     if not is_manual_url_allowed(url):
         print(f"refused: {url} is not under moppy.jp", file=sys.stderr)
         return 2
+    if cfg.moppy_cookies is None:
+        print(
+            "refused: MOPPY_COOKIES is not set; anonymous clicks do not credit points. "
+            "Set MOPPY_COOKIES to enable credited single-URL clicks.",
+            file=sys.stderr,
+        )
+        return 2
     candidate = ClickCandidate(
         url=url,  # type: ignore[arg-type]
         anchor_text="<manual>",
@@ -192,7 +225,14 @@ def cmd_click(cfg: Config, url: str) -> int:
     clicker = Clicker(
         interval_min=cfg.click_interval_min,
         interval_max=cfg.click_interval_max,
+        cookies=cfg.moppy_cookies,
     )
+    if not clicker.verify_login():
+        print(
+            "refused: Moppy login verification failed (stale or invalid cookies)",
+            file=sys.stderr,
+        )
+        return 2
     result = clicker.click(candidate)
     print(
         f"status={result.final_status} http={result.http_status} "
