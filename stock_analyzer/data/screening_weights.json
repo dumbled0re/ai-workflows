@@ -1,14 +1,14 @@
 {
-  "rsi_oversold_recovery": 15,
-  "rsi_healthy_momentum": 15,
+  "rsi_oversold_recovery": 12,
+  "rsi_healthy_momentum": 12,
   "volume_spike": 25,
-  "sma25_breakout": 25,
+  "sma25_breakout": 18,
   "macd_crossover": 10,
-  "bollinger_lower": 12,
-  "per_value": 12,
-  "pbr_undervalued": 13,
+  "bollinger_lower": 10,
+  "per_value": 15,
+  "pbr_undervalued": 15,
   "roe_profitable": 10,
-  "dividend_yield": 8,
+  "dividend_yield": 10,
   "revenue_growth": 8,
   "_description": "スクリーニングスコアの重み設定。戦略レビューで自動調整される。"
 }
