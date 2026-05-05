@@ -1,7 +1,11 @@
 """Slack chat.postMessage notifier (bot-token based).
 
-Output is heavily redacted: subjects truncated to 5 chars, URLs reduced to host
-only. Body HTML is never forwarded to Slack.
+Most outputs (summary / dry-run / failure) are heavily redacted: subjects
+truncated to 5 chars, URLs reduced to host only. Body HTML is never forwarded.
+
+The exception is ``send_extract_links`` which intentionally posts the full
+URLs so the user can click them manually in their browser. Use this only for
+the user's own private channel.
 """
 
 from __future__ import annotations
@@ -19,14 +23,31 @@ logger = logging.getLogger(__name__)
 
 SLACK_POST_URL = "https://slack.com/api/chat.postMessage"
 
+# Slack chat.postMessage rejects payloads with more than 50 blocks. We use a
+# margin of 3 chrome blocks (header, context, divider), so 47 sections is the
+# theoretical max. We pick 45 to leave a small safety buffer in case the format
+# is extended later.
+_EXTRACT_MAX_SECTIONS_PER_PAGE = 45
+
+
+def _slack_escape(text: str) -> str:
+    """Escape characters with mrkdwn meaning (`<`, `>`, `&`)."""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
 
 class Notifier:
     def __init__(self, bot_token: str, channel: str) -> None:
         self._token = bot_token
         self._channel = channel
 
-    def _post(self, payload: dict[str, str]) -> None:
-        body = {**payload, "channel": self._channel}
+    def _post(self, payload: dict[str, object]) -> bool:
+        """POST to Slack chat.postMessage. Returns True on `ok: true`.
+
+        Most callers fire-and-forget (failures are logged), but
+        ``send_extract_links`` is the sole channel for that day's links so it
+        surfaces the boolean upward and the run exits non-zero on failure.
+        """
+        body: dict[str, object] = {**payload, "channel": self._channel}
         data = json.dumps(body).encode("utf-8")
         req = urllib.request.Request(
             SLACK_POST_URL,
@@ -42,8 +63,11 @@ class Notifier:
                 response = json.loads(resp.read().decode("utf-8"))
                 if not response.get("ok"):
                     logger.warning("slack notify failed: %s", response.get("error", "unknown"))
+                    return False
+                return True
         except (urllib.error.URLError, TimeoutError) as exc:
             logger.warning("slack notify failed: %s", exc)
+            return False
 
     def send_summary(
         self,
@@ -78,6 +102,103 @@ class Notifier:
             for u in urls[:5]:
                 lines.append(f"    - {u}")
         self._post({"text": "\n".join(lines)})
+
+    def build_extract_blocks(
+        self,
+        candidates_by_message: list[tuple[str, str, list[str]]],
+        date_label: str,
+    ) -> list[dict[str, object]]:
+        """Build Block Kit blocks for ``send_extract_links``.
+
+        Pulled out so it can be unit-tested without hitting Slack.
+
+        ``candidates_by_message`` items: ``(msg_id, full_subject, [full_urls])``.
+        URLs are NOT redacted — the user clicks them manually in their browser.
+        """
+        total_urls = sum(len(urls) for _, _, urls in candidates_by_message)
+        header_text = f"📬 モッピー クリックリンク ({total_urls}件)"
+        blocks: list[dict[str, object]] = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": header_text, "emoji": True},
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"*{date_label}*  ·  {len(candidates_by_message)}メール"
+                            f"  ·  ⚠ ログイン状態のブラウザでクリックしてください"
+                        ),
+                    }
+                ],
+            },
+            {"type": "divider"},
+        ]
+        for _msg_id, subject, urls in candidates_by_message:
+            if not urls:
+                continue
+            lines = [f"*📧 {_slack_escape(subject)}*"]
+            for i, u in enumerate(urls, 1):
+                lines.append(f"  {i}. <{u}|🔗 click {i}>")
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(lines)}})
+        return blocks
+
+    def send_extract_links(
+        self,
+        candidates_by_message: list[tuple[str, str, list[str]]],
+        date_label: str,
+    ) -> bool:
+        """Post full clickable URLs to Slack so the user can click manually.
+
+        Used during the cookie-gated transition (see DESIGN.md "ログイン（Cookie 注入）").
+        Does NOT redact URLs because the recipient channel is private and the
+        user needs to click them. Subject is also unredacted to help triage.
+
+        Slack's chat.postMessage rejects payloads with more than 50 blocks
+        (`invalid_blocks`). Each ``build_extract_blocks`` call produces 3 chrome
+        blocks + one section per email, so we chunk emails into pages of at
+        most ``_EXTRACT_MAX_SECTIONS_PER_PAGE`` to stay safely under the limit.
+
+        Returns ``True`` only if every chunked message was delivered. The
+        caller (`cmd_run` in extract mode) exits non-zero on ``False`` so that
+        a silent Slack failure surfaces as a workflow error rather than losing
+        the day's links.
+        """
+        if not candidates_by_message:
+            return self._post({"text": "[moppy_clicker] 📬 抽出対象のメールはありませんでした"})
+        # Skip messages with no URLs early — they don't render a section anyway,
+        # and counting them toward page size wastes capacity.
+        non_empty = [m for m in candidates_by_message if m[2]]
+        if not non_empty:
+            return self._post({"text": "[moppy_clicker] 📬 抽出対象のメールはありませんでした"})
+
+        total_urls = sum(len(urls) for _, _, urls in non_empty)
+        pages = [
+            non_empty[i : i + _EXTRACT_MAX_SECTIONS_PER_PAGE]
+            for i in range(0, len(non_empty), _EXTRACT_MAX_SECTIONS_PER_PAGE)
+        ]
+        all_ok = True
+        for page_idx, page in enumerate(pages, start=1):
+            page_label = date_label if len(pages) == 1 else f"{date_label} ({page_idx}/{len(pages)})"
+            blocks = self.build_extract_blocks(page, page_label)
+            ok = self._post(
+                {
+                    "text": f"[moppy_clicker] 📬 {total_urls}件のクリックリンク",
+                    "blocks": blocks,
+                    # CRITICAL: disable Slack's auto-unfurl. Otherwise Slackbot
+                    # would fetch each click URL anonymously to render previews,
+                    # which Moppy may treat as a (non-credited) click and could
+                    # consume the URL before the user opens it in their
+                    # logged-in browser.
+                    "unfurl_links": False,
+                    "unfurl_media": False,
+                }
+            )
+            if not ok:
+                all_ok = False
+        return all_ok
 
     def send_parse_failure(self, message_ids: Iterable[str], reason: str) -> None:
         ids = list(message_ids)

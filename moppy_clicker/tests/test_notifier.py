@@ -1,0 +1,168 @@
+from __future__ import annotations
+
+from moppy_clicker.notifier import Notifier, _slack_escape
+
+
+def _new_notifier() -> Notifier:
+    return Notifier(bot_token="xoxb-fake", channel="#fake")
+
+
+def test_slack_escape_handles_html_meta():
+    assert _slack_escape("a&b<c>d") == "a&amp;b&lt;c&gt;d"
+
+
+def test_build_extract_blocks_empty_returns_only_chrome():
+    blocks = _new_notifier().build_extract_blocks([], date_label="2026-05-05")
+    types = [b["type"] for b in blocks]
+    assert types == ["header", "context", "divider"]
+
+
+def test_build_extract_blocks_includes_full_urls_as_clickable():
+    candidates = [
+        (
+            "msgA",
+            "【モッピー】今日のクリックポイント",
+            [
+                "https://pc.moppy.jp/cc/c?token=abc",
+                "https://pc.moppy.jp/cc/c?token=def",
+            ],
+        ),
+        (
+            "msgB",
+            "別のメール件名",
+            ["https://pc.moppy.jp/cc/c?token=ghi"],
+        ),
+    ]
+    blocks = _new_notifier().build_extract_blocks(candidates, date_label="2026-05-05")
+
+    header = blocks[0]
+    assert header["type"] == "header"
+    assert "3件" in header["text"]["text"]
+
+    context = blocks[1]
+    assert context["type"] == "context"
+    text = context["elements"][0]["text"]
+    assert "2026-05-05" in text
+    assert "2メール" in text
+    assert "ログイン" in text
+
+    sections = [b for b in blocks if b["type"] == "section"]
+    assert len(sections) == 2
+
+    body0 = sections[0]["text"]["text"]
+    assert "今日のクリックポイント" in body0
+    assert "<https://pc.moppy.jp/cc/c?token=abc|🔗 click 1>" in body0
+    assert "<https://pc.moppy.jp/cc/c?token=def|🔗 click 2>" in body0
+
+    body1 = sections[1]["text"]["text"]
+    assert "別のメール件名" in body1
+    assert "<https://pc.moppy.jp/cc/c?token=ghi|🔗 click 1>" in body1
+
+
+def test_build_extract_blocks_skips_messages_with_no_urls():
+    candidates = [
+        ("msgA", "subj A", []),
+        ("msgB", "subj B", ["https://pc.moppy.jp/cc/c?t=1"]),
+    ]
+    blocks = _new_notifier().build_extract_blocks(candidates, date_label="2026-05-05")
+    sections = [b for b in blocks if b["type"] == "section"]
+    assert len(sections) == 1
+    assert "subj B" in sections[0]["text"]["text"]
+
+
+def test_build_extract_blocks_escapes_subject():
+    candidates = [
+        ("msgA", "Title <script> & rest", ["https://pc.moppy.jp/cc/c?t=1"]),
+    ]
+    blocks = _new_notifier().build_extract_blocks(candidates, date_label="2026-05-05")
+    body = next(b for b in blocks if b["type"] == "section")["text"]["text"]
+    assert "&lt;script&gt;" in body
+    assert "&amp;" in body
+    assert "<script>" not in body
+
+
+def _make_candidates(n: int) -> list[tuple[str, str, list[str]]]:
+    return [(f"msg{i}", f"件名 {i}", [f"https://pc.moppy.jp/cc/c?t={i}"]) for i in range(n)]
+
+
+def test_send_extract_links_single_page(monkeypatch):
+    sent: list[dict] = []
+    n = _new_notifier()
+    monkeypatch.setattr(n, "_post", lambda payload: sent.append(payload))
+    n.send_extract_links(_make_candidates(10), date_label="2026-05-05")
+    assert len(sent) == 1
+    blocks = sent[0]["blocks"]
+    sections = [b for b in blocks if b["type"] == "section"]
+    assert len(sections) == 10
+    assert "(1/" not in blocks[1]["elements"][0]["text"]  # no page suffix when single
+    # Slack must NOT auto-unfurl the click links (Slackbot would otherwise
+    # fetch them anonymously and could consume the click on Moppy's side).
+    assert sent[0]["unfurl_links"] is False
+    assert sent[0]["unfurl_media"] is False
+
+
+def test_send_extract_links_chunks_above_45(monkeypatch):
+    """Each page must stay <= 50 blocks (3 chrome + <= 45 sections)."""
+    sent: list[dict] = []
+    n = _new_notifier()
+    monkeypatch.setattr(n, "_post", lambda payload: sent.append(payload))
+    n.send_extract_links(_make_candidates(100), date_label="2026-05-05")
+    # 100 / 45 → 3 pages
+    assert len(sent) == 3
+    for payload in sent:
+        assert len(payload["blocks"]) <= 50
+    # Page labels show progress
+    assert "(1/3)" in sent[0]["blocks"][1]["elements"][0]["text"]
+    assert "(2/3)" in sent[1]["blocks"][1]["elements"][0]["text"]
+    assert "(3/3)" in sent[2]["blocks"][1]["elements"][0]["text"]
+
+
+def test_send_extract_links_empty_posts_text_only(monkeypatch):
+    sent: list[dict] = []
+    n = _new_notifier()
+    monkeypatch.setattr(n, "_post", lambda payload: (sent.append(payload), True)[1])
+    ok = n.send_extract_links([], date_label="2026-05-05")
+    assert ok is True
+    assert len(sent) == 1
+    assert "blocks" not in sent[0]
+    assert "ありませんでした" in sent[0]["text"]
+
+
+def test_send_extract_links_skips_messages_with_no_urls(monkeypatch):
+    sent: list[dict] = []
+    n = _new_notifier()
+    monkeypatch.setattr(n, "_post", lambda payload: (sent.append(payload), True)[1])
+    ok = n.send_extract_links(
+        [
+            ("msgA", "件名A", []),
+            ("msgB", "件名B", []),
+        ],
+        date_label="2026-05-05",
+    )
+    assert ok is True
+    assert len(sent) == 1
+    assert "blocks" not in sent[0]
+    assert "ありませんでした" in sent[0]["text"]
+
+
+def test_send_extract_links_returns_false_when_post_fails(monkeypatch):
+    """Caller (cmd_run) needs the failure signal to exit non-zero."""
+    n = _new_notifier()
+    monkeypatch.setattr(n, "_post", lambda payload: False)
+    ok = n.send_extract_links(_make_candidates(3), date_label="2026-05-05")
+    assert ok is False
+
+
+def test_send_extract_links_returns_false_when_any_chunk_fails(monkeypatch):
+    """Multi-page send: failure on any page must propagate."""
+    n = _new_notifier()
+    calls = {"i": 0}
+
+    def fake_post(payload: dict) -> bool:
+        calls["i"] += 1
+        return calls["i"] != 2  # second call fails
+
+    monkeypatch.setattr(n, "_post", fake_post)
+    ok = n.send_extract_links(_make_candidates(100), date_label="2026-05-05")
+    assert ok is False
+    assert calls["i"] == 3  # all chunks attempted despite failure

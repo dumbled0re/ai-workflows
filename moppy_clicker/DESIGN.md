@@ -289,6 +289,7 @@ def redact_subject(subject: str, prefix_len: int = 5) -> str:
 | `MOPPY_LABEL` | - | `moppy-clicked` | 完了ラベル名 |
 | `MOPPY_LOG_LEVEL` | - | `INFO` | ログレベル |
 | `MOPPY_COOKIES` | - | （無し）= 匿名運用 | ブラウザでログイン後にエクスポートしたCookieのJSON配列。**未設定だと HTTP 200 が返ってもポイント未加算**（モッピー側で誰のクリックか識別不能）|
+| `MOPPY_EXTRACT_LINKS` | - | `0` | `1` でクリック実行せず **ポイント加算リンクを Slack に投稿のみ**（ユーザーが手動クリック前提）。`MOPPY_COOKIES` 不要・state 変更なし・ラベル付与なし |
 
 **起動時 validation:**
 - `GMAIL_USER`: `@` を含むこと
@@ -298,6 +299,16 @@ def redact_subject(subject: str, prefix_len: int = 5) -> str:
 - `SLACK_CHANNEL_MOPPY`: 必須（チャンネル ID または `#name`）
 - `MOPPY_COOKIES`: 未設定なら匿名運用（点未加算で警告ログ）。設定するなら有効な JSON 配列で `name`/`value` 必須
 - 失敗時 fail-fast、Slack 通知は出さない（token/channel 自体が無効な可能性）
+
+### 動作モード
+
+| モード | 想定用途 | クリック | Cookie必須 | state/label変更 |
+|---|---|---|---|---|
+| `click`（デフォルト） | 通常運用、Cookie 注入で得点化 | ✅ 自動 | ✅ | あり |
+| `--dry-run` | 開発時の確認、URLは host のみ redact | ✗ | ✗ | なし |
+| `--extract-links` / `MOPPY_EXTRACT_LINKS=1` | **手動クリック運用**: 全URLをSlackに投稿、ユーザーがブラウザで踏む | ✗ | ✗ | なし |
+
+`--extract-links` は cookie 取得前の暫定運用や、Cookie 失効時のフォールバックに使う。Slack には件名と全URLがそのまま流れるため、専用 channel（外部からは見えない）であることが前提。
 
 ### ログイン（Cookie 注入）
 

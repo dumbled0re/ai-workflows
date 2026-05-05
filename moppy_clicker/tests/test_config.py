@@ -25,10 +25,7 @@ def test_parse_cookies_minimal():
 
 
 def test_parse_cookies_preserves_explicit_fields():
-    raw = (
-        '[{"name": "x", "value": "y", "domain": "pc.moppy.jp", '
-        '"path": "/api", "secure": false}]'
-    )
+    raw = '[{"name": "x", "value": "y", "domain": "pc.moppy.jp", "path": "/api", "secure": false}]'
     cookies = _parse_cookies(raw)
     assert cookies is not None
     assert cookies[0]["domain"] == "pc.moppy.jp"

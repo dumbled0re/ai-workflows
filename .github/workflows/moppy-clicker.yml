@@ -1,18 +1,24 @@
 name: moppy-clicker
 
 on:
-  # NOTE: cron is intentionally disabled.
-  # Anonymous click (no login) returns HTTP 200 but Moppy does NOT credit
-  # points to the user's account. Re-enable the cron only after:
-  #   1) the existing 5000pt balance is cashed out, AND
-  #   2) MOPPY_COOKIES secret is registered (logged-in session injection).
-  # Until then, runs are manual via workflow_dispatch only.
-  # schedule:
-  #   - cron: "0 23 * * *"  # JST 朝8時
+  # While we wait for the user's existing 5000pt balance to be cashed out
+  # (target: 2026-05-07), the cron runs in extract-links mode: it parses
+  # incoming click-for-points emails and POSTS THE FULL URLS TO SLACK so
+  # the user can click them manually in their already-logged-in browser.
+  # No clicks happen from the workflow; no Gmail labels or state changes.
+  #
+  # After cashout: register MOPPY_COOKIES, set MOPPY_EXTRACT_LINKS=0 (or
+  # remove the env var), and the same cron switches to credited auto-click.
+  schedule:
+    - cron: "0 23 * * *"  # JST 朝8時
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "extract candidates only, no clicks"
+        description: "extract candidates only, redacted (legacy)"
+        type: boolean
+        default: false
+      extract_links:
+        description: "post full clickable URLs to Slack instead of clicking (cron forces this on)"
         type: boolean
         default: false
 
@@ -56,6 +62,14 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           MOPPY_COOKIES: ${{ secrets.MOPPY_COOKIES }}
           MOPPY_DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          # Mode selection priority:
+          #   1. workflow_dispatch with extract_links=true → extract mode
+          #   2. cron AND vars.MOPPY_CRON_MODE != 'click' → extract mode
+          #   3. otherwise → click mode (will abort if MOPPY_COOKIES unset)
+          # To flip cron from extract → credited auto-click after cashout:
+          #   Settings → Variables → set MOPPY_CRON_MODE = 'click'
+          # (also requires MOPPY_COOKIES secret to be registered).
+          MOPPY_EXTRACT_LINKS: ${{ (inputs.extract_links || (github.event_name == 'schedule' && vars.MOPPY_CRON_MODE != 'click')) && '1' || '0' }}
         run: uv run python -m moppy_clicker.main run
 
       - name: Save state artifact

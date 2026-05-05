@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from datetime import UTC, datetime
 
@@ -37,7 +38,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_run = sub.add_parser("run", help="fetch and click")
-    p_run.add_argument("--dry-run", action="store_true", help="extract only, no click")
+    p_run.add_argument("--dry-run", action="store_true", help="extract only, no click (redacted)")
+    p_run.add_argument(
+        "--extract-links",
+        action="store_true",
+        help=(
+            "post full clickable URLs to Slack instead of clicking; "
+            "no state changes, no labels — for manual user-driven clicks"
+        ),
+    )
     p_run.add_argument("--max-messages", type=int, default=None)
     p_run.add_argument("--no-notify", action="store_true")
 
@@ -49,7 +58,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def cmd_run(cfg: Config, dry_run: bool, max_messages: int | None, notify: bool) -> int:
+def cmd_run(
+    cfg: Config,
+    dry_run: bool,
+    extract_links: bool,
+    max_messages: int | None,
+    notify: bool,
+) -> int:
+    if dry_run and extract_links:
+        logger.error("--dry-run and --extract-links are mutually exclusive")
+        return 2
     started_at = datetime.now(UTC)
     notifier = Notifier(cfg.slack_bot_token, cfg.slack_channel) if notify else None
 
@@ -69,14 +87,19 @@ def cmd_run(cfg: Config, dry_run: bool, max_messages: int | None, notify: bool) 
     all_results = []
     estimated_pt_total = 0
     dry_run_view: list[tuple[str, str, list[str]]] = []
+    extract_view: list[tuple[str, str, list[str]]] = []
 
-    clicker = Clicker(
-        interval_min=cfg.click_interval_min,
-        interval_max=cfg.click_interval_max,
-        cookies=cfg.moppy_cookies,
-    )
+    # Extract-links mode skips the click path entirely, so we don't need a
+    # Clicker (and don't need cookies). Only construct it when actually clicking.
+    clicker: Clicker | None = None
+    if not extract_links:
+        clicker = Clicker(
+            interval_min=cfg.click_interval_min,
+            interval_max=cfg.click_interval_max,
+            cookies=cfg.moppy_cookies,
+        )
 
-    if not dry_run and not clicker.authenticated:
+    if not dry_run and not extract_links and clicker is not None and not clicker.authenticated:
         # Anonymous clicks return HTTP 200 but Moppy does NOT credit points.
         # Recording these as "clicked" would also block later credited retries
         # because the email would already be labeled `moppy-clicked` and skipped.
@@ -89,7 +112,7 @@ def cmd_run(cfg: Config, dry_run: bool, max_messages: int | None, notify: bool) 
         if notifier:
             notifier.send_auth_error(msg)
         return 1
-    if not dry_run and clicker.authenticated:
+    if not dry_run and not extract_links and clicker is not None and clicker.authenticated:
         if not clicker.verify_login():
             msg = (
                 "Moppy login verification failed: cookies are stale or invalid. "
@@ -109,7 +132,11 @@ def cmd_run(cfg: Config, dry_run: bool, max_messages: int | None, notify: bool) 
         logger.info("found %d candidate messages", len(msg_ids))
 
         for msg_id in msg_ids:
-            if state.is_message_complete(msg_id, cfg.max_attempts):
+            # Extract mode bypasses state — its job is to surface every URL so
+            # the user can click manually. Stale anonymous-success records and
+            # exhausted-attempt records would otherwise hide URLs the user
+            # never actually got credit for.
+            if not extract_links and state.is_message_complete(msg_id, cfg.max_attempts):
                 continue
             try:
                 parsed = gmail.get_message(msg_id)
@@ -140,7 +167,8 @@ def cmd_run(cfg: Config, dry_run: bool, max_messages: int | None, notify: bool) 
             if not candidates:
                 # No click-coin URLs: legitimate non-coin email (newsletter,
                 # confirmation, etc.). Mark so future runs skip it.
-                if not dry_run:
+                # Skip labeling in dry_run / extract_links to keep state pristine.
+                if not dry_run and not extract_links:
                     gmail.add_label(msg_id, "moppy-no-coins")
                 continue
 
@@ -158,9 +186,29 @@ def cmd_run(cfg: Config, dry_run: bool, max_messages: int | None, notify: bool) 
                 )
                 continue
 
+            if extract_links:
+                # Post full URLs so the user can click in their logged-in browser.
+                # Subjects are NOT redacted here (private channel, user needs
+                # to triage). State is intentionally untouched so re-runs after
+                # a manual click won't be blocked.
+                #
+                # Use the unfiltered ``candidates`` list (NOT ``new_candidates``):
+                # state_store may contain historical anonymous HTTP-200 entries
+                # from before login was implemented, which would cause real
+                # unclicked URLs to be silently dropped here.
+                extract_view.append(
+                    (
+                        msg_id,
+                        parsed.subject,
+                        [str(c.url) for c in candidates],
+                    )
+                )
+                continue
+
             if not new_candidates:
                 continue
 
+            assert clicker is not None  # narrowed by the extract_links branch above
             state.increment_attempt(msg_id)
             for idx, candidate in enumerate(new_candidates):
                 if idx > 0:
@@ -192,9 +240,21 @@ def cmd_run(cfg: Config, dry_run: bool, max_messages: int | None, notify: bool) 
         anomaly_messages=anomaly_ids,
     )
 
+    extract_post_failed = False
     if notifier:
         if dry_run:
             notifier.send_dry_run(dry_run_view)
+        elif extract_links:
+            extract_ok = notifier.send_extract_links(
+                extract_view,
+                date_label=started_at.strftime("%Y-%m-%d"),
+            )
+            if not extract_ok:
+                extract_post_failed = True
+                logger.error(
+                    "extract-links Slack delivery failed; the run will exit non-zero "
+                    "so the workflow surfaces the failure"
+                )
         else:
             notifier.send_summary(summary, all_results, estimated_pt_total)
         if parse_failure_ids:
@@ -203,7 +263,7 @@ def cmd_run(cfg: Config, dry_run: bool, max_messages: int | None, notify: bool) 
             notifier.send_parse_failure(anomaly_ids, "structural anomaly (template change?)")
 
     state.save()
-    return 0
+    return 1 if extract_post_failed else 0
 
 
 def cmd_click(cfg: Config, url: str) -> int:
@@ -263,9 +323,11 @@ def main(argv: list[str] | None = None) -> int:
     _setup_logging(cfg.log_level)
 
     if args.cmd == "run":
+        env_extract = os.environ.get("MOPPY_EXTRACT_LINKS", "0") == "1"
         return cmd_run(
             cfg,
             dry_run=args.dry_run or cfg.dry_run,
+            extract_links=args.extract_links or env_extract,
             max_messages=args.max_messages,
             notify=not args.no_notify,
         )
