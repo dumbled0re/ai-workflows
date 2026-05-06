@@ -89,6 +89,16 @@ def phase_gather() -> None:
 - 既に広く知られている情報より、新しい動きを優先する
 - エンジニアが実務で活用できる情報を重視する
 - top_storiesは最大10件に絞る
+- **重要度の付与基準を厳格に守ること**:
+  - HIGH は1日あたり**最大3件まで**。本当に業界を変える発表のみに限定する
+  - 通常は MEDIUM が中心になり、HIGH が0件の日があってもよい
+  - インフレ防止のため、迷ったら一段下げる
+- **daily_insight の制約**:
+  - 冒頭に日付を書かない（ヘッダーに既に表示されているため）
+  - 「今日は」「本日は」などで自然に始める
+- **ソースの裏付けがない情報は書かない**:
+  - 提供されたソース一覧に無い数値（HNポイント数、バージョン番号、企業名など）を推測で書かない
+  - 不明な詳細は省略するか「詳細は元記事参照」と書く
 - 【必須】 ソース上で「【必須掲載】」と明示された Claude Code / OpenAI Codex / Gemini CLI の
   最新リリースは、その日のリリースがあれば**必ず top_stories に1項目以上含める**。
   当該ツールの新機能・破壊的変更・バグ修正を summary に簡潔に列挙する。
@@ -178,7 +188,8 @@ def _build_slack_blocks(result: dict) -> list[dict]:
         "Other": ":bulb:",
     }
 
-    for story in result.get("top_stories", []):
+    stories = result.get("top_stories", [])
+    for idx, story in enumerate(stories):
         imp = story.get("importance", "LOW")
         cat = story.get("category", "Other")
         imp_e = importance_emoji.get(imp, ":white_circle:")
@@ -187,10 +198,22 @@ def _build_slack_blocks(result: dict) -> list[dict]:
         text = (
             f"{imp_e} {cat_e} *{story.get('title', '')}*\n"
             f"{story.get('summary', '')}\n"
-            f"_:point_right: {story.get('why_it_matters', '')}_\n"
-            f"<{story.get('url', '')}|{story.get('source', '')}>"
+            f"_:point_right: {story.get('why_it_matters', '')}_"
         )
         blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": text}})
+
+        url = story.get("url", "")
+        source = story.get("source", "")
+        if url and source:
+            blocks.append(
+                {
+                    "type": "context",
+                    "elements": [{"type": "mrkdwn", "text": f":link: 出典: <{url}|{source}>"}],
+                }
+            )
+
+        if idx < len(stories) - 1:
+            blocks.append({"type": "divider"})
 
     blocks.append({"type": "divider"})
     blocks.append(
@@ -199,7 +222,11 @@ def _build_slack_blocks(result: dict) -> list[dict]:
             "elements": [
                 {
                     "type": "mrkdwn",
-                    "text": ":robot_face: Powered by Claude AI | Sources: Hacker News, GitHub Trending, arXiv",
+                    "text": (
+                        ":robot_face: Powered by Claude AI | "
+                        "Sources: Hacker News, GitHub Trending, arXiv, "
+                        "AI Company Blogs, Tool Releases"
+                    ),
                 }
             ],
         }
