@@ -15,9 +15,13 @@ import logging
 import urllib.error
 import urllib.request
 from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 from .models import ClickResult, RunSummary
 from .redaction import host_only
+
+if TYPE_CHECKING:
+    from .outcome_tracker import DegradationAlert
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +37,34 @@ _EXTRACT_MAX_SECTIONS_PER_PAGE = 45
 def _slack_escape(text: str) -> str:
     """Escape characters with mrkdwn meaning (`<`, `>`, `&`)."""
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _format_verification(
+    estimated_total_pt: int,
+    balance_before: int | None,
+    balance_after: int | None,
+) -> str | None:
+    """Render the post-click balance verification line.
+
+    Returns ``None`` when there's nothing meaningful to say (e.g. nothing
+    was clicked and we never tried to read the balance). The summary
+    looks weird if we add a "✓ 加算確認" line on a no-op run.
+    """
+    has_both = balance_before is not None and balance_after is not None
+    if not has_both:
+        if estimated_total_pt > 0:
+            return "⚠ 加算確認: 残高取得失敗（balance.py のパターン更新が必要かも）"
+        return None
+    assert balance_before is not None and balance_after is not None  # for type checker
+    delta = balance_after - balance_before
+    if estimated_total_pt <= 0:
+        return f"✓ 残高: {balance_before}→{balance_after} (Δ{delta:+}pt, 推定なし)"
+    ratio = delta / estimated_total_pt
+    flag = " ⚠加算が想定より少ない" if ratio < 0.5 else ""
+    return (
+        f"✓ 加算確認: {balance_before}→{balance_after} "
+        f"(Δ{delta:+}pt / 推定{estimated_total_pt}pt, 比率 {ratio:.0%}){flag}"
+    )
 
 
 class Notifier:
@@ -74,21 +106,36 @@ class Notifier:
         summary: RunSummary,
         results: list[ClickResult],
         estimated_total_pt: int,
+        *,
+        balance_before: int | None = None,
+        balance_after: int | None = None,
+        degradation: DegradationAlert | None = None,
     ) -> None:
         failed = [r for r in results if r.final_status != "success"]
         lines = [
             f"[moppy_clicker] {summary.started_at:%Y-%m-%d %H:%M} 完了",
             f"✅ 成功: {summary.success_count}件 / 推定獲得: {estimated_total_pt}pt",
-            f"❌ 失敗: {summary.failure_count}件",
-            f"⚠ パース失敗: {len(summary.parse_failures)}件",
-            f"⚠ 異常メール: {len(summary.anomaly_messages)}件",
-            f"処理時間: {(summary.finished_at - summary.started_at).total_seconds():.0f}秒",
         ]
+        verification = _format_verification(estimated_total_pt, balance_before, balance_after)
+        if verification:
+            lines.append(verification)
+        lines.extend(
+            [
+                f"❌ 失敗: {summary.failure_count}件",
+                f"⚠ パース失敗: {len(summary.parse_failures)}件",
+                f"⚠ 異常メール: {len(summary.anomaly_messages)}件",
+                f"処理時間: {(summary.finished_at - summary.started_at).total_seconds():.0f}秒",
+            ]
+        )
         if failed:
             lines.append("--- 失敗詳細（host のみ） ---")
             for r in failed[:10]:
                 host = r.final_host or host_only(str(r.candidate.url))
                 lines.append(f"  {host} - {r.final_status} (http={r.http_status})")
+        if degradation is not None:
+            lines.append("--- 🚨 自動検知: ポイント加算がほぼ止まっています ---")
+            lines.append(f"直近 {degradation.runs_inspected} 回の加算比率中央値が {degradation.median_ratio:.0%}")
+            lines.append(f"  → {degradation.suggestion}")
         self._post({"text": "\n".join(lines)})
 
     def send_dry_run(

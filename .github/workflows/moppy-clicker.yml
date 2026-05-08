@@ -75,6 +75,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: moppy-state
-          path: moppy_clicker/data/state.json
+          # Persist outcomes.jsonl alongside state.json so the degradation
+          # detector can compare the last N runs across cron invocations.
+          path: |
+            moppy_clicker/data/state.json
+            moppy_clicker/data/outcomes.jsonl
           retention-days: 30
           if-no-files-found: ignore

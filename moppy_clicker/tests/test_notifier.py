@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from moppy_clicker.notifier import Notifier, _slack_escape
+from moppy_clicker.notifier import Notifier, _format_verification, _slack_escape
 
 
 def _new_notifier() -> Notifier:
@@ -166,3 +166,36 @@ def test_send_extract_links_returns_false_when_any_chunk_fails(monkeypatch):
     ok = n.send_extract_links(_make_candidates(100), date_label="2026-05-05")
     assert ok is False
     assert calls["i"] == 3  # all chunks attempted despite failure
+
+
+def test_format_verification_returns_none_for_quiet_run():
+    assert _format_verification(0, None, None) is None
+
+
+def test_format_verification_warns_when_balance_unavailable_but_clicks_happened():
+    msg = _format_verification(5, None, None)
+    assert msg is not None
+    assert "残高取得失敗" in msg
+
+
+def test_format_verification_shows_full_credit_without_flag():
+    msg = _format_verification(5, 100, 105)
+    assert msg is not None
+    assert "100→105" in msg
+    assert "+5pt" in msg
+    assert "100%" in msg
+    assert "⚠" not in msg
+
+
+def test_format_verification_flags_zero_credit():
+    msg = _format_verification(11, 100, 100)
+    assert msg is not None
+    assert "0%" in msg
+    assert "⚠" in msg
+
+
+def test_format_verification_no_estimate_just_shows_delta():
+    msg = _format_verification(0, 100, 110)
+    assert msg is not None
+    assert "100→110" in msg
+    assert "推定なし" in msg

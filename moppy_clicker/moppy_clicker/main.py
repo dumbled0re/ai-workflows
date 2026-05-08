@@ -14,12 +14,14 @@ import os
 import sys
 from datetime import UTC, datetime
 
+from .balance import fetch_balance
 from .clicker import Clicker, is_manual_url_allowed
 from .config import Config, ConfigError
 from .gmail_client import GmailAuthError, GmailClient, GmailParseError
 from .models import ClickCandidate, RunSummary
 from .moppy_parser import parse as parse_email
 from .notifier import Notifier
+from .outcome_tracker import OutcomeTracker, make_outcome
 from .redaction import host_only, redact_subject, redact_url
 from .state_store import StateStore
 
@@ -55,6 +57,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
     p_state = sub.add_parser("state", help="dump state for a message_id")
     p_state.add_argument("--message-id", required=True)
+
+    sub.add_parser("balance", help="fetch and print current Moppy coin balance")
     return parser
 
 
@@ -123,6 +127,15 @@ def cmd_run(
                 notifier.send_auth_error(msg)
             return 1
         logger.info("Moppy login verified — clicks will be credited to the account")
+
+    # Capture the pre-click balance so the post-run summary can prove
+    # whether points actually credited. Only meaningful in real click mode;
+    # dry-run / extract-links don't trigger any click side-effects.
+    balance_before: int | None = None
+    if not dry_run and not extract_links and clicker is not None and clicker.authenticated:
+        balance_before = fetch_balance(clicker.session)
+        if balance_before is not None:
+            logger.info("balance before clicks: %d pt", balance_before)
 
     try:
         msg_ids = gmail.search_messages(
@@ -228,6 +241,15 @@ def cmd_run(
     finally:
         gmail.close()
 
+    # Snapshot the balance again *after* the click loop so we can compare
+    # against ``balance_before``. Skipped on dry/extract runs (no clicks
+    # were issued) and on failed-auth paths (we already returned earlier).
+    balance_after: int | None = None
+    if not dry_run and not extract_links and clicker is not None and clicker.authenticated:
+        balance_after = fetch_balance(clicker.session)
+        if balance_after is not None:
+            logger.info("balance after clicks: %d pt", balance_after)
+
     finished_at = datetime.now(UTC)
     summary = RunSummary(
         started_at=started_at,
@@ -239,6 +261,30 @@ def cmd_run(
         parse_failures=parse_failure_ids,
         anomaly_messages=anomaly_ids,
     )
+
+    # Record outcome and check for persistent crediting failures. Only the
+    # real click path produces a meaningful outcome; dry/extract runs are
+    # skipped so they don't muddy the time series.
+    degradation = None
+    if not dry_run and not extract_links:
+        tracker = OutcomeTracker(cfg.outcome_path)
+        outcome = make_outcome(
+            mode="click",
+            messages_found=len(msg_ids),
+            click_success=summary.success_count,
+            click_fail=summary.failure_count,
+            expected_pt=estimated_pt_total,
+            balance_before=balance_before,
+            balance_after=balance_after,
+        )
+        tracker.append(outcome)
+        degradation = tracker.detect_degradation()
+        if degradation is not None:
+            logger.warning(
+                "credit-ratio degradation detected over last %d runs (median=%.0f%%)",
+                degradation.runs_inspected,
+                degradation.median_ratio * 100,
+            )
 
     extract_post_failed = False
     if notifier:
@@ -256,7 +302,14 @@ def cmd_run(
                     "so the workflow surfaces the failure"
                 )
         else:
-            notifier.send_summary(summary, all_results, estimated_pt_total)
+            notifier.send_summary(
+                summary,
+                all_results,
+                estimated_pt_total,
+                balance_before=balance_before,
+                balance_after=balance_after,
+                degradation=degradation,
+            )
         if parse_failure_ids:
             notifier.send_parse_failure(parse_failure_ids, "MIME/HTML decode")
         if anomaly_ids:
@@ -311,6 +364,29 @@ def cmd_state(cfg: Config, message_id: str) -> int:
     return 0
 
 
+def cmd_balance(cfg: Config) -> int:
+    """Print current Moppy balance to stdout — useful for ad-hoc checks
+    and for verifying that the cookies + parser combo still work without
+    having to schedule a workflow run."""
+    if cfg.moppy_cookies is None:
+        print("refused: MOPPY_COOKIES is not set", file=sys.stderr)
+        return 2
+    clicker = Clicker(
+        interval_min=cfg.click_interval_min,
+        interval_max=cfg.click_interval_max,
+        cookies=cfg.moppy_cookies,
+    )
+    if not clicker.verify_login():
+        print("refused: Moppy login verification failed (stale or invalid cookies)", file=sys.stderr)
+        return 2
+    balance = fetch_balance(clicker.session)
+    if balance is None:
+        print("balance: <unknown> (parser failed; check logs for snippet)", file=sys.stderr)
+        return 1
+    print(f"balance: {balance} pt")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
@@ -335,6 +411,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_click(cfg, args.url)
     if args.cmd == "state":
         return cmd_state(cfg, args.message_id)
+    if args.cmd == "balance":
+        return cmd_balance(cfg)
     parser.error(f"unknown subcommand: {args.cmd}")
 
 
