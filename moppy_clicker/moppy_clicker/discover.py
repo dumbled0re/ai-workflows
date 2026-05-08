@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlparse
 
 import requests
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,27 @@ MAX_PAGES = 30
 
 
 @dataclass
+class FormField:
+    """Single ``<input>`` / ``<select>`` / ``<button>`` inside a form.
+
+    ``value`` may be a CSRF token; we keep it because the gacha
+    automation needs to pass it back verbatim. Discovery output goes
+    only to workflow logs (private repo), not to Slack.
+    """
+
+    name: str
+    field_type: str
+    value: str | None
+
+
+@dataclass
+class FormInfo:
+    action: str | None
+    method: str
+    fields: list[FormField] = field(default_factory=list)
+
+
+@dataclass
 class PageReport:
     url: str
     http_status: int | None
@@ -87,6 +109,7 @@ class PageReport:
     point_hints: list[str] = field(default_factory=list)
     action_buttons: list[str] = field(default_factory=list)
     forms_count: int = 0
+    forms: list[FormInfo] = field(default_factory=list)
     js_keywords: list[str] = field(default_factory=list)
     interaction_guess: str = "unknown"
     err: str | None = None
@@ -108,12 +131,42 @@ def classify_interaction(buttons: int, forms: int, js: int) -> str:
     return "unknown"
 
 
+def extract_forms(html: str, base_url: str) -> list[FormInfo]:
+    """Parse ``<form>`` elements with BeautifulSoup for accurate structure.
+
+    Regex-on-HTML is fragile for nested elements and attribute order,
+    so we use bs4 here even though the rest of discover is regex-based.
+    The cost is one extra parse per page; the recon flow runs at most
+    30 pages so this is fine.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    out: list[FormInfo] = []
+    for form in soup.find_all("form"):
+        action_attr = form.get("action")
+        action_resolved = _resolve_link(base_url, action_attr) if action_attr else base_url
+        method = (form.get("method") or "get").lower()
+        fields: list[FormField] = []
+        for tag in form.find_all(["input", "select", "textarea", "button"]):
+            name = tag.get("name")
+            if not name:
+                continue
+            field_type = tag.get("type") or tag.name
+            # Hidden / CSRF tokens carry the full value (caller needs it
+            # to round-trip the form). Visible text inputs are also kept
+            # so we know what the form expects from a user.
+            value = tag.get("value")
+            fields.append(FormField(name=str(name), field_type=str(field_type), value=value))
+        out.append(FormInfo(action=action_resolved, method=method, fields=fields))
+    return out
+
+
 def analyze_html(url: str, http_status: int, html: str) -> PageReport:
     title_m = _TITLE_RE.search(html)
     title = title_m.group(1).strip() if title_m else None
     point_hints = sorted({m.group(0) for m in _POINT_TEXT_RE.finditer(html)})[:10]
     action_buttons = sorted({m.group(1) for m in _ACTION_BUTTON_RE.finditer(html)})[:20]
-    forms_count = len(_FORM_RE.findall(html))
+    forms = extract_forms(html, url)
+    forms_count = len(forms)
     js_kw = [kw for kw in _JS_KEYWORDS if kw in html]
     return PageReport(
         url=url,
@@ -122,6 +175,7 @@ def analyze_html(url: str, http_status: int, html: str) -> PageReport:
         point_hints=point_hints,
         action_buttons=action_buttons,
         forms_count=forms_count,
+        forms=forms,
         js_keywords=js_kw,
         interaction_guess=classify_interaction(len(action_buttons), forms_count, len(js_kw)),
     )
@@ -232,6 +286,9 @@ def render_report(reports: list[PageReport]) -> str:
             lines.append(f"      action_buttons ({len(r.action_buttons)}):")
             for b in r.action_buttons[:5]:
                 lines.append(f"        - {b}")
+        for i, fi in enumerate(r.forms):
+            field_names = [f.name for f in fi.fields]
+            lines.append(f"      form[{i}]: {fi.method.upper()} {fi.action or '<self>'} fields={field_names}")
         if r.err:
             lines.append(f"      err: {r.err}")
     return "\n".join(lines)
