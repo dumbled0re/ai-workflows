@@ -87,10 +87,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: moppy-state
-          # Persist outcomes.jsonl alongside state.json so the degradation
-          # detector can compare the last N runs across cron invocations.
+          # Persist outcomes.jsonl + cookies.json alongside state.json:
+          # - outcomes.jsonl powers the degradation detector across runs.
+          # - cookies.json carries Moppy's rotated session values to the
+          #   next run; without it, every workflow restarts from the
+          #   stale MOPPY_COOKIES Secret and gets its session killed.
           path: |
             moppy_clicker/data/state.json
             moppy_clicker/data/outcomes.jsonl
+            moppy_clicker/data/cookies.json
           retention-days: 30
           if-no-files-found: ignore

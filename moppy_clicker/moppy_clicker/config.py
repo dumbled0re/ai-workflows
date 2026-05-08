@@ -90,6 +90,7 @@ class Config:
     max_messages: int
     state_path: str
     outcome_path: str
+    cookie_store_path: str
     log_level: str
     moppy_label: str
     moppy_cookies: list[dict[str, object]] | None  # None = anonymous (no points credited)
@@ -147,6 +148,7 @@ class Config:
             max_messages=_env_int("MOPPY_MAX_MESSAGES", 50, low=1, high=500),
             state_path=_env_str("MOPPY_STATE_PATH", "data/state.json") or "data/state.json",
             outcome_path=_env_str("MOPPY_OUTCOME_PATH", "data/outcomes.jsonl") or "data/outcomes.jsonl",
+            cookie_store_path=_env_str("MOPPY_COOKIE_STORE_PATH", "data/cookies.json") or "data/cookies.json",
             log_level=log_level,
             moppy_label=_env_str("MOPPY_LABEL", "moppy-clicked") or "moppy-clicked",
         )

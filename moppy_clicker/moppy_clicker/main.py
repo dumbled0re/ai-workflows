@@ -19,6 +19,8 @@ from datetime import UTC, datetime
 from .balance import fetch_balance
 from .clicker import Clicker, is_manual_url_allowed
 from .config import Config, ConfigError
+from .cookie_store import load as load_persisted_cookies
+from .cookie_store import save_jar as save_cookie_jar
 from .discover import discover, render_report
 from .gmail_client import GmailAuthError, GmailClient, GmailParseError
 from .models import ClickCandidate, RunSummary
@@ -36,6 +38,38 @@ def _setup_logging(level: str) -> None:
         level=getattr(logging, level, logging.INFO),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
+
+
+def _resolve_cookies(cfg: Config) -> list[dict[str, object]] | None:
+    """Prefer persisted post-rotation cookies over the bootstrap Secret.
+
+    Moppy rotates session cookies on each request; submitting the stale
+    Secret value on a subsequent run gets the session killed. The
+    persisted jar from the previous run carries the latest rotation.
+    """
+    persisted = load_persisted_cookies(cfg.cookie_store_path)
+    if persisted is not None:
+        logger.info("using persisted cookie jar (%d cookies)", len(persisted))
+        return persisted
+    if cfg.moppy_cookies is not None:
+        logger.info("no persisted cookie jar; bootstrapping from MOPPY_COOKIES (%d cookies)", len(cfg.moppy_cookies))
+        return cfg.moppy_cookies
+    return None
+
+
+def _persist_cookies(clicker: Clicker, cfg: Config) -> None:
+    """Save the live jar so the next process picks up Moppy's rotated values.
+
+    Called after successful authenticated work. Failures are logged and
+    swallowed: the run already succeeded, and a state-write hiccup
+    shouldn't break the user-visible result. Worst case the next run
+    starts from the stale Secret again.
+    """
+    try:
+        n = save_cookie_jar(clicker.session.cookies, cfg.cookie_store_path)
+        logger.info("persisted %d cookies to %s", n, cfg.cookie_store_path)
+    except OSError as exc:
+        logger.warning("failed to persist cookie jar: %s", exc)
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -107,7 +141,7 @@ def cmd_run(
         clicker = Clicker(
             interval_min=cfg.click_interval_min,
             interval_max=cfg.click_interval_max,
-            cookies=cfg.moppy_cookies,
+            cookies=_resolve_cookies(cfg),
         )
 
     if not dry_run and not extract_links and clicker is not None and not clicker.authenticated:
@@ -134,6 +168,9 @@ def cmd_run(
                 notifier.send_auth_error(msg)
             return 1
         logger.info("Moppy login verified — clicks will be credited to the account")
+        # Persist immediately after the verify_login GET so the rotated
+        # cookies survive even if a later step crashes.
+        _persist_cookies(clicker, cfg)
 
     # Capture the pre-click balance so the post-run summary can prove
     # whether points actually credited. Only meaningful in real click mode;
@@ -256,6 +293,9 @@ def cmd_run(
         balance_after = fetch_balance(clicker.session)
         if balance_after is not None:
             logger.info("balance after clicks: %d pt", balance_after)
+        # Save the jar one more time at the very end so all rotation
+        # from the click loop is captured for the next run.
+        _persist_cookies(clicker, cfg)
 
     finished_at = datetime.now(UTC)
     summary = RunSummary(
@@ -330,7 +370,8 @@ def cmd_click(cfg: Config, url: str) -> int:
     if not is_manual_url_allowed(url):
         print(f"refused: {url} is not under moppy.jp", file=sys.stderr)
         return 2
-    if cfg.moppy_cookies is None:
+    cookies = _resolve_cookies(cfg)
+    if cookies is None:
         print(
             "refused: MOPPY_COOKIES is not set; anonymous clicks do not credit points. "
             "Set MOPPY_COOKIES to enable credited single-URL clicks.",
@@ -345,7 +386,7 @@ def cmd_click(cfg: Config, url: str) -> int:
     clicker = Clicker(
         interval_min=cfg.click_interval_min,
         interval_max=cfg.click_interval_max,
-        cookies=cfg.moppy_cookies,
+        cookies=cookies,
     )
     if not clicker.verify_login():
         print(
@@ -353,7 +394,9 @@ def cmd_click(cfg: Config, url: str) -> int:
             file=sys.stderr,
         )
         return 2
+    _persist_cookies(clicker, cfg)
     result = clicker.click(candidate)
+    _persist_cookies(clicker, cfg)
     print(
         f"status={result.final_status} http={result.http_status} "
         f"host={result.final_host or host_only(url)} duration={result.duration_ms}ms"
@@ -378,18 +421,21 @@ def cmd_discover(cfg: Config) -> int:
     auto-click pipeline. Output goes to stdout (workflow log) rather than
     Slack so URLs don't end up in chat history.
     """
-    if cfg.moppy_cookies is None:
+    cookies = _resolve_cookies(cfg)
+    if cookies is None:
         print("refused: MOPPY_COOKIES is not set", file=sys.stderr)
         return 2
     clicker = Clicker(
         interval_min=cfg.click_interval_min,
         interval_max=cfg.click_interval_max,
-        cookies=cfg.moppy_cookies,
+        cookies=cookies,
     )
     if not clicker.verify_login():
         print("refused: Moppy login verification failed (stale or invalid cookies)", file=sys.stderr)
         return 2
+    _persist_cookies(clicker, cfg)
     reports = discover(clicker.session)
+    _persist_cookies(clicker, cfg)
     print(render_report(reports))
     print()
     print("=== JSON ===")
@@ -401,18 +447,21 @@ def cmd_balance(cfg: Config) -> int:
     """Print current Moppy balance to stdout — useful for ad-hoc checks
     and for verifying that the cookies + parser combo still work without
     having to schedule a workflow run."""
-    if cfg.moppy_cookies is None:
+    cookies = _resolve_cookies(cfg)
+    if cookies is None:
         print("refused: MOPPY_COOKIES is not set", file=sys.stderr)
         return 2
     clicker = Clicker(
         interval_min=cfg.click_interval_min,
         interval_max=cfg.click_interval_max,
-        cookies=cfg.moppy_cookies,
+        cookies=cookies,
     )
     if not clicker.verify_login():
         print("refused: Moppy login verification failed (stale or invalid cookies)", file=sys.stderr)
         return 2
+    _persist_cookies(clicker, cfg)
     balance = fetch_balance(clicker.session)
+    _persist_cookies(clicker, cfg)
     if balance is None:
         print("balance: <unknown> (parser failed; check logs for snippet)", file=sys.stderr)
         return 1
