@@ -23,6 +23,10 @@ on:
         description: "read-only recon of 毎日貯める section (overrides other modes)"
         type: boolean
         default: false
+      inspect_url:
+        description: "GET this URL with auth and dump body to log (debug-only, overrides everything)"
+        type: string
+        default: ""
 
 concurrency:
   group: moppy-clicker
@@ -79,11 +83,14 @@ jobs:
           #   Settings → Variables → set MOPPY_CRON_MODE = 'click'
           # (also requires MOPPY_COOKIES secret to be registered).
           MOPPY_EXTRACT_LINKS: ${{ (inputs.extract_links || (github.event_name == 'schedule' && vars.MOPPY_CRON_MODE != 'click')) && '1' || '0' }}
-        # `discover` is workflow_dispatch-only and overrides everything
-        # else: it's a read-only recon command, never invoked by cron, and
-        # the click/extract paths don't make sense alongside it.
+        # `discover` and `inspect_url` are workflow_dispatch-only and
+        # override everything else: read-only recon commands never
+        # invoked by cron. inspect_url has the highest priority since
+        # it's a debug shortcut.
         run: |
-          if [[ "${{ inputs.discover }}" == "true" ]]; then
+          if [[ -n "${{ inputs.inspect_url }}" ]]; then
+            uv run python -m moppy_clicker.main html "${{ inputs.inspect_url }}"
+          elif [[ "${{ inputs.discover }}" == "true" ]]; then
             uv run python -m moppy_clicker.main discover
           else
             uv run python -m moppy_clicker.main run
