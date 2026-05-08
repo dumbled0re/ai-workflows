@@ -49,12 +49,19 @@ jobs:
       - name: Sync deps
         run: uv sync --frozen
 
-      - name: Restore state artifact
-        uses: actions/download-artifact@v4
+      - name: Restore state cache
+        # actions/download-artifact@v4 only sees artifacts from the
+        # SAME workflow run, which made our cross-run persistence a
+        # no-op (every run started fresh and Moppy killed the session
+        # because the cookie Secret was always stale). actions/cache
+        # is designed for cross-run state: the prefix-only restore-key
+        # pulls in the most recent saved cache regardless of run id.
+        uses: actions/cache/restore@v4
         with:
-          name: moppy-state
           path: moppy_clicker/data/
-        continue-on-error: true
+          key: moppy-state-${{ github.run_id }}
+          restore-keys: |
+            moppy-state-
 
       - name: Run
         env:
@@ -82,19 +89,14 @@ jobs:
             uv run python -m moppy_clicker.main run
           fi
 
-      - name: Save state artifact
+      - name: Save state cache
+        # always() so a failed click step still preserves whatever
+        # rotated cookies we managed to capture before the failure.
+        # The unique run-id suffix means each save creates a fresh
+        # cache entry; the next run's restore-keys prefix picks up
+        # whichever entry is newest.
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/cache/save@v4
         with:
-          name: moppy-state
-          # Persist outcomes.jsonl + cookies.json alongside state.json:
-          # - outcomes.jsonl powers the degradation detector across runs.
-          # - cookies.json carries Moppy's rotated session values to the
-          #   next run; without it, every workflow restarts from the
-          #   stale MOPPY_COOKIES Secret and gets its session killed.
-          path: |
-            moppy_clicker/data/state.json
-            moppy_clicker/data/outcomes.jsonl
-            moppy_clicker/data/cookies.json
-          retention-days: 30
-          if-no-files-found: ignore
+          path: moppy_clicker/data/
+          key: moppy-state-${{ github.run_id }}
