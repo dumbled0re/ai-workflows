@@ -1,14 +1,12 @@
 name: moppy-clicker
 
 on:
-  # While we wait for the user's existing 5000pt balance to be cashed out
-  # (target: 2026-05-07), the cron runs in extract-links mode: it parses
-  # incoming click-for-points emails and POSTS THE FULL URLS TO SLACK so
-  # the user can click them manually in their already-logged-in browser.
-  # No clicks happen from the workflow; no Gmail labels or state changes.
-  #
-  # After cashout: register MOPPY_COOKIES, set MOPPY_EXTRACT_LINKS=0 (or
-  # remove the env var), and the same cron switches to credited auto-click.
+  # Cron mode is controlled by vars.MOPPY_CRON_MODE:
+  #   - 'click': credited auto-click using MOPPY_COOKIES secret. Aborts the
+  #     run if MOPPY_COOKIES is not registered (Clicker.verify_login fails).
+  #   - unset / anything else: extract-links mode — posts the full URLs to
+  #     Slack so the user clicks them manually. No Gmail / state mutations.
+  # workflow_dispatch inputs (dry_run, extract_links) override per-run.
   schedule:
     - cron: "0 23 * * *"  # JST 朝8時
   workflow_dispatch:
