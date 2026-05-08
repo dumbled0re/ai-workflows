@@ -27,26 +27,42 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
+from urllib.parse import urljoin, urlparse
 
 import requests
 
 logger = logging.getLogger(__name__)
 
-# Where 毎日貯める typically lives. Both paths are tried — we don't know
-# the canonical URL ahead of time, and Moppy occasionally renames index
-# pages. The crawler short-circuits once a page returns 200.
+_BASE = "https://pc.moppy.jp"
+
+# Mypage is the only page we know returns 200 with a logged-in session,
+# so it's our reliable starting point. The other seeds are guesses at
+# possible 毎日貯める indexes; if any are 404 the crawler just records
+# that and moves on to whatever links it can find from mypage.
 INDEX_CANDIDATES: tuple[str, ...] = (
-    "https://pc.moppy.jp/everyday/",
-    "https://pc.moppy.jp/coin/",
+    f"{_BASE}/mypage/",
+    f"{_BASE}/everyday/",
+    f"{_BASE}/coin/",
+    f"{_BASE}/cap/",
+    f"{_BASE}/category/coin/",
 )
 
 # Within-Moppy paths that smell like point-granting destinations. Kept
 # narrow on purpose — wider patterns drag in shopping/merchant pages,
-# which are out of scope and just waste request budget.
-_COIN_LINK_RE = re.compile(
-    r'<a[^>]+href="(https?://(?:pc\.)?moppy\.jp/[^"]*?'
-    r"(?:coin|gacha|bingo|slot|game|quiz|fortune|click|stamp|lottery|everyday|tracking)"
-    r'[^"]*?)"',
+# which are out of scope and just waste request budget. Both absolute
+# URLs and relative paths are matched; ``_resolve_link`` joins them to
+# the page's own URL before queueing.
+_HREF_PATH_KEYWORDS = "coin|gacha|bingo|slot|game|quiz|fortune|click|stamp|lottery|everyday|tracking|cap|daily"
+_HREF_RE = re.compile(
+    rf'<a[^>]+href="((?:https?://(?:pc\.)?moppy\.jp)?/[^"]*?(?:{_HREF_PATH_KEYWORDS})[^"]*?)"',
+    re.IGNORECASE,
+)
+# Anchors whose visible text has a daily-earn keyword — catches links
+# whose path doesn't include one of the keywords above (e.g. obscure
+# campaign URLs renamed by Moppy).
+_DAILY_TEXT_RE = re.compile(
+    r'<a[^>]+href="((?:https?://(?:pc\.)?moppy\.jp)?/[^"]+)"[^>]*>[^<]{0,40}'
+    r"(?:毎日|コイン|ガチャ|ビンゴ|スロット|占い|くじ|スタンプ|貯める|クリック)",
     re.IGNORECASE,
 )
 _POINT_TEXT_RE = re.compile(r"(\d{1,4})\s*(?:P|Ｐ|ポイント|コイン)")
@@ -133,6 +149,45 @@ def fetch_page(
     return analyze_html(url, 200, html), html
 
 
+def _resolve_link(base_url: str, href: str) -> str | None:
+    """Join a (possibly relative) href to ``base_url`` and gate on host.
+
+    Returns ``None`` if the result would leave Moppy or has a scheme we
+    don't follow (mailto:, javascript:, etc).
+    """
+    href = href.split("#", 1)[0].strip()
+    if not href:
+        return None
+    if href.startswith(("javascript:", "mailto:", "tel:", "#")):
+        return None
+    abs_url = urljoin(base_url, href)
+    parsed = urlparse(abs_url)
+    if parsed.scheme not in {"http", "https"}:
+        return None
+    if not parsed.hostname or not parsed.hostname.endswith("moppy.jp"):
+        return None
+    return abs_url
+
+
+def _extract_links(base_url: str, html: str) -> list[str]:
+    """Combine path-keyword and visible-text-keyword link extraction."""
+    found: list[str] = []
+    for pat in (_HREF_RE, _DAILY_TEXT_RE):
+        for m in pat.finditer(html):
+            link = _resolve_link(base_url, m.group(1))
+            if link is not None:
+                found.append(link)
+    # Preserve discovery order while deduping.
+    seen_local: set[str] = set()
+    deduped: list[str] = []
+    for link in found:
+        if link in seen_local:
+            continue
+        seen_local.add(link)
+        deduped.append(link)
+    return deduped
+
+
 def discover(
     session: requests.Session,
     *,
@@ -154,10 +209,7 @@ def discover(
         seen[url] = report
         if not html:
             continue
-        for m in _COIN_LINK_RE.finditer(html):
-            link = m.group(1)
-            # Strip fragment to avoid ?#xxx duplicates
-            link = link.split("#", 1)[0]
+        for link in _extract_links(url, html):
             if link in seen or link in queue:
                 continue
             if len(seen) + len(queue) >= max_pages:
