@@ -12,6 +12,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -449,13 +450,14 @@ def cmd_discover(cfg: Config) -> int:
 
 
 def cmd_html(cfg: Config, url: str) -> int:
-    """Fetch a single Moppy URL and dump its body to stdout (capped).
+    """Fetch a single Moppy URL and dump its body to stdout.
 
     Used to plan automation for items whose interaction shape isn't
     obvious from discover's regex-based summary (e.g. JS-driven gacha
     where the 'play' button isn't an anchor with a recognizable text).
-    Output is capped at 50KB to keep workflow logs readable; private
-    repo, so query strings remain intact.
+    The body is filtered to drop common header/footer/jQuery noise so
+    the relevant markup fits within reasonable log size; full body is
+    dumped as-is when it's already small.
     """
     if not is_manual_url_allowed(url):
         print(f"refused: {url} is not under moppy.jp", file=sys.stderr)
@@ -476,10 +478,18 @@ def cmd_html(cfg: Config, url: str) -> int:
     resp = clicker.session.get(url, timeout=(10.0, 30.0), allow_redirects=True)
     _persist_cookies(clicker, cfg)
     print(f"=== {resp.url} (HTTP {resp.status_code}, len={len(resp.text)}) ===")
-    body = resp.text[:50_000]
-    print(body)
-    if len(resp.text) > 50_000:
-        print(f"\n=== TRUNCATED (showed 50000 of {len(resp.text)} bytes) ===")
+    # Strip <script> and <style> blocks: they're either jQuery/UI noise
+    # or rendering details we don't need to plan automation. Keeps the
+    # markup-of-interest (the actual gacha UI / forms / anchors)
+    # inside a manageable log slice without losing the meaningful HTML.
+    body = re.sub(r"<script\b[^>]*>.*?</script>", "<!-- script removed -->", resp.text, flags=re.DOTALL)
+    body = re.sub(r"<style\b[^>]*>.*?</style>", "<!-- style removed -->", body, flags=re.DOTALL)
+    body = re.sub(r"<!--.*?-->", "", body, flags=re.DOTALL)
+    body = re.sub(r"\n\s*\n+", "\n", body)
+    cap = 80_000
+    print(body[:cap])
+    if len(body) > cap:
+        print(f"\n=== TRUNCATED (showed {cap} of {len(body)} stripped bytes; original {len(resp.text)}) ===")
     return 0
 
 
