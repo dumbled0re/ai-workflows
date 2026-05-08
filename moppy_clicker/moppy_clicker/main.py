@@ -100,6 +100,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "discover",
         help="read-only crawl of 毎日貯める section; prints a structural report (no clicks)",
     )
+    p_html = sub.add_parser(
+        "html",
+        help="GET a Moppy URL with auth and print its body (debug, capped at 50KB)",
+    )
+    p_html.add_argument("url")
     return parser
 
 
@@ -443,6 +448,41 @@ def cmd_discover(cfg: Config) -> int:
     return 0
 
 
+def cmd_html(cfg: Config, url: str) -> int:
+    """Fetch a single Moppy URL and dump its body to stdout (capped).
+
+    Used to plan automation for items whose interaction shape isn't
+    obvious from discover's regex-based summary (e.g. JS-driven gacha
+    where the 'play' button isn't an anchor with a recognizable text).
+    Output is capped at 50KB to keep workflow logs readable; private
+    repo, so query strings remain intact.
+    """
+    if not is_manual_url_allowed(url):
+        print(f"refused: {url} is not under moppy.jp", file=sys.stderr)
+        return 2
+    cookies = _resolve_cookies(cfg)
+    if cookies is None:
+        print("refused: MOPPY_COOKIES is not set", file=sys.stderr)
+        return 2
+    clicker = Clicker(
+        interval_min=cfg.click_interval_min,
+        interval_max=cfg.click_interval_max,
+        cookies=cookies,
+    )
+    if not clicker.verify_login():
+        print("refused: Moppy login verification failed", file=sys.stderr)
+        return 2
+    _persist_cookies(clicker, cfg)
+    resp = clicker.session.get(url, timeout=(10.0, 30.0), allow_redirects=True)
+    _persist_cookies(clicker, cfg)
+    print(f"=== {resp.url} (HTTP {resp.status_code}, len={len(resp.text)}) ===")
+    body = resp.text[:50_000]
+    print(body)
+    if len(resp.text) > 50_000:
+        print(f"\n=== TRUNCATED (showed 50000 of {len(resp.text)} bytes) ===")
+    return 0
+
+
 def cmd_balance(cfg: Config) -> int:
     """Print current Moppy balance to stdout — useful for ad-hoc checks
     and for verifying that the cookies + parser combo still work without
@@ -497,6 +537,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_balance(cfg)
     if args.cmd == "discover":
         return cmd_discover(cfg)
+    if args.cmd == "html":
+        return cmd_html(cfg, args.url)
     parser.error(f"unknown subcommand: {args.cmd}")
 
 
