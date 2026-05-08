@@ -9,14 +9,17 @@ Subcommands:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
+from dataclasses import asdict
 from datetime import UTC, datetime
 
 from .balance import fetch_balance
 from .clicker import Clicker, is_manual_url_allowed
 from .config import Config, ConfigError
+from .discover import discover, render_report
 from .gmail_client import GmailAuthError, GmailClient, GmailParseError
 from .models import ClickCandidate, RunSummary
 from .moppy_parser import parse as parse_email
@@ -59,6 +62,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p_state.add_argument("--message-id", required=True)
 
     sub.add_parser("balance", help="fetch and print current Moppy coin balance")
+    sub.add_parser(
+        "discover",
+        help="read-only crawl of 毎日貯める section; prints a structural report (no clicks)",
+    )
     return parser
 
 
@@ -364,6 +371,32 @@ def cmd_state(cfg: Config, message_id: str) -> int:
     return 0
 
 
+def cmd_discover(cfg: Config) -> int:
+    """Crawl the daily-earn section read-only and dump a structural report.
+
+    No clicks, no state mutation — guides which items can be added to the
+    auto-click pipeline. Output goes to stdout (workflow log) rather than
+    Slack so URLs don't end up in chat history.
+    """
+    if cfg.moppy_cookies is None:
+        print("refused: MOPPY_COOKIES is not set", file=sys.stderr)
+        return 2
+    clicker = Clicker(
+        interval_min=cfg.click_interval_min,
+        interval_max=cfg.click_interval_max,
+        cookies=cfg.moppy_cookies,
+    )
+    if not clicker.verify_login():
+        print("refused: Moppy login verification failed (stale or invalid cookies)", file=sys.stderr)
+        return 2
+    reports = discover(clicker.session)
+    print(render_report(reports))
+    print()
+    print("=== JSON ===")
+    print(json.dumps([asdict(r) for r in reports], ensure_ascii=False, indent=2))
+    return 0
+
+
 def cmd_balance(cfg: Config) -> int:
     """Print current Moppy balance to stdout — useful for ad-hoc checks
     and for verifying that the cookies + parser combo still work without
@@ -413,6 +446,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_state(cfg, args.message_id)
     if args.cmd == "balance":
         return cmd_balance(cfg)
+    if args.cmd == "discover":
+        return cmd_discover(cfg)
     parser.error(f"unknown subcommand: {args.cmd}")
 
 

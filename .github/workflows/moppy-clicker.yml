@@ -19,6 +19,10 @@ on:
         description: "post full clickable URLs to Slack instead of clicking (cron forces this on)"
         type: boolean
         default: false
+      discover:
+        description: "read-only recon of 毎日貯める section (overrides other modes)"
+        type: boolean
+        default: false
 
 concurrency:
   group: moppy-clicker
@@ -68,7 +72,15 @@ jobs:
           #   Settings → Variables → set MOPPY_CRON_MODE = 'click'
           # (also requires MOPPY_COOKIES secret to be registered).
           MOPPY_EXTRACT_LINKS: ${{ (inputs.extract_links || (github.event_name == 'schedule' && vars.MOPPY_CRON_MODE != 'click')) && '1' || '0' }}
-        run: uv run python -m moppy_clicker.main run
+        # `discover` is workflow_dispatch-only and overrides everything
+        # else: it's a read-only recon command, never invoked by cron, and
+        # the click/extract paths don't make sense alongside it.
+        run: |
+          if [[ "${{ inputs.discover }}" == "true" ]]; then
+            uv run python -m moppy_clicker.main discover
+          else
+            uv run python -m moppy_clicker.main run
+          fi
 
       - name: Save state artifact
         if: always()
