@@ -41,7 +41,7 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        working-directory: moppy_clicker
+        working-directory: point_sites
     steps:
       - uses: actions/checkout@v4
 
@@ -62,7 +62,7 @@ jobs:
         # pulls in the most recent saved cache regardless of run id.
         uses: actions/cache/restore@v4
         with:
-          path: moppy_clicker/data/
+          path: point_sites/data/
           key: moppy-state-${{ github.run_id }}
           restore-keys: |
             moppy-state-
@@ -89,11 +89,11 @@ jobs:
         # it's a debug shortcut.
         run: |
           if [[ -n "${{ inputs.inspect_url }}" ]]; then
-            uv run python -m moppy_clicker.main html "${{ inputs.inspect_url }}"
+            uv run python -m point_sites.main html "${{ inputs.inspect_url }}"
           elif [[ "${{ inputs.discover }}" == "true" ]]; then
-            uv run python -m moppy_clicker.main discover
+            uv run python -m point_sites.main discover
           else
-            uv run python -m moppy_clicker.main run
+            uv run python -m point_sites.main run
           fi
 
       - name: Save state cache
@@ -105,5 +105,5 @@ jobs:
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: moppy_clicker/data/
+          path: point_sites/data/
           key: moppy-state-${{ github.run_id }}

@@ -1,4 +1,4 @@
-"""moppy_clicker CLI entry point.
+"""point_sites CLI entry point.
 
 Subcommands:
   run           fetch → parse → click → notify
@@ -31,7 +31,7 @@ from .outcome_tracker import OutcomeTracker, make_outcome
 from .redaction import host_only, redact_subject, redact_url
 from .state_store import StateStore
 
-logger = logging.getLogger("moppy_clicker")
+logger = logging.getLogger("point_sites")
 
 
 def _setup_logging(level: str) -> None:
@@ -74,7 +74,7 @@ def _persist_cookies(clicker: Clicker, cfg: Config) -> None:
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="moppy_clicker")
+    parser = argparse.ArgumentParser(prog="point_sites")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_run = sub.add_parser("run", help="fetch and click")

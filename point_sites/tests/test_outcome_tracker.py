@@ -8,7 +8,7 @@ logic so the threshold math doesn't silently drift.
 
 from datetime import UTC, datetime
 
-from moppy_clicker.outcome_tracker import (
+from point_sites.outcome_tracker import (
     DEGRADATION_RATIO_THRESHOLD,
     DEGRADATION_WINDOW,
     Outcome,

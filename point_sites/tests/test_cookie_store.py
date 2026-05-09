@@ -10,7 +10,7 @@ or corrupt.
 
 from requests.cookies import RequestsCookieJar
 
-from moppy_clicker import cookie_store
+from point_sites import cookie_store
 
 
 def _populate_jar(jar: RequestsCookieJar, **kwargs: str) -> None:

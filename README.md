@@ -8,7 +8,7 @@ GitHub Actions と Claude を活用した個人用自動化ワークフロー集
 |---|---|---|---|
 | [`stock_analyzer/`](./stock_analyzer/) | 日本株の短期投資分析（テクニカル + ファンダ + ニュース + 信用残）。自律改善ループ（予測記録 → 検証 → 戦略更新）付き | 毎日 8:00 / 16:00 JST、土曜 10:00 JST にレビュー | Bot Token + `SLACK_CHANNEL_STOCK` |
 | [`tech_catchup/`](./tech_catchup/) | AI 業界のニュース・新リリースを Hacker News / GitHub Trending / arXiv / AI 企業公式ブログから収集して要約 | 毎朝 7:30 JST | Bot Token + `SLACK_CHANNEL_TECH` |
-| [`moppy_clicker/`](./moppy_clicker/) | モッピーの「クリックでポイント」メールを IMAP で取得し、自動クリック（HTTP GET）して Slack 通知 | 毎日 9:00 JST | Bot Token + `SLACK_CHANNEL_MOPPY` |
+| [`point_sites/`](./point_sites/) | 日本のポイ活サイト自動化（adapter 構造）。Moppy の「クリックでポイント」メール自動クリック等。Cookie rotation 永続化 + 加算検証付き | 毎日 8:00 JST | Bot Token + `SLACK_CHANNEL_MOPPY` 等 |
 | [`todo/`](./todo/) | 個人 TODO リスト。Claude Code の `todo` skill で `todos.md` を編集し、毎朝 Slack に未完了タスクを通知 | 毎朝 9:00 JST | Bot Token + `SLACK_CHANNEL_TODO` |
 
 > 詳細な設計・運用方針は [`CLAUDE.md`](./CLAUDE.md) と各プロジェクト内の `DESIGN.md` を参照。
@@ -47,9 +47,9 @@ cd tech_catchup && uv sync
 uv run python -m tech_catchup.main gather       # ニュース収集
 uv run python -m tech_catchup.main notify       # Slack 通知
 
-# モッピー自動クリック（uv 管理）
-cd moppy_clicker && uv sync
-uv run python -m moppy_clicker.main run
+# ポイ活サイト自動クリック（uv 管理）
+cd point_sites && uv sync
+uv run python -m point_sites.main run --site moppy
 
 # TODO リマインダー（uv 管理）
 cd todo && uv sync
@@ -66,8 +66,8 @@ uv run python -m todo.main notify               # Slack 通知
 | `stock-analysis.yml` | 株分析（保有銘柄予測 + 有望株発掘） | 毎日 朝/夕 |
 | `weekly-review.yml` | 株戦略の週次レビュー | 土曜朝 |
 | `tech-catchup.yml` | AI ニュースキャッチアップ | 毎朝 |
-| `moppy-clicker.yml` | モッピーメール自動クリック | 毎日 |
-| `moppy-clicker-ci.yml` | moppy_clicker の lint/test | PR 時 |
+| `moppy.yml` | モッピーメール自動クリック (point_sites の moppy adapter) | 毎日 |
+| `moppy-clicker-ci.yml` | point_sites の mypy | PR 時 |
 | `todo.yml` | TODO リマインダーを Slack に通知 | 毎朝 9:00 JST |
 
 手動実行は GitHub Actions タブから `Run workflow` で。
@@ -95,4 +95,4 @@ Phase 1/3 はプロジェクト固有のロジック、Phase 2 は Claude によ
 
 ## ライセンス・免責
 
-各プロジェクトの実装内容は個人用の参考用。投資判断や金銭的取引に関わる動作はすべて自己責任で運用してください。`moppy_clicker` はモッピーの規約により自動アクセスがリスクを伴う点に留意。
+各プロジェクトの実装内容は個人用の参考用。投資判断や金銭的取引に関わる動作はすべて自己責任で運用してください。`point_sites` は対象ポイ活サイト各社の規約により自動アクセスがリスクを伴う点に留意。

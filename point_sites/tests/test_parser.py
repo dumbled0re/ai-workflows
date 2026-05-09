@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from moppy_clicker.moppy_parser import (
+from point_sites.moppy_parser import (
     CALLOUT_RE,
     CLICK_COIN_URL_RE,
     parse,

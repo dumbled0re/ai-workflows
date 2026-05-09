@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [stock_analyzer, tech_catchup, moppy_clicker, todo]
+        project: [stock_analyzer, tech_catchup, point_sites, todo]
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 

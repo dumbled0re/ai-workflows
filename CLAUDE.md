@@ -23,11 +23,11 @@ ai-workflows/
 │       ├── main.py
 │       └── sources.py
 │
-├── moppy_clicker/                  ← モッピー自動クリック
+├── point_sites/                    ← 日本のポイ活サイト自動化（Moppy + 将来の adapter）
 │   ├── pyproject.toml / uv.lock
 │   ├── DESIGN.md                   ← 設計詳細
 │   ├── tests/                      ← pytest（fixture ベース）
-│   └── moppy_clicker/              ← パッケージ本体
+│   └── point_sites/                ← パッケージ本体（common/ + adapters/<site>/ 構造）
 │
 ├── todo/                           ← 個人 TODO リスト
 │   ├── pyproject.toml / uv.lock
@@ -38,8 +38,8 @@ ai-workflows/
 │   ├── stock-analysis.yml          ← 株分析（毎日 朝8時/夕16時 JST）
 │   ├── weekly-review.yml           ← 戦略レビュー（土曜10時 JST）
 │   ├── tech-catchup.yml            ← AIキャッチアップ（毎朝7:30 JST）
-│   ├── moppy-clicker.yml           ← モッピークリック（毎日 朝8時 JST）
-│   ├── moppy-clicker-ci.yml        ← moppy_clicker の lint/test（PR時）
+│   ├── moppy.yml                   ← モッピークリック（毎日 朝8時 JST）
+│   ├── point_sites-ci.yml          ← point_sites の mypy（PR時）
 │   └── todo.yml                    ← TODO リマインダー（毎朝9時 JST）
 │
 ├── CLAUDE.md
@@ -103,7 +103,7 @@ uv run python -m todo.main notify             # Slack通知
 |---|---|---|
 | stock_analyzer | uv + pyproject.toml + uv.lock | ✅ |
 | tech_catchup | uv + pyproject.toml + uv.lock | ✅ |
-| moppy_clicker | uv + pyproject.toml + uv.lock | ✅ |
+| point_sites | uv + pyproject.toml + uv.lock | ✅ |
 | todo | uv + pyproject.toml + uv.lock | ✅ |
 
 ### uvプロジェクトの標準レイアウト
@@ -137,7 +137,7 @@ HISTORY_FILE = Path("stock_analyzer/data/predictions.json")
 |---|---|---|
 | ruff check | 全プロジェクト | ✅ CI で必須 |
 | ruff format --check | 全プロジェクト | ✅ CI で必須 |
-| mypy (strict) | moppy_clicker のみ | ✅ CI で必須 |
+| mypy (strict) | point_sites のみ | ✅ CI で必須 |
 | mypy (lenient) | 他3プロジェクト | ⏳ 将来 strict 化目標 |
 | pytest | tests/ がある場合のみ | ✅ CI で必須 |
 
@@ -156,8 +156,8 @@ uv sync --frozen --group dev       # 依存とdev tools同期
 uv run ruff check .                # lint
 uv run ruff format --check .       # フォーマット確認（修正は format . で）
 uv run pytest                      # tests/ がある場合のみ
-# moppy_clicker のみ:
-uv run mypy moppy_clicker
+# point_sites のみ:
+uv run mypy point_sites
 ```
 
 ### codex とのコラボ（設計・レビュー両方）
@@ -178,7 +178,7 @@ uv run mypy moppy_clicker
 #### 使い方
 ```bash
 # 設計相談（対話的に質問する）
-codex exec "moppy_clicker のガチャ自動化、CSRF token を hidden field から拾って POST する設計で問題ない？once-per-day 判定はどう持つべき？"
+codex exec "point_sites のガチャ自動化、CSRF token を hidden field から拾って POST する設計で問題ない？once-per-day 判定はどう持つべき？"
 
 # コミット前レビュー
 git add -A
@@ -213,7 +213,7 @@ codex review path/to/file.py
 - 検証層自体が壊れた場合 (HTML パターン変更等) も、本処理は止めずに「検証失敗」として通知する (検証失敗 ≠ 本処理失敗)
 - 自動 fallback (extract モードへの切替等) を入れるなら、**コード変更不要で revert できる経路** (env var / GitHub Variable) を用意する
 
-**実装例:** `moppy_clicker/balance.py` (検知) + `outcome_tracker.py` (記録 + 判断) + `notifier.send_summary` の degradation セクション (通知)。
+**実装例:** `point_sites/common/balance.py` (検知) + `common/outcome_tracker.py` (記録 + 判断) + `common/notifier.send_summary` の degradation セクション (通知)。
 
 ### Git 運用ポリシー（個人リポジトリ・AI フレンドリー）
 

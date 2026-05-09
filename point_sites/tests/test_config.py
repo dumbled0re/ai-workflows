@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from moppy_clicker.config import ConfigError, _parse_cookies
+from point_sites.config import ConfigError, _parse_cookies
 
 
 def test_parse_cookies_none_when_absent():

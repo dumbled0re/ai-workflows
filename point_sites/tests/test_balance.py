@@ -1,11 +1,11 @@
-"""Tests for moppy_clicker.balance.
+"""Tests for point_sites.balance.
 
 We can't hit the real mypage, so tests use synthetic HTML that exercises
 each parser pattern. The list of variants doubles as a contract: if Moppy
 ever ships a redesign, the failing test makes the breakage obvious.
 """
 
-from moppy_clicker.balance import parse_balance
+from point_sites.balance import parse_balance
 
 
 def test_data_attribute() -> None:

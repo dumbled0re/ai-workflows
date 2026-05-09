@@ -113,7 +113,7 @@ class Notifier:
     ) -> None:
         failed = [r for r in results if r.final_status != "success"]
         lines = [
-            f"[moppy_clicker] {summary.started_at:%Y-%m-%d %H:%M} 完了",
+            f"[point_sites] {summary.started_at:%Y-%m-%d %H:%M} 完了",
             f"✅ 成功: {summary.success_count}件 / 推定獲得: {estimated_total_pt}pt",
         ]
         verification = _format_verification(estimated_total_pt, balance_before, balance_after)
@@ -143,7 +143,7 @@ class Notifier:
         candidates_by_message: list[tuple[str, str, list[str]]],
     ) -> None:
         """``candidates_by_message`` items: (msg_id, redacted_subject, [redacted_urls])."""
-        lines = [f"[moppy_clicker] 🧪 dry-run: {len(candidates_by_message)}件のメールから候補抽出"]
+        lines = [f"[point_sites] 🧪 dry-run: {len(candidates_by_message)}件のメールから候補抽出"]
         for msg_id, subject, urls in candidates_by_message[:20]:
             lines.append(f"  msg={msg_id[:10]} subject={subject!r} urls={len(urls)}")
             for u in urls[:5]:
@@ -214,12 +214,12 @@ class Notifier:
         the day's links.
         """
         if not candidates_by_message:
-            return self._post({"text": "[moppy_clicker] 📬 抽出対象のメールはありませんでした"})
+            return self._post({"text": "[point_sites] 📬 抽出対象のメールはありませんでした"})
         # Skip messages with no URLs early — they don't render a section anyway,
         # and counting them toward page size wastes capacity.
         non_empty = [m for m in candidates_by_message if m[2]]
         if not non_empty:
-            return self._post({"text": "[moppy_clicker] 📬 抽出対象のメールはありませんでした"})
+            return self._post({"text": "[point_sites] 📬 抽出対象のメールはありませんでした"})
 
         total_urls = sum(len(urls) for _, _, urls in non_empty)
         pages = [
@@ -232,7 +232,7 @@ class Notifier:
             blocks = self.build_extract_blocks(page, page_label)
             ok = self._post(
                 {
-                    "text": f"[moppy_clicker] 📬 {total_urls}件のクリックリンク",
+                    "text": f"[point_sites] 📬 {total_urls}件のクリックリンク",
                     "blocks": blocks,
                     # CRITICAL: disable Slack's auto-unfurl. Otherwise Slackbot
                     # would fetch each click URL anonymously to render previews,
@@ -252,14 +252,14 @@ class Notifier:
         if not ids:
             return
         lines = [
-            f"[moppy_clicker] ⚠ パース失敗 {len(ids)}件 ({reason})",
+            f"[point_sites] ⚠ パース失敗 {len(ids)}件 ({reason})",
             "  msg_id (先頭のみ): " + ", ".join(mid[:10] for mid in ids[:5]),
             "  → ローカルで該当 msg_id を fixture 化して parser 修正してください",
         ]
         self._post({"text": "\n".join(lines)})
 
     def send_auth_error(self, message: str) -> None:
-        self._post({"text": f"[moppy_clicker] 🚨 認証エラー: {message}"})
+        self._post({"text": f"[point_sites] 🚨 認証エラー: {message}"})
 
     def send_config_error(self, message: str) -> None:
-        self._post({"text": f"[moppy_clicker] 🚨 設定エラー: {message}"})
+        self._post({"text": f"[point_sites] 🚨 設定エラー: {message}"})

@@ -1,4 +1,4 @@
-"""Pydantic models for moppy_clicker."""
+"""Pydantic models for point_sites."""
 
 from datetime import datetime
 from typing import Literal

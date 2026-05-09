@@ -7,7 +7,7 @@ page). The point isn't to mirror real Moppy markup byte-for-byte — it's
 to lock in the rules that decide which items are safe to auto-click.
 """
 
-from moppy_clicker.discover import analyze_html, classify_interaction
+from point_sites.discover import analyze_html, classify_interaction
 
 
 def test_classify_form_wins_over_buttons() -> None:

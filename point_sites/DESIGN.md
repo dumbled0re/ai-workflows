@@ -1,4 +1,4 @@
-# moppy_clicker — 設計書（v3: IMAP + App Password）
+# point_sites — 設計書（v3: IMAP + App Password）
 
 モッピー（ポイントサイト）配信メールに含まれる「クリックで○pt」リンクを自動でクリック（HTTP GET）し、結果を Slack に通知する自動化ワークフロー。
 
@@ -9,11 +9,11 @@
 ## ディレクトリ構成
 
 ```
-moppy_clicker/
+point_sites/
 ├── pyproject.toml
 ├── uv.lock
 ├── .venv/                   ← gitignore
-├── moppy_clicker/
+├── point_sites/
 │   ├── __init__.py
 │   ├── main.py              ← CLI entry（fetch / run / click / auth）
 │   ├── gmail_client.py      ← Gmail API wrapper（OAuth, 検索, 既読化, ラベル）
@@ -36,14 +36,14 @@ moppy_clicker/
 ## .gitignore 追加項目（実装前に必須）
 
 ```
-moppy_clicker/.venv/
-moppy_clicker/data/
-moppy_clicker/secrets/
-moppy_clicker/**/token.json
-moppy_clicker/**/credentials.json
-moppy_clicker/**/__pycache__/
-moppy_clicker/.ruff_cache/
-moppy_clicker/.pytest_cache/
+point_sites/.venv/
+point_sites/data/
+point_sites/secrets/
+point_sites/**/token.json
+point_sites/**/credentials.json
+point_sites/**/__pycache__/
+point_sites/.ruff_cache/
+point_sites/.pytest_cache/
 ```
 
 ## 処理フロー
@@ -238,7 +238,7 @@ https://pc.moppy.jp/cc/c?t=<base64-ish token>
 
 **通常時:**
 ```
-[moppy_clicker] 2026-05-01 08:00 完了
+[point_sites] 2026-05-01 08:00 完了
 ✅ 成功: 12件 / 推定獲得: 14pt
 ❌ 失敗: 1件（pc.moppy.jp - HTTP 503）
 ⚠ パース失敗: 0件
@@ -247,7 +247,7 @@ https://pc.moppy.jp/cc/c?t=<base64-ish token>
 
 **異常時（情報漏洩防止のため最小限）:**
 ```
-[moppy_clicker] ⚠ パース失敗 1件
+[point_sites] ⚠ パース失敗 1件
   msg_id: 1923xxxxabc
   件名: 【モッピー】クリ... (先頭5文字のみ)
   → fixture 化して parser 修正必要
@@ -338,23 +338,23 @@ def redact_subject(subject: str, prefix_len: int = 5) -> str:
 ## CLI
 
 ```bash
-cd moppy_clicker && uv sync
+cd point_sites && uv sync
 
 # dry-run: クリックせず、候補一覧を Slack に通知
 GMAIL_USER=... GMAIL_APP_PASSWORD=... \
   SLACK_BOT_TOKEN=xoxb-... SLACK_CHANNEL_MOPPY=#moppy \
-  uv run python -m moppy_clicker.main run --dry-run
+  uv run python -m point_sites.main run --dry-run
 
 # 本番実行
 GMAIL_USER=... GMAIL_APP_PASSWORD=... \
   SLACK_BOT_TOKEN=xoxb-... SLACK_CHANNEL_MOPPY=#moppy \
-  uv run python -m moppy_clicker.main run
+  uv run python -m point_sites.main run
 
 # 単一URL手動テスト（scheme/host が moppy 配下のみ受理）
-uv run python -m moppy_clicker.main click https://pc.moppy.jp/cc/c?t=...
+uv run python -m point_sites.main click https://pc.moppy.jp/cc/c?t=...
 
 # state 確認
-uv run python -m moppy_clicker.main state --message-id <uid>
+uv run python -m point_sites.main state --message-id <uid>
 ```
 
 **flag/env 優先順位:** CLI flag > 環境変数 > デフォルト
