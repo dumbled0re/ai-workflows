@@ -2,7 +2,7 @@
 
 新しい Claude セッションでこのプロジェクトを引き継ぐとき、まずこのファイルを読んでから作業を始めてください。`/Users/ritsushi/.claude/projects/-Users-ritsushi-git-ai-workflows/memory/MEMORY.md` の各 memory ファイルもあわせて読むこと。
 
-最終更新: 2026-05-09 (ハピタス・ちょびリッチ・げん玉 adapter scaffold 追加)
+最終更新: 2026-05-09 (ClickUrlSource Protocol 導入 — pointtown/amefuri 用の framework 拡張完了)
 
 ---
 
@@ -19,9 +19,9 @@
 - `chobirich` (scaffold、JST 8:45 cron、Cookie 登録待ち)
 - `gendama` (scaffold、JST 9:00 cron、180日休眠で account 消滅リスクあり、enable 前に user 判断必要)
 
-未着手 (framework 拡張が必要):
-- `ポイントタウン` — on-site inbox model (Gmail 不要、サイト内のメールボックスを scrape する path)。`Adapter` に inbox-strategy フィールドを足して `cmd_run` を polymorphic にする必要あり
-- `アメフリ` — daily login bonus endpoint poll (Gmail なし、HTTP GET 1発で完結)。同じく framework 拡張が必要
+未着手 (新 Source 実装が必要、framework 側は ada6d9e で完了済):
+- `ポイントタウン` — on-site inbox model (Gmail 不要、サイト内のメールボックスを scrape する path)。`OnsiteInboxSource` を `common/sources/` に追加して adapter から inject すれば動く
+- `アメフリ` — daily login bonus endpoint poll (Gmail なし、HTTP GET 1発で完結)。`EndpointPollSource` を同様に追加
 
 その他 (低優先):
 - `ECナビ`, `ニフティポイントクラブ`, `ワラウ` 等 — yield 低・blocker あり、agent research で除外推奨
@@ -39,18 +39,19 @@
 ## 現在の状態 (2026-05-09)
 
 - **Moppy**: 本番運用中。毎朝 JST 8:00 cron で動作。Cookie persistence + balance verification + outcome tracking 全部稼働
-- **ポイントインカム**: コードは入ってる、ただし regex は best-guess・user が Cookie 登録 + discover 流すまで動作未検証
-- **その他のサイト**: 未着手
+- **ポイントインカム / ハピタス / ちょびリッチ / げん玉**: コードは入ってる、ただし Cookie 未登録・regex は best-guess。user が `<SITE>_COOKIES` + `SLACK_CHANNEL_<SITE>` Secret を登録 + `gh workflow run <site>.yml -f discover=true` を流すまで動作未検証
+- **framework 拡張 (Source Protocol)**: ✅ 完了 (commit `ada6d9e`)。`common/sources/` に `ClickUrlSource` Protocol + `GmailSource` 実装を導入。既存 5 adapter は `source=GmailSource(parse_email=...)` 注入に移行。`cmd_run` は source.list_state_keys → fetch_batch → mark_complete のループに refactor 済。挙動不変、95 tests + ruff + mypy strict 全部 green。codex 設計相談 (B寄り C-lite) + codex review --uncommitted どちらもクリア
+- **ポイントタウン / アメフリ adapter**: ⏸️ 未着手。framework は揃ったので `OnsiteInboxSource` / `EndpointPollSource` を `common/sources/` に追加すれば乗る。balance delta 比較が主信号 (codex 助言 2026-05-09)
 
 最新コミット系列 (master):
 ```
+ada6d9e point_sites: introduce ClickUrlSource Protocol (B寄り C-lite)
+c09c215 Weekly strategy review: update notes and screening weights [skip ci]
+a6a7396 point_sites: scaffold hapitas/chobirich/gendama adapters + workflows
+49fdff8 point_sites: HANDOFF.md for fresh-session continuation
 51f9969 _site-runner: bridge uses GITHUB_WORKSPACE absolute paths (+ pointincome adapter)
-e398f9e _site-runner: revert to single-line bridge path + filesystem debug
-b7f4b4a _site-runner: bridge cache version match with multi-line path
-438bef4 _site-runner: one-time legacy cache bridge for moppy_clicker rename
 1df1387 moppy_clicker.yml → moppy.yml + reusable _site-runner (Phase 2)
 9f66a0c point_sites: Adapter Protocol + multi-site CLI (Phase 1B+1C)
-fb6a996 moppy_clicker → point_sites: rename for multi-site framework
 ```
 
 ## アーキテクチャ概要
@@ -60,25 +61,27 @@ point_sites/
 ├── pyproject.toml                      ← uv プロジェクト
 ├── point_sites/
 │   ├── common/                         ← 全 adapter 共通の基盤
-│   │   ├── adapter.py                  ← Adapter dataclass (Protocol 相当)
+│   │   ├── adapter.py                  ← Adapter dataclass (source: ClickUrlSource を持つ)
+│   │   ├── sources/                    ← Click URL の出所を抽象化 (新)
+│   │   │   ├── base.py                 ← ClickUrlSource Protocol + ClickBatch
+│   │   │   └── gmail.py                ← GmailSource (IMAP-driven)
 │   │   ├── clicker.py                  ← HTTP GET + verify_login
 │   │   ├── balance.py                  ← mypage 残高 scraping
 │   │   ├── cookie_store.py             ← rotated cookie jar の永続化
 │   │   ├── outcome_tracker.py          ← 加算検証 + degradation 検知
 │   │   ├── notifier.py                 ← Slack
-│   │   ├── gmail_client.py             ← IMAP
+│   │   ├── gmail_client.py             ← IMAP (GmailSource から呼ばれる)
 │   │   ├── discover.py                 ← read-only サイト recon
 │   │   ├── state_store.py              ← URL重複防止
 │   │   ├── redaction.py                ← URL/log redaction
 │   │   └── models.py                   ← Pydantic models
 │   ├── adapters/
 │   │   ├── __init__.py                 ← REGISTRY (--site name → Adapter)
-│   │   ├── moppy/
-│   │   │   ├── __init__.py             ← ADAPTER instance
-│   │   │   └── parser.py               ← Moppy email regex
-│   │   └── pointincome/
-│   │       ├── __init__.py             ← ADAPTER instance (scaffolded)
-│   │       └── parser.py               ← regex は要 refine
+│   │   ├── moppy/                      ← source=GmailSource(parse_email=...)
+│   │   ├── pointincome/                ← scaffold + GmailSource、Cookie 未登録
+│   │   ├── hapitas/                    ← scaffold + GmailSource、Cookie 未登録
+│   │   ├── chobirich/                  ← scaffold + GmailSource、Cookie 未登録
+│   │   └── gendama/                    ← scaffold + GmailSource、enable 前 user 判断必要
 │   ├── config.py                       ← env → Config
 │   └── main.py                         ← CLI: run / click / balance / discover / html / state
 ├── tests/                              ← pytest 95 件
@@ -119,6 +122,7 @@ uv run python -m point_sites.main html --site moppy <URL> # 単 URL の HTML dum
 ```python
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
+from ...common.sources import GmailSource
 from .parser import parse as parse_email
 
 ADAPTER = Adapter(
@@ -130,11 +134,17 @@ ADAPTER = Adapter(
     gmail_query="from:<host> -label:<site>-clicked -label:<site>-no-coins newer_than:3d",
     clicked_label="<site>-clicked",
     no_coins_label="<site>-no-coins",
-    parse_email=parse_email,
-    balance_patterns=DEFAULT_BALANCE_PATTERNS,  # 多くの日本ポイ活サイトで通用
+    source=GmailSource(parse_email=parse_email),  # Gmail 駆動の場合
+    balance_patterns=DEFAULT_BALANCE_PATTERNS,    # 多くの日本ポイ活サイトで通用
     discover_seeds=("https://<host>/mypage/", "https://<host>/<daily-page>/"),
 )
 ```
+
+Gmail 以外の source を使いたい場合 (ポイントタウン on-site inbox / アメフリ endpoint poll):
+1. `common/sources/<kind>.py` に `OnsiteInboxSource` / `EndpointPollSource` を実装 (`ClickUrlSource` Protocol を満たす)
+2. `common/sources/__init__.py` に export を追加
+3. adapter 側は `source=OnsiteInboxSource(...)` 等を inject。`gmail_query` / `clicked_label` / `no_coins_label` は空のままで OK
+4. それ以外 (mypage_url / balance_patterns / discover_seeds) は Gmail と同じ
 
 `point_sites/adapters/<site>/parser.py`: `adapters/moppy/parser.py` をコピーして CLICK_COIN_URL_RE / CALLOUT_RE を当該サイト用に変更。最初は best-guess regex で OK、discover 流して実物見てから refine。
 
@@ -247,13 +257,22 @@ gh workflow run <site>.yml --repo dumbled0re/ai-workflows -f extract_links=true
 7. workflow を `extract_links=true` で1日試して Slack に URL が流れること確認
 8. OK なら GitHub Variables に `<SITE_UPPER>_CRON_MODE = click` を設定して本番化
 
-## 開発周辺で欲しいスキル候補 (user 提案 2026-05-09)
+## 開発周辺の skill (2026-05-09)
 
-context が圧迫されてきた時用の補助スキル:
-- session 長くなって token 消費が大きくなったら自動的に HANDOFF.md / memory を更新して /clear 推奨を出す
-- 引き継ぎ用 prompt を auto-生成して chat に出す
-- 現在の作業を「中断点」としてまとめてくれる
-- これらは `~/.claude/skills/` に置く形で、複数プロジェクトから使い回せる skill としてまとめると良い
+- ✅ `~/.claude/skills/handoff/SKILL.md` 作成済 (2026-05-09)。`/handoff` で HANDOFF.md 更新 + memory refresh + 新セッション resume prompt の生成を1ステップで実行できる。session が長くなって context 圧迫してきた時 / `/clear` 前 / 中断点を残したいときに invoke。複数プロジェクト共通
+
+## 次にやること (優先順)
+
+1. **新規 adapter (Gmail 駆動) の本番化** — user が Cookie Secret 登録してから:
+   - `pointincome` / `hapitas` / `chobirich`: `gh workflow run <site>.yml -f discover=true` → ログから実 click email URL pattern を読んで `parser.py` の regex を refine → `extract_links=true` で1日試して URL が想定通り → `vars.<SITE>_CRON_MODE=click` で本番化
+   - `gendama`: 180 日休眠ルールで account 消滅リスクあり、enable は user 判断必要
+
+2. **新 Source 実装 (framework 側は完了済)**:
+   - **アメフリ** が一番楽 (`EndpointPollSource` で1日1 GET、balance delta で credit 検証)。yield 小さいが実装コスト低
+   - **ポイントタウン** は `OnsiteInboxSource` 実装が必要 (inbox HTML scrape + state_key = inbox URL)。実装コスト中
+   - 着手前に user に **どっち先か** 確認
+
+3. (低優先) parser 単体テスト追加 — 各 adapter の `parser.py` を fake HTML/text で exercise する pytest fixture。実メールが流れるまで限定的だが、regex typo を CI で catch できる
 
 ## 既存 memory 一覧
 
