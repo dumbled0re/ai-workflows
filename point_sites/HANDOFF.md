@@ -2,7 +2,7 @@
 
 新しい Claude セッションでこのプロジェクトを引き継ぐとき、まずこのファイルを読んでから作業を始めてください。`/Users/ritsushi/.claude/projects/-Users-ritsushi-git-ai-workflows/memory/MEMORY.md` の各 memory ファイルもあわせて読むこと。
 
-最終更新: 2026-05-09 (ClickUrlSource Protocol 導入 — pointtown/amefuri 用の framework 拡張完了)
+最終更新: 2026-05-09 (アメフリ adapter 実環境動作確認 + cron 有効化 — daily login bonus credit 観察モード)
 
 ---
 
@@ -39,19 +39,21 @@
 ## 現在の状態 (2026-05-09)
 
 - **Moppy**: 本番運用中。毎朝 JST 8:00 cron で動作。Cookie persistence + balance verification + outcome tracking 全部稼働
-- **ポイントインカム / ハピタス / ちょびリッチ / げん玉**: コードは入ってる、ただし Cookie 未登録・regex は best-guess。user が `<SITE>_COOKIES` + `SLACK_CHANNEL_<SITE>` Secret を登録 + `gh workflow run <site>.yml -f discover=true` を流すまで動作未検証
-- **framework 拡張 (Source Protocol)**: ✅ 完了 (commit `ada6d9e`)。`common/sources/` に `ClickUrlSource` Protocol + `GmailSource` 実装を導入。既存 5 adapter は `source=GmailSource(parse_email=...)` 注入に移行。`cmd_run` は source.list_state_keys → fetch_batch → mark_complete のループに refactor 済。挙動不変、95 tests + ruff + mypy strict 全部 green。codex 設計相談 (B寄り C-lite) + codex review --uncommitted どちらもクリア
-- **ポイントタウン / アメフリ adapter**: ⏸️ 未着手。framework は揃ったので `OnsiteInboxSource` / `EndpointPollSource` を `common/sources/` に追加すれば乗る。balance delta 比較が主信号 (codex 助言 2026-05-09)
+- **アメフリ**: ✅ end-to-end 動作確認済 (commit `35b08e2`)。Cookie 登録 + discover + click 全て成功、balance scrape 動作 (regex `ownedPoint__point` anchor)、`vars.AMEFURI_CRON_MODE=click` 設定済 → JST 9:15 daily cron で credited 自動実行中。**ただし login bonus が即時 credit されない** (balance_before == balance_after == 0)。アメフリの bonus が「session GET trigger」か「SSO 完全 trigger」かは 1〜2日の観察で判定 (前者なら balance が翌朝 1pt に、後者なら 0 のまま)。後者なら adapter 無効化 + 再検討
+- **ポイントインカム / ハピタス / ちょびリッチ / げん玉**: コードは入ってる、ただし Cookie 未登録・regex は best-guess。user が `<SITE>_COOKIES` + `SLACK_CHANNEL_<SITE>` Secret を登録 + Gmail 移行 (アメフリと同じ ポイ活専用 Gmail への切替) を済ませてから本番化開始
+- **ポイントタウン**: ⏸️ Cookie 未登録。GMO の anti-fraud が業界最強なので、最初は extract-links モードで様子見必須
+- **framework 拡張 (Source Protocol)**: ✅ 完了 (commit `ada6d9e` + `e5d7f40`)。`common/sources/` に `ClickUrlSource` Protocol + `GmailSource` + `EndpointPollSource` + `OnsiteInboxSource` 実装。既存 7 adapter は `source=...` 注入に移行。`cmd_run` は source 駆動 loop に refactor 済。挙動不変、95 tests + ruff + mypy strict 全部 green
 
 最新コミット系列 (master):
 ```
+35b08e2 amefuri: point endpoint at /account + add site-specific balance regex
+b97406f amefuri: fix mypage URL (/account, not /mypage which 404s) + SSO host
+e09a4ad CLAUDE.md: codex collab is for "unsure / want a second opinion"
+e5d7f40 point_sites: add amefuri (endpoint-poll) + pointtown (onsite-inbox) adapters
+94e0d67 point_sites: HANDOFF.md update for Source Protocol landing
 ada6d9e point_sites: introduce ClickUrlSource Protocol (B寄り C-lite)
-c09c215 Weekly strategy review: update notes and screening weights [skip ci]
 a6a7396 point_sites: scaffold hapitas/chobirich/gendama adapters + workflows
-49fdff8 point_sites: HANDOFF.md for fresh-session continuation
-51f9969 _site-runner: bridge uses GITHUB_WORKSPACE absolute paths (+ pointincome adapter)
 1df1387 moppy_clicker.yml → moppy.yml + reusable _site-runner (Phase 2)
-9f66a0c point_sites: Adapter Protocol + multi-site CLI (Phase 1B+1C)
 ```
 
 ## アーキテクチャ概要
