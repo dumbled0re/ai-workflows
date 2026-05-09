@@ -68,10 +68,42 @@ jobs:
       - name: Sync deps
         run: uv sync --frozen
 
+      - name: Bridge pre-rename cache (one-time)
+        # Cache version is hashed from the cache path string, so the
+        # rename moppy_clicker/data/ → point_sites/data/ orphaned the
+        # old cache: the new path's version no longer matches. This
+        # restore uses the LEGACY path to pick up entries created
+        # before the rename; the next step copies them into the new
+        # layout so the rotated cookie jar survives. Runs only for the
+        # moppy adapter; harmless to leave in place after the legacy
+        # cache expires (it just becomes a no-op).
+        if: inputs.site == 'moppy'
+        uses: actions/cache/restore@v4
+        with:
+          path: moppy_clicker/data/
+          key: legacy-bridge-${{ github.run_id }}
+          restore-keys: |
+            ${{ inputs.site }}-state-
+        continue-on-error: true
+
+      - name: Apply legacy cache bridge
+        if: inputs.site == 'moppy'
+        run: |
+          if [ -d moppy_clicker/data ] && [ -n "$(ls -A moppy_clicker/data 2>/dev/null)" ]; then
+            echo "bridging moppy_clicker/data/ → point_sites/data/"
+            mkdir -p point_sites/data
+            cp -r moppy_clicker/data/. point_sites/data/ || true
+            ls -la point_sites/data/ || true
+          else
+            echo "no legacy data to bridge"
+          fi
+
       - name: Restore state cache
         # actions/cache survives across workflow runs (unlike artifacts),
         # so the rotated cookie jar from yesterday's run is what we boot
         # from today. Per-site key prefix keeps adapters isolated.
+        # Runs after the bridge so a fresh new-layout cache wins over
+        # the legacy one (most recent state always preferred).
         uses: actions/cache/restore@v4
         with:
           path: point_sites/data/
