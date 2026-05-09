@@ -28,6 +28,23 @@ DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
 )
 
+# Browser-like default headers in addition to User-Agent. Some site CDNs
+# (chobirich-style WAFs in particular) reject requests that look like a
+# bare scraper based on missing Accept / Accept-Language / Sec-Fetch-*
+# headers. Sending them by default brings every request closer to a real
+# Chrome navigation. Sites that are happy with minimal headers (moppy /
+# amefuri / hapitas / pointincome) are unaffected — they don't reject
+# extra headers, just don't require them.
+_BROWSER_DEFAULT_HEADERS: dict[str, str] = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+}
+
 
 class Clicker:
     def __init__(
@@ -46,7 +63,7 @@ class Clicker:
         self.timeout = (connect_timeout, read_timeout)
         self.session = requests.Session()
         self.session.max_redirects = max_redirects
-        self.session.headers.update({"User-Agent": user_agent})
+        self.session.headers.update({"User-Agent": user_agent, **_BROWSER_DEFAULT_HEADERS})
         self.authenticated = False
         if cookies:
             for c in cookies:
