@@ -41,14 +41,22 @@ _DAILY_BONUS_URL = "https://www.amefri.net/login_bonus"
 ADAPTER = Adapter(
     name="amefuri",
     site_label="アメフリ",
-    mypage_url="https://www.amefri.net/mypage",
-    allowed_hosts=frozenset({"amefri.net", "www.amefri.net"}),
+    # ``/account`` is the auth-gate landing — unauth visits are 302'd to
+    # the i2i SSO login URL, so a 200 there with the login_keyword
+    # present is a strong logged-in signal. ``/mypage`` simply doesn't
+    # exist on amefri.net (404).
+    mypage_url="https://www.amefri.net/account",
+    # i2i (id.i2i.jp) is the SSO domain — login cookies live there too,
+    # so the cookie jar must span both hosts for re-auth on session
+    # rotation. Plain ``amefri.net`` covers any subdomain via Clicker's
+    # suffix-match logic.
+    allowed_hosts=frozenset({"amefri.net", "www.amefri.net", "id.i2i.jp"}),
     login_keyword="ログアウト",
     # Gmail fields stay blank — endpoint-poll source ignores them.
     source=EndpointPollSource(endpoint_url=_DAILY_BONUS_URL),
     balance_patterns=DEFAULT_BALANCE_PATTERNS,
     discover_seeds=(
         "https://www.amefri.net/",
-        "https://www.amefri.net/mypage",
+        "https://www.amefri.net/account",
     ),
 )
