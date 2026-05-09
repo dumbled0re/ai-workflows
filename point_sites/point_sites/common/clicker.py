@@ -1,8 +1,12 @@
 """HTTP GET click executor.
 
-Failure mode policy: GET requests against moppy click endpoints have a side
+Failure mode policy: GET requests against site click endpoints have a side
 effect (granting points), so failures are NOT auto-retried within a single
 process run. The state_store handles cross-run retry up to ``max_attempts``.
+
+The ``Clicker`` itself is site-agnostic; per-site values (default cookie
+domain, mypage URL, login keyword, manual-click allowed hosts) come from
+the active ``Adapter``.
 """
 
 from __future__ import annotations
@@ -35,6 +39,7 @@ class Clicker:
         max_redirects: int = 10,
         user_agent: str = DEFAULT_USER_AGENT,
         cookies: list[dict[str, object]] | None = None,
+        default_cookie_domain: str = ".moppy.jp",
     ) -> None:
         self.interval_min = interval_min
         self.interval_max = interval_max
@@ -51,18 +56,19 @@ class Clicker:
                 self.session.cookies.set(
                     str(c["name"]),
                     str(c["value"]),
-                    domain=str(c.get("domain", ".moppy.jp")),
+                    domain=str(c.get("domain", default_cookie_domain)),
                     path=str(c.get("path", "/")),
                     secure=bool(c.get("secure", True)),
                 )
             self.authenticated = True
 
-    def verify_login(self, mypage_url: str = "https://pc.moppy.jp/mypage/") -> bool:
+    def verify_login(self, mypage_url: str, login_keyword: str = "ログアウト") -> bool:
         """GET mypage and check whether the session is logged in.
 
-        Heuristic: logged-in mypage contains 'ログアウト' (logout link); the
-        public landing redirects/returns a page without it. We avoid asserting
-        on a specific HTML structure to stay resilient to template changes.
+        Heuristic: logged-in mypage contains the adapter's login_keyword
+        (default 'ログアウト'); the public landing redirects/returns a page
+        without it. We avoid asserting on specific HTML structure to stay
+        resilient to template changes.
         """
         try:
             resp = self.session.get(mypage_url, timeout=self.timeout, allow_redirects=True)
@@ -77,7 +83,7 @@ class Clicker:
         if "login" in final_path or "/entry/" in final_path:
             return False
         body = resp.text
-        return "ログアウト" in body or "logout" in body.lower()
+        return login_keyword in body or "logout" in body.lower()
 
     def click(self, candidate: ClickCandidate) -> ClickResult:
         url_str = str(candidate.url)
@@ -132,19 +138,11 @@ class Clicker:
         time.sleep(random.uniform(self.interval_min, self.interval_max))
 
 
-ALLOWED_MANUAL_HOSTS = {
-    "pc.moppy.jp",
-    "mail.moppy.jp",
-    "track.moppy.jp",
-    "moppy.jp",
-}
-
-
-def is_manual_url_allowed(url: str) -> bool:
-    """Restrict ``main click <URL>`` invocations to https moppy hosts.
+def is_manual_url_allowed(url: str, allowed_hosts: frozenset[str] | set[str]) -> bool:
+    """Restrict ``main click <URL>`` invocations to ``allowed_hosts``.
 
     Only ``https`` is accepted because authenticated clicks must never send
-    session cookies over plain HTTP.
+    session cookies over plain HTTP. The exact host set is per-adapter.
     """
     try:
         parsed = urlparse(url)
@@ -154,4 +152,8 @@ def is_manual_url_allowed(url: str) -> bool:
         return False
     if not parsed.hostname:
         return False
-    return parsed.hostname in ALLOWED_MANUAL_HOSTS or parsed.hostname.endswith(".moppy.jp")
+    if parsed.hostname in allowed_hosts:
+        return True
+    # Allow subdomains of any host in allowed_hosts (e.g. allowed
+    # "moppy.jp" matches "pc.moppy.jp" too).
+    return any(parsed.hostname.endswith("." + h) for h in allowed_hosts)

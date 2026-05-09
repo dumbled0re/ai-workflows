@@ -23,7 +23,7 @@ from dataclasses import dataclass
 
 from bs4 import BeautifulSoup
 
-from .models import ClickCandidate
+from ...common.models import ClickCandidate
 
 logger = logging.getLogger(__name__)
 
@@ -70,15 +70,17 @@ def _to_plaintext(body: str, *, is_html: bool) -> str:
     return _strip_html(body) if is_html else body
 
 
-def parse(body: str, *, is_html: bool = False) -> tuple[list[ClickCandidate], list[ParseAnomaly]]:
+def parse(body: str, is_html: bool = False) -> tuple[list[ClickCandidate], list[str]]:
     """Extract ClickCandidate list from a moppy email body.
 
     ``body`` may be plaintext or HTML; pass ``is_html=True`` for HTML emails
-    (we strip tags then run the same regex).
+    (we strip tags then run the same regex). Returns
+    ``(candidates, anomalies)`` where each anomaly is a flat string so the
+    caller can just log/append without depending on this module's types.
     """
     text = _to_plaintext(body, is_html=is_html)
     if not text.strip():
-        return [], [ParseAnomaly(kind="empty_body", detail="no text content")]
+        return [], [str(ParseAnomaly(kind="empty_body", detail="no text content"))]
 
     candidates: list[ClickCandidate] = []
     seen_urls: set[str] = set()
@@ -117,12 +119,14 @@ def parse(body: str, *, is_html: bool = False) -> tuple[list[ClickCandidate], li
         seen_urls.add(url)
         candidates.append(candidate)
 
-    anomalies: list[ParseAnomaly] = []
+    anomalies: list[str] = []
     if unconfirmed_urls:
         anomalies.append(
-            ParseAnomaly(
-                kind="url_without_callout",
-                detail=f"{len(unconfirmed_urls)} cc/c URL(s) without a matching callout",
+            str(
+                ParseAnomaly(
+                    kind="url_without_callout",
+                    detail=f"{len(unconfirmed_urls)} cc/c URL(s) without a matching callout",
+                )
             )
         )
     return candidates, anomalies

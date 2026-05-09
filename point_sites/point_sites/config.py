@@ -1,6 +1,11 @@
 """Runtime configuration loaded from environment variables.
 
-CLI flags override these values where applicable. All numeric/string validation
+The shape changed in Phase 1C of the multi-site refactor: instead of
+hardcoding ``MOPPY_*`` env-var names, we look up env-var names from the
+active ``Adapter``. So the same ``Config.from_env(adapter)`` works for
+moppy, pointincome, etc — it just reads ``MOPPY_COOKIES`` /
+``POINTINCOME_COOKIES`` based on ``adapter.cookies_env``. CLI flags
+override env defaults where applicable. All numeric/string validation
 happens at process start (fail-fast).
 """
 
@@ -9,6 +14,8 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+
+from .common.adapter import Adapter
 
 
 class ConfigError(ValueError):
@@ -35,40 +42,45 @@ def _env_str(name: str, default: str | None = None, *, required: bool = False) -
     return value
 
 
-def _parse_cookies(raw: str | None) -> list[dict[str, object]] | None:
-    """Parse MOPPY_COOKIES env var (JSON-encoded list of cookie dicts).
+def _parse_cookies(
+    raw: str | None,
+    *,
+    env_name: str = "COOKIES",
+    default_domain: str = ".moppy.jp",
+) -> list[dict[str, object]] | None:
+    """Parse the per-site COOKIES env var (JSON-encoded list of cookie dicts).
 
     Each entry must contain at least ``name`` and ``value``. ``domain``,
-    ``path`` and ``secure`` are optional (defaults: ``.moppy.jp`` / ``/`` /
-    ``True``). ``secure`` defaults to ``True`` so that an exported session
-    cookie is never accidentally sent over plain HTTP.
+    ``path`` and ``secure`` are optional (defaults: ``default_domain`` /
+    ``/`` / ``True``). ``secure`` defaults to ``True`` so an exported
+    session cookie is never accidentally sent over plain HTTP.
     """
     if not raw:
         return None
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise ConfigError(f"MOPPY_COOKIES must be valid JSON: {exc}") from exc
+        raise ConfigError(f"{env_name} must be valid JSON: {exc}") from exc
     if not isinstance(data, list):
-        raise ConfigError("MOPPY_COOKIES must be a JSON array of cookie objects")
+        raise ConfigError(f"{env_name} must be a JSON array of cookie objects")
     cookies: list[dict[str, object]] = []
     for i, item in enumerate(data):
         if not isinstance(item, dict):
-            raise ConfigError(f"MOPPY_COOKIES[{i}] must be an object")
+            raise ConfigError(f"{env_name}[{i}] must be an object")
         name = item.get("name")
         value = item.get("value")
         if not isinstance(name, str) or not name:
-            raise ConfigError(f"MOPPY_COOKIES[{i}].name must be a non-empty string")
+            raise ConfigError(f"{env_name}[{i}].name must be a non-empty string")
         if not isinstance(value, str):
-            raise ConfigError(f"MOPPY_COOKIES[{i}].value must be a string")
+            raise ConfigError(f"{env_name}[{i}].value must be a string")
         secure = item.get("secure", True)
         if not isinstance(secure, bool):
-            raise ConfigError(f"MOPPY_COOKIES[{i}].secure must be a boolean")
+            raise ConfigError(f"{env_name}[{i}].secure must be a boolean")
         cookies.append(
             {
                 "name": name,
                 "value": value,
-                "domain": item.get("domain", ".moppy.jp"),
+                "domain": item.get("domain", default_domain),
                 "path": item.get("path", "/"),
                 "secure": secure,
             }
@@ -78,31 +90,45 @@ def _parse_cookies(raw: str | None) -> list[dict[str, object]] | None:
 
 @dataclass(frozen=True)
 class Config:
-    gmail_user: str
-    gmail_app_password: str
+    # Adapter (everything site-specific lives here)
+    adapter: Adapter
+
+    # Per-site secrets / channels (read via adapter.cookies_env / slack_channel_env)
     slack_bot_token: str
     slack_channel: str
+    cookies: list[dict[str, object]] | None  # None = anonymous (no points credited)
+
+    # Gmail (only relevant when adapter uses email-based clicks). These
+    # default to adapter values but ``<PREFIX>_GMAIL_QUERY`` /
+    # ``<PREFIX>_LABEL`` / ``<PREFIX>_NO_COINS_LABEL`` env vars override.
+    gmail_user: str
+    gmail_app_password: str
     gmail_query: str
+    clicked_label: str
+    no_coins_label: str
+
+    # Behavior knobs (per-site env-var prefix)
     dry_run: bool
     click_interval_min: int
     click_interval_max: int
     max_attempts: int
     max_messages: int
+    log_level: str
+
+    # Paths (per-site by default; ``<PREFIX>_*_PATH`` env vars override
+    # for tests or one-off relocations).
     state_path: str
     outcome_path: str
     cookie_store_path: str
-    log_level: str
-    moppy_label: str
-    moppy_cookies: list[dict[str, object]] | None  # None = anonymous (no points credited)
 
     @classmethod
-    def from_env(cls) -> Config:
+    def from_env(cls, adapter: Adapter, *, data_root: str = "data") -> Config:
         bot_token = _env_str("SLACK_BOT_TOKEN", required=True)
         assert bot_token is not None
         if not bot_token.startswith("xoxb-"):
             raise ConfigError("SLACK_BOT_TOKEN must start with xoxb-")
 
-        slack_channel = _env_str("SLACK_CHANNEL_MOPPY", required=True)
+        slack_channel = _env_str(adapter.slack_channel_env, required=True)
         assert slack_channel is not None
 
         gmail_user = _env_str("GMAIL_USER", required=True)
@@ -119,36 +145,53 @@ class Config:
                 f"GMAIL_APP_PASSWORD must be 16 characters (after stripping spaces); got {len(cleaned_password)}"
             )
 
-        interval_min = _env_int("MOPPY_CLICK_INTERVAL_MIN", 5, low=1, high=600)
-        interval_max = _env_int("MOPPY_CLICK_INTERVAL_MAX", 15, low=1, high=600)
+        prefix = adapter.env_prefix
+        interval_min = _env_int(f"{prefix}_CLICK_INTERVAL_MIN", 5, low=1, high=600)
+        interval_max = _env_int(f"{prefix}_CLICK_INTERVAL_MAX", 15, low=1, high=600)
         if interval_min > interval_max:
-            raise ConfigError(f"MOPPY_CLICK_INTERVAL_MIN ({interval_min}) > MAX ({interval_max})")
+            raise ConfigError(f"{prefix}_CLICK_INTERVAL_MIN ({interval_min}) > MAX ({interval_max})")
 
-        log_level = (_env_str("MOPPY_LOG_LEVEL", "INFO") or "INFO").upper()
+        log_level = (_env_str(f"{prefix}_LOG_LEVEL", "INFO") or "INFO").upper()
         if log_level not in {"DEBUG", "INFO", "WARNING", "ERROR"}:
-            raise ConfigError(f"MOPPY_LOG_LEVEL invalid: {log_level}")
+            raise ConfigError(f"{prefix}_LOG_LEVEL invalid: {log_level}")
 
-        moppy_cookies = _parse_cookies(_env_str("MOPPY_COOKIES"))
+        # Default cookie domain comes from the adapter's mypage URL host
+        # if not specified in the cookie record.
+        from urllib.parse import urlparse
+
+        default_cookie_domain = "." + (urlparse(adapter.mypage_url).hostname or "moppy.jp").split(".", 1)[-1]
+        cookies = _parse_cookies(
+            _env_str(adapter.cookies_env),
+            env_name=adapter.cookies_env,
+            default_domain=default_cookie_domain,
+        )
 
         return cls(
+            adapter=adapter,
             gmail_user=gmail_user,
             gmail_app_password=cleaned_password,
             slack_bot_token=bot_token,
             slack_channel=slack_channel,
-            moppy_cookies=moppy_cookies,
-            gmail_query=_env_str(
-                "MOPPY_GMAIL_QUERY",
-                "from:moppy.jp -label:moppy-clicked -label:moppy-no-coins newer_than:3d",
-            )
-            or "from:moppy.jp -label:moppy-clicked -label:moppy-no-coins newer_than:3d",
-            dry_run=os.environ.get("MOPPY_DRY_RUN", "0") == "1",
+            cookies=cookies,
+            # Adapter values are defaults; per-site env vars override so an
+            # operator can scope a run to a custom Gmail query (e.g.
+            # broader date window for backfill) or relocate state for tests
+            # without editing the adapter.
+            gmail_query=_env_str(f"{prefix}_GMAIL_QUERY", adapter.gmail_query) or adapter.gmail_query,
+            clicked_label=_env_str(f"{prefix}_LABEL", adapter.clicked_label) or adapter.clicked_label,
+            no_coins_label=(_env_str(f"{prefix}_NO_COINS_LABEL", adapter.no_coins_label) or adapter.no_coins_label),
+            dry_run=os.environ.get(f"{prefix}_DRY_RUN", "0") == "1",
             click_interval_min=interval_min,
             click_interval_max=interval_max,
-            max_attempts=_env_int("MOPPY_MAX_ATTEMPTS", 3, low=1, high=10),
-            max_messages=_env_int("MOPPY_MAX_MESSAGES", 50, low=1, high=500),
-            state_path=_env_str("MOPPY_STATE_PATH", "data/state.json") or "data/state.json",
-            outcome_path=_env_str("MOPPY_OUTCOME_PATH", "data/outcomes.jsonl") or "data/outcomes.jsonl",
-            cookie_store_path=_env_str("MOPPY_COOKIE_STORE_PATH", "data/cookies.json") or "data/cookies.json",
+            max_attempts=_env_int(f"{prefix}_MAX_ATTEMPTS", 3, low=1, high=10),
+            max_messages=_env_int(f"{prefix}_MAX_MESSAGES", 50, low=1, high=500),
+            state_path=_env_str(f"{prefix}_STATE_PATH", adapter.state_path(data_root)) or adapter.state_path(data_root),
+            outcome_path=(
+                _env_str(f"{prefix}_OUTCOME_PATH", adapter.outcome_path(data_root)) or adapter.outcome_path(data_root)
+            ),
+            cookie_store_path=(
+                _env_str(f"{prefix}_COOKIE_STORE_PATH", adapter.cookie_store_path(data_root))
+                or adapter.cookie_store_path(data_root)
+            ),
             log_level=log_level,
-            moppy_label=_env_str("MOPPY_LABEL", "moppy-clicked") or "moppy-clicked",
         )

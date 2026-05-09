@@ -2,8 +2,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from point_sites.models import ClickCandidate, ClickResult
-from point_sites.state_store import StateStore
+from point_sites.common.models import ClickCandidate, ClickResult
+from point_sites.common.state_store import StateStore
 
 
 def _candidate(url: str = "https://pc.moppy.jp/redirect/abc?uid=1") -> ClickCandidate:

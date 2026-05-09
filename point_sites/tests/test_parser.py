@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from point_sites.moppy_parser import (
+from point_sites.adapters.moppy.parser import (
     CALLOUT_RE,
     CLICK_COIN_URL_RE,
     parse,
@@ -82,13 +82,13 @@ def test_parse_url_without_callout_flagged_as_anomaly():
     body = "https://pc.moppy.jp/cc/c?t=ABCDEF12345\n\n別の文章で callout なし\n"
     candidates, anomalies = parse(body)
     assert candidates == []
-    assert any(a.kind == "url_without_callout" for a in anomalies)
+    assert any("url_without_callout" in a for a in anomalies)
 
 
 def test_parse_empty_body():
     candidates, anomalies = parse("")
     assert candidates == []
-    assert anomalies and anomalies[0].kind == "empty_body"
+    assert anomalies and "empty_body" in anomalies[0]
 
 
 def test_parse_html_body_stripped_then_extracted():

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from point_sites.notifier import Notifier, _format_verification, _slack_escape
+from point_sites.common.notifier import Notifier, _format_verification, _slack_escape
 
 
 def _new_notifier() -> Notifier:

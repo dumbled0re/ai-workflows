@@ -1,9 +1,17 @@
 """point_sites CLI entry point.
 
+The same code path works for every adapter — pass ``--site <name>`` to
+choose between Moppy, ポイントインカム, etc. All site-specific values
+(URLs, regexes, Gmail queries, labels) come from the adapter's
+``Adapter`` instance; this module just orchestrates.
+
 Subcommands:
-  run           fetch → parse → click → notify
-  click <URL>   manual single-URL click (moppy hosts only)
-  state         dump state for a single message_id
+  run [--site X]         fetch → parse → click → notify
+  click <URL> [--site X] manual single-URL click (host whitelist per adapter)
+  state [--site X]       dump state for a single message_id
+  balance [--site X]     fetch and print current point balance
+  discover [--site X]    read-only crawl of the daily-earn section
+  html <URL> [--site X]  GET a URL with auth, dump body (debug)
 """
 
 from __future__ import annotations
@@ -16,20 +24,22 @@ import re
 import sys
 from dataclasses import asdict
 from datetime import UTC, datetime
+from pathlib import Path
 
-from .balance import fetch_balance
-from .clicker import Clicker, is_manual_url_allowed
+from .adapters import REGISTRY, get_adapter
+from .common.adapter import Adapter
+from .common.balance import fetch_balance
+from .common.clicker import Clicker, is_manual_url_allowed
+from .common.cookie_store import load as load_persisted_cookies
+from .common.cookie_store import save_jar as save_cookie_jar
+from .common.discover import discover, render_report
+from .common.gmail_client import GmailAuthError, GmailClient, GmailParseError
+from .common.models import ClickCandidate, RunSummary
+from .common.notifier import Notifier
+from .common.outcome_tracker import OutcomeTracker, make_outcome
+from .common.redaction import host_only, redact_subject, redact_url
+from .common.state_store import StateStore
 from .config import Config, ConfigError
-from .cookie_store import load as load_persisted_cookies
-from .cookie_store import save_jar as save_cookie_jar
-from .discover import discover, render_report
-from .gmail_client import GmailAuthError, GmailClient, GmailParseError
-from .models import ClickCandidate, RunSummary
-from .moppy_parser import parse as parse_email
-from .notifier import Notifier
-from .outcome_tracker import OutcomeTracker, make_outcome
-from .redaction import host_only, redact_subject, redact_url
-from .state_store import StateStore
 
 logger = logging.getLogger("point_sites")
 
@@ -41,25 +51,55 @@ def _setup_logging(level: str) -> None:
     )
 
 
+def _migrate_legacy_data_paths(adapter: Adapter, data_root: str = "data") -> None:
+    """Move ``data/<file>`` → ``data/<site>/<file>`` if legacy layout detected.
+
+    Pre-multi-site runs put state.json, cookies.json, outcomes.jsonl
+    directly under ``data/``. Per-site reorganization moved them under
+    ``data/<site>/``. The cache from a pre-refactor run restores to the
+    flat layout; this one-shot migration moves the files in place so we
+    don't lose the rotated cookie jar (which would force re-bootstrap
+    from the original MOPPY_COOKIES Secret and likely kill the session).
+
+    Only runs for the Moppy adapter — other sites never had the flat
+    layout and shouldn't pick up stray files.
+    """
+    if adapter.name != "moppy":
+        return
+    legacy_root = Path(data_root)
+    new_root = legacy_root / adapter.name
+    for fname in ("state.json", "cookies.json", "outcomes.jsonl"):
+        legacy = legacy_root / fname
+        new = new_root / fname
+        if legacy.exists() and not new.exists():
+            new.parent.mkdir(parents=True, exist_ok=True)
+            legacy.rename(new)
+            logger.info("migrated legacy %s → %s", legacy, new)
+
+
 def _resolve_cookies(cfg: Config) -> list[dict[str, object]] | None:
     """Prefer persisted post-rotation cookies over the bootstrap Secret.
 
-    Moppy rotates session cookies on each request; submitting the stale
-    Secret value on a subsequent run gets the session killed. The
+    Many sites rotate session cookies on each request; submitting the
+    stale Secret value on a subsequent run gets the session killed. The
     persisted jar from the previous run carries the latest rotation.
     """
     persisted = load_persisted_cookies(cfg.cookie_store_path)
     if persisted is not None:
         logger.info("using persisted cookie jar (%d cookies)", len(persisted))
         return persisted
-    if cfg.moppy_cookies is not None:
-        logger.info("no persisted cookie jar; bootstrapping from MOPPY_COOKIES (%d cookies)", len(cfg.moppy_cookies))
-        return cfg.moppy_cookies
+    if cfg.cookies is not None:
+        logger.info(
+            "no persisted cookie jar; bootstrapping from %s (%d cookies)",
+            cfg.adapter.cookies_env,
+            len(cfg.cookies),
+        )
+        return cfg.cookies
     return None
 
 
 def _persist_cookies(clicker: Clicker, cfg: Config) -> None:
-    """Save the live jar so the next process picks up Moppy's rotated values.
+    """Save the live jar so the next process picks up rotated values.
 
     Called after successful authenticated work. Failures are logged and
     swallowed: the run already succeeded, and a state-write hiccup
@@ -73,11 +113,52 @@ def _persist_cookies(clicker: Clicker, cfg: Config) -> None:
         logger.warning("failed to persist cookie jar: %s", exc)
 
 
+def _build_clicker(cfg: Config, cookies: list[dict[str, object]]) -> Clicker:
+    """Construct a Clicker with site-specific defaults from the adapter."""
+    # Default cookie domain is derived from the mypage host (e.g.
+    # "pc.moppy.jp" → ".moppy.jp"). Adapter values override per-cookie.
+    from urllib.parse import urlparse
+
+    host = urlparse(cfg.adapter.mypage_url).hostname or ""
+    default_domain = "." + (host.split(".", 1)[-1] if "." in host else host)
+    return Clicker(
+        interval_min=cfg.click_interval_min,
+        interval_max=cfg.click_interval_max,
+        cookies=cookies,
+        default_cookie_domain=default_domain,
+    )
+
+
+def _verify_login(clicker: Clicker, cfg: Config) -> bool:
+    """Wrapper that injects adapter-specific mypage URL and login keyword."""
+    return clicker.verify_login(cfg.adapter.mypage_url, cfg.adapter.login_keyword)
+
+
+def _fetch_balance(clicker: Clicker, cfg: Config) -> int | None:
+    return fetch_balance(
+        clicker.session,
+        cfg.adapter.mypage_url,
+        patterns=cfg.adapter.balance_patterns,
+    )
+
+
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="point_sites")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
+    # --site is added per-subcommand instead of as a global so older
+    # invocations like `python -m point_sites.main run` keep working
+    # with the default (moppy).
+    def add_site_arg(p: argparse.ArgumentParser) -> None:
+        p.add_argument(
+            "--site",
+            choices=sorted(REGISTRY),
+            default="moppy",
+            help="which point-site adapter to use (default: moppy)",
+        )
+
     p_run = sub.add_parser("run", help="fetch and click")
+    add_site_arg(p_run)
     p_run.add_argument("--dry-run", action="store_true", help="extract only, no click (redacted)")
     p_run.add_argument(
         "--extract-links",
@@ -90,21 +171,28 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--max-messages", type=int, default=None)
     p_run.add_argument("--no-notify", action="store_true")
 
-    p_click = sub.add_parser("click", help="manual single-URL click (moppy hosts only)")
+    p_click = sub.add_parser("click", help="manual single-URL click (adapter host whitelist)")
+    add_site_arg(p_click)
     p_click.add_argument("url")
 
     p_state = sub.add_parser("state", help="dump state for a message_id")
+    add_site_arg(p_state)
     p_state.add_argument("--message-id", required=True)
 
-    sub.add_parser("balance", help="fetch and print current Moppy coin balance")
-    sub.add_parser(
+    p_balance = sub.add_parser("balance", help="fetch and print current point balance")
+    add_site_arg(p_balance)
+
+    p_discover = sub.add_parser(
         "discover",
-        help="read-only crawl of 毎日貯める section; prints a structural report (no clicks)",
+        help="read-only crawl of the daily-earn section; prints a structural report (no clicks)",
     )
+    add_site_arg(p_discover)
+
     p_html = sub.add_parser(
         "html",
-        help="GET a Moppy URL with auth and print its body (debug, capped at 50KB)",
+        help="GET a URL with auth and print its body (debug, capped at 80KB stripped)",
     )
+    add_site_arg(p_html)
     p_html.add_argument("url")
     return parser
 
@@ -121,6 +209,14 @@ def cmd_run(
         return 2
     started_at = datetime.now(UTC)
     notifier = Notifier(cfg.slack_bot_token, cfg.slack_channel) if notify else None
+
+    if cfg.adapter.parse_email is None:
+        # Email-driven sites only for now; adapters that source clicks
+        # elsewhere (on-site inbox, endpoint-poll) will need a different
+        # `cmd_run` shape. Fail fast rather than misuse Gmail.
+        logger.error("adapter %r has no parse_email; cmd_run requires Gmail-sourced clicks", cfg.adapter.name)
+        return 2
+    parse_email = cfg.adapter.parse_email
 
     try:
         gmail = GmailClient(cfg.gmail_user, cfg.gmail_app_password)
@@ -144,36 +240,34 @@ def cmd_run(
     # Clicker (and don't need cookies). Only construct it when actually clicking.
     clicker: Clicker | None = None
     if not extract_links:
-        clicker = Clicker(
-            interval_min=cfg.click_interval_min,
-            interval_max=cfg.click_interval_max,
-            cookies=_resolve_cookies(cfg),
-        )
+        clicker = _build_clicker(cfg, _resolve_cookies(cfg) or [])
+        if _resolve_cookies(cfg) is None:
+            clicker.authenticated = False
 
     if not dry_run and not extract_links and clicker is not None and not clicker.authenticated:
-        # Anonymous clicks return HTTP 200 but Moppy does NOT credit points.
+        # Anonymous clicks return HTTP 200 but the site does NOT credit points.
         # Recording these as "clicked" would also block later credited retries
-        # because the email would already be labeled `moppy-clicked` and skipped.
+        # because the email would already be labeled and skipped.
         msg = (
-            "MOPPY_COOKIES is not set; refusing to run. Anonymous clicks would "
+            f"{cfg.adapter.cookies_env} is not set; refusing to run. Anonymous clicks would "
             "be marked as completed without crediting points, blocking future "
-            "credited retries. Set MOPPY_COOKIES or use --dry-run."
+            f"credited retries. Set {cfg.adapter.cookies_env} or use --dry-run."
         )
         logger.error(msg)
         if notifier:
             notifier.send_auth_error(msg)
         return 1
     if not dry_run and not extract_links and clicker is not None and clicker.authenticated:
-        if not clicker.verify_login():
+        if not _verify_login(clicker, cfg):
             msg = (
-                "Moppy login verification failed: cookies are stale or invalid. "
-                "Re-export them from the browser and update the MOPPY_COOKIES secret."
+                f"{cfg.adapter.site_label} login verification failed: cookies are stale or invalid. "
+                f"Re-export them from the browser and update the {cfg.adapter.cookies_env} secret."
             )
             logger.error(msg)
             if notifier:
                 notifier.send_auth_error(msg)
             return 1
-        logger.info("Moppy login verified — clicks will be credited to the account")
+        logger.info("%s login verified — clicks will be credited to the account", cfg.adapter.site_label)
         # Persist immediately after the verify_login GET so the rotated
         # cookies survive even if a later step crashes.
         _persist_cookies(clicker, cfg)
@@ -183,7 +277,7 @@ def cmd_run(
     # dry-run / extract-links don't trigger any click side-effects.
     balance_before: int | None = None
     if not dry_run and not extract_links and clicker is not None and clicker.authenticated:
-        balance_before = fetch_balance(clicker.session)
+        balance_before = _fetch_balance(clicker, cfg)
         if balance_before is not None:
             logger.info("balance before clicks: %d pt", balance_before)
 
@@ -217,7 +311,7 @@ def cmd_run(
             else:
                 assert parsed.html_body is not None
                 body, is_html = parsed.html_body, True
-            candidates, anomalies = parse_email(body, is_html=is_html)
+            candidates, anomalies = parse_email(body, is_html)
             if anomalies:
                 logger.warning(
                     "anomalous parse for %s: anomalies=%s candidates=%d",
@@ -231,8 +325,8 @@ def cmd_run(
                 # No click-coin URLs: legitimate non-coin email (newsletter,
                 # confirmation, etc.). Mark so future runs skip it.
                 # Skip labeling in dry_run / extract_links to keep state pristine.
-                if not dry_run and not extract_links:
-                    gmail.add_label(msg_id, "moppy-no-coins")
+                if not dry_run and not extract_links and cfg.no_coins_label:
+                    gmail.add_label(msg_id, cfg.no_coins_label)
                 continue
 
             new_candidates: list[ClickCandidate] = [
@@ -254,11 +348,6 @@ def cmd_run(
                 # Subjects are NOT redacted here (private channel, user needs
                 # to triage). State is intentionally untouched so re-runs after
                 # a manual click won't be blocked.
-                #
-                # Use the unfiltered ``candidates`` list (NOT ``new_candidates``):
-                # state_store may contain historical anonymous HTTP-200 entries
-                # from before login was implemented, which would cause real
-                # unclicked URLs to be silently dropped here.
                 extract_view.append(
                     (
                         msg_id,
@@ -287,7 +376,8 @@ def cmd_run(
                 r.final_status == "success" for r in all_results if r.candidate.url in {c.url for c in new_candidates}
             ):
                 gmail.mark_as_read(msg_id)
-                gmail.add_label(msg_id, cfg.moppy_label)
+                if cfg.clicked_label:
+                    gmail.add_label(msg_id, cfg.clicked_label)
     finally:
         gmail.close()
 
@@ -296,7 +386,7 @@ def cmd_run(
     # were issued) and on failed-auth paths (we already returned earlier).
     balance_after: int | None = None
     if not dry_run and not extract_links and clicker is not None and clicker.authenticated:
-        balance_after = fetch_balance(clicker.session)
+        balance_after = _fetch_balance(clicker, cfg)
         if balance_after is not None:
             logger.info("balance after clicks: %d pt", balance_after)
         # Save the jar one more time at the very end so all rotation
@@ -373,14 +463,14 @@ def cmd_run(
 
 
 def cmd_click(cfg: Config, url: str) -> int:
-    if not is_manual_url_allowed(url):
-        print(f"refused: {url} is not under moppy.jp", file=sys.stderr)
+    if not is_manual_url_allowed(url, cfg.adapter.allowed_hosts):
+        print(f"refused: {url} is not under {cfg.adapter.site_label} hosts", file=sys.stderr)
         return 2
     cookies = _resolve_cookies(cfg)
     if cookies is None:
         print(
-            "refused: MOPPY_COOKIES is not set; anonymous clicks do not credit points. "
-            "Set MOPPY_COOKIES to enable credited single-URL clicks.",
+            f"refused: {cfg.adapter.cookies_env} is not set; anonymous clicks do not credit points. "
+            f"Set {cfg.adapter.cookies_env} to enable credited single-URL clicks.",
             file=sys.stderr,
         )
         return 2
@@ -389,14 +479,10 @@ def cmd_click(cfg: Config, url: str) -> int:
         anchor_text="<manual>",
         extraction_reason="whitelist_url_pattern",
     )
-    clicker = Clicker(
-        interval_min=cfg.click_interval_min,
-        interval_max=cfg.click_interval_max,
-        cookies=cookies,
-    )
-    if not clicker.verify_login():
+    clicker = _build_clicker(cfg, cookies)
+    if not _verify_login(clicker, cfg):
         print(
-            "refused: Moppy login verification failed (stale or invalid cookies)",
+            f"refused: {cfg.adapter.site_label} login verification failed (stale or invalid cookies)",
             file=sys.stderr,
         )
         return 2
@@ -429,18 +515,18 @@ def cmd_discover(cfg: Config) -> int:
     """
     cookies = _resolve_cookies(cfg)
     if cookies is None:
-        print("refused: MOPPY_COOKIES is not set", file=sys.stderr)
+        print(f"refused: {cfg.adapter.cookies_env} is not set", file=sys.stderr)
         return 2
-    clicker = Clicker(
-        interval_min=cfg.click_interval_min,
-        interval_max=cfg.click_interval_max,
-        cookies=cookies,
-    )
-    if not clicker.verify_login():
-        print("refused: Moppy login verification failed (stale or invalid cookies)", file=sys.stderr)
+    clicker = _build_clicker(cfg, cookies)
+    if not _verify_login(clicker, cfg):
+        print(
+            f"refused: {cfg.adapter.site_label} login verification failed (stale or invalid cookies)",
+            file=sys.stderr,
+        )
         return 2
     _persist_cookies(clicker, cfg)
-    reports = discover(clicker.session)
+    seeds = cfg.adapter.discover_seeds or (cfg.adapter.mypage_url,)
+    reports = discover(clicker.session, seeds=seeds)
     _persist_cookies(clicker, cfg)
     print(render_report(reports))
     print()
@@ -450,38 +536,29 @@ def cmd_discover(cfg: Config) -> int:
 
 
 def cmd_html(cfg: Config, url: str) -> int:
-    """Fetch a single Moppy URL and dump its body to stdout.
+    """Fetch a single URL and dump its body to stdout.
 
     Used to plan automation for items whose interaction shape isn't
     obvious from discover's regex-based summary (e.g. JS-driven gacha
     where the 'play' button isn't an anchor with a recognizable text).
     The body is filtered to drop common header/footer/jQuery noise so
-    the relevant markup fits within reasonable log size; full body is
-    dumped as-is when it's already small.
+    the relevant markup fits within reasonable log size.
     """
-    if not is_manual_url_allowed(url):
-        print(f"refused: {url} is not under moppy.jp", file=sys.stderr)
+    if not is_manual_url_allowed(url, cfg.adapter.allowed_hosts):
+        print(f"refused: {url} is not under {cfg.adapter.site_label} hosts", file=sys.stderr)
         return 2
     cookies = _resolve_cookies(cfg)
     if cookies is None:
-        print("refused: MOPPY_COOKIES is not set", file=sys.stderr)
+        print(f"refused: {cfg.adapter.cookies_env} is not set", file=sys.stderr)
         return 2
-    clicker = Clicker(
-        interval_min=cfg.click_interval_min,
-        interval_max=cfg.click_interval_max,
-        cookies=cookies,
-    )
-    if not clicker.verify_login():
-        print("refused: Moppy login verification failed", file=sys.stderr)
+    clicker = _build_clicker(cfg, cookies)
+    if not _verify_login(clicker, cfg):
+        print(f"refused: {cfg.adapter.site_label} login verification failed", file=sys.stderr)
         return 2
     _persist_cookies(clicker, cfg)
     resp = clicker.session.get(url, timeout=(10.0, 30.0), allow_redirects=True)
     _persist_cookies(clicker, cfg)
     print(f"=== {resp.url} (HTTP {resp.status_code}, len={len(resp.text)}) ===")
-    # Strip <script> and <style> blocks: they're either jQuery/UI noise
-    # or rendering details we don't need to plan automation. Keeps the
-    # markup-of-interest (the actual gacha UI / forms / anchors)
-    # inside a manageable log slice without losing the meaningful HTML.
     body = re.sub(r"<script\b[^>]*>.*?</script>", "<!-- script removed -->", resp.text, flags=re.DOTALL)
     body = re.sub(r"<style\b[^>]*>.*?</style>", "<!-- style removed -->", body, flags=re.DOTALL)
     body = re.sub(r"<!--.*?-->", "", body, flags=re.DOTALL)
@@ -494,23 +571,20 @@ def cmd_html(cfg: Config, url: str) -> int:
 
 
 def cmd_balance(cfg: Config) -> int:
-    """Print current Moppy balance to stdout — useful for ad-hoc checks
-    and for verifying that the cookies + parser combo still work without
-    having to schedule a workflow run."""
+    """Print current point balance to stdout — useful for ad-hoc checks."""
     cookies = _resolve_cookies(cfg)
     if cookies is None:
-        print("refused: MOPPY_COOKIES is not set", file=sys.stderr)
+        print(f"refused: {cfg.adapter.cookies_env} is not set", file=sys.stderr)
         return 2
-    clicker = Clicker(
-        interval_min=cfg.click_interval_min,
-        interval_max=cfg.click_interval_max,
-        cookies=cookies,
-    )
-    if not clicker.verify_login():
-        print("refused: Moppy login verification failed (stale or invalid cookies)", file=sys.stderr)
+    clicker = _build_clicker(cfg, cookies)
+    if not _verify_login(clicker, cfg):
+        print(
+            f"refused: {cfg.adapter.site_label} login verification failed (stale or invalid cookies)",
+            file=sys.stderr,
+        )
         return 2
     _persist_cookies(clicker, cfg)
-    balance = fetch_balance(clicker.session)
+    balance = _fetch_balance(clicker, cfg)
     _persist_cookies(clicker, cfg)
     if balance is None:
         print("balance: <unknown> (parser failed; check logs for snippet)", file=sys.stderr)
@@ -524,14 +598,25 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        cfg = Config.from_env()
+        adapter = get_adapter(args.site)
+    except KeyError as exc:
+        print(f"config error: {exc}", file=sys.stderr)
+        return 2
+
+    # One-shot migration: data/<file> → data/<site>/<file> if legacy
+    # layout detected. Runs before Config so the file paths Config
+    # generates point at the post-migration locations.
+    _migrate_legacy_data_paths(adapter)
+
+    try:
+        cfg = Config.from_env(adapter)
     except ConfigError as exc:
         print(f"config error: {exc}", file=sys.stderr)
         return 2
     _setup_logging(cfg.log_level)
 
     if args.cmd == "run":
-        env_extract = os.environ.get("MOPPY_EXTRACT_LINKS", "0") == "1"
+        env_extract = os.environ.get(f"{adapter.env_prefix}_EXTRACT_LINKS", "0") == "1"
         return cmd_run(
             cfg,
             dry_run=args.dry_run or cfg.dry_run,

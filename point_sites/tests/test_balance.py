@@ -5,7 +5,7 @@ each parser pattern. The list of variants doubles as a contract: if Moppy
 ever ships a redesign, the failing test makes the breakage obvious.
 """
 
-from point_sites.balance import parse_balance
+from point_sites.common.balance import parse_balance
 
 
 def test_data_attribute() -> None:

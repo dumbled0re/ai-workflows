@@ -1,4 +1,4 @@
-from point_sites.redaction import host_only, redact_subject, redact_url
+from point_sites.common.redaction import host_only, redact_subject, redact_url
 
 
 def test_redact_url_strips_query_and_fragment():
