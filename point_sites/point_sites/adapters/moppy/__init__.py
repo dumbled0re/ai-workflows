@@ -10,6 +10,7 @@ logic lives in ``point_sites.common``.
 
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
+from ...common.sources import GmailSource
 from .parser import parse as parse_email
 
 ADAPTER = Adapter(
@@ -21,7 +22,7 @@ ADAPTER = Adapter(
     gmail_query="from:moppy.jp -label:moppy-clicked -label:moppy-no-coins newer_than:3d",
     clicked_label="moppy-clicked",
     no_coins_label="moppy-no-coins",
-    parse_email=parse_email,
+    source=GmailSource(parse_email=parse_email),
     balance_patterns=DEFAULT_BALANCE_PATTERNS,
     discover_seeds=(
         "https://pc.moppy.jp/mypage/",

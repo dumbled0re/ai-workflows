@@ -14,11 +14,12 @@ inject. New site = one file under ``adapters/`` + one registry entry.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from re import Pattern
+from typing import TYPE_CHECKING
 
-from .models import ClickCandidate
+if TYPE_CHECKING:
+    from .sources import ClickUrlSource
 
 
 @dataclass(frozen=True)
@@ -40,13 +41,19 @@ class Adapter:
     allowed_hosts: frozenset[str]
     login_keyword: str = "ログアウト"
 
-    # Gmail (set both to empty/None for sites that don't use email-based clicks)
+    # Gmail-source defaults — read by ``GmailSource`` via ``Config``,
+    # ignored by other source kinds. Left here (not on the source) so
+    # ``<PREFIX>_GMAIL_QUERY`` / ``_LABEL`` / ``_NO_COINS_LABEL`` env
+    # overrides keep working uniformly through ``Config.from_env``.
     gmail_query: str = ""
     clicked_label: str = ""
     no_coins_label: str = ""
 
-    # Email body → click candidates
-    parse_email: Callable[[str, bool], tuple[list[ClickCandidate], list[str]]] | None = None
+    # Click-URL source — Gmail / on-site inbox / endpoint poll. Optional
+    # because pre-source-refactor adapters (none today) and bare Adapter()
+    # instances used in tests don't need one. ``cmd_run`` fails fast if
+    # the chosen adapter has no source.
+    source: ClickUrlSource | None = None
 
     # Balance scraping (compiled regexes, ordered most-specific → most-permissive)
     balance_patterns: tuple[Pattern[str], ...] = field(default_factory=tuple)

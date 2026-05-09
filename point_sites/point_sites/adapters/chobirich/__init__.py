@@ -21,6 +21,7 @@ Required Secrets:
 
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
+from ...common.sources import GmailSource
 from .parser import parse as parse_email
 
 ADAPTER = Adapter(
@@ -34,7 +35,7 @@ ADAPTER = Adapter(
     gmail_query=("from:chobirich.com -label:chobirich-clicked -label:chobirich-no-coins newer_than:3d"),
     clicked_label="chobirich-clicked",
     no_coins_label="chobirich-no-coins",
-    parse_email=parse_email,
+    source=GmailSource(parse_email=parse_email),
     balance_patterns=DEFAULT_BALANCE_PATTERNS,
     discover_seeds=(
         "https://www.chobirich.com/mypage/",

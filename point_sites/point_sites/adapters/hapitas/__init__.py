@@ -23,6 +23,7 @@ Bring-up flow: identical to other adapters. See HANDOFF.md "新しい
 
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
+from ...common.sources import GmailSource
 from .parser import parse as parse_email
 
 ADAPTER = Adapter(
@@ -38,7 +39,7 @@ ADAPTER = Adapter(
     gmail_query=("from:hapitas.jp -label:hapitas-clicked -label:hapitas-no-coins newer_than:7d"),
     clicked_label="hapitas-clicked",
     no_coins_label="hapitas-no-coins",
-    parse_email=parse_email,
+    source=GmailSource(parse_email=parse_email),
     balance_patterns=DEFAULT_BALANCE_PATTERNS,
     discover_seeds=(
         "https://hapitas.jp/exchange/",

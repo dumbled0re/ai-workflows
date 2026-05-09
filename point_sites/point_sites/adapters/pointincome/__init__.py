@@ -24,6 +24,7 @@ Bring-up flow:
 
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
+from ...common.sources import GmailSource
 from .parser import parse as parse_email
 
 ADAPTER = Adapter(
@@ -39,7 +40,7 @@ ADAPTER = Adapter(
     gmail_query=("from:pointi.jp -label:pointincome-clicked -label:pointincome-no-coins newer_than:3d"),
     clicked_label="pointincome-clicked",
     no_coins_label="pointincome-no-coins",
-    parse_email=parse_email,
+    source=GmailSource(parse_email=parse_email),
     # Same default mypage balance markers as Moppy until we know
     # otherwise. The DEFAULT patterns target 保有ポイント / 保有コイン
     # which are common across Japanese point sites.

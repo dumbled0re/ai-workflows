@@ -22,7 +22,7 @@ import logging
 import os
 import re
 import sys
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -33,7 +33,7 @@ from .common.clicker import Clicker, is_manual_url_allowed
 from .common.cookie_store import load as load_persisted_cookies
 from .common.cookie_store import save_jar as save_cookie_jar
 from .common.discover import discover, render_report
-from .common.gmail_client import GmailAuthError, GmailClient, GmailParseError
+from .common.gmail_client import GmailAuthError
 from .common.models import ClickCandidate, RunSummary
 from .common.notifier import Notifier
 from .common.outcome_tracker import OutcomeTracker, make_outcome
@@ -210,21 +210,12 @@ def cmd_run(
     started_at = datetime.now(UTC)
     notifier = Notifier(cfg.slack_bot_token, cfg.slack_channel) if notify else None
 
-    if cfg.adapter.parse_email is None:
-        # Email-driven sites only for now; adapters that source clicks
-        # elsewhere (on-site inbox, endpoint-poll) will need a different
-        # `cmd_run` shape. Fail fast rather than misuse Gmail.
-        logger.error("adapter %r has no parse_email; cmd_run requires Gmail-sourced clicks", cfg.adapter.name)
+    source = cfg.adapter.source
+    if source is None:
+        # Adapters without a click-URL source (e.g. balance-only test fixtures)
+        # have nothing to drive the run loop with. Fail fast rather than no-op.
+        logger.error("adapter %r has no source; cmd_run cannot proceed", cfg.adapter.name)
         return 2
-    parse_email = cfg.adapter.parse_email
-
-    try:
-        gmail = GmailClient(cfg.gmail_user, cfg.gmail_app_password)
-    except GmailAuthError as exc:
-        logger.error("auth error: %s", exc)
-        if notifier:
-            notifier.send_auth_error(str(exc))
-        return 1
 
     state = StateStore(cfg.state_path)
     state.prune_old(days=30)
@@ -281,63 +272,61 @@ def cmd_run(
         if balance_before is not None:
             logger.info("balance before clicks: %d pt", balance_before)
 
-    try:
-        msg_ids = gmail.search_messages(
-            cfg.gmail_query,
-            max_results=max_messages or cfg.max_messages,
-        )
-        logger.info("found %d candidate messages", len(msg_ids))
+    # Source caps max_messages internally via cfg.max_messages; allow CLI
+    # ``--max-messages`` to tighten that for this run only.
+    effective_cfg = cfg if max_messages is None else replace(cfg, max_messages=max_messages)
+    http_session = clicker.session if clicker is not None else None
 
-        for msg_id in msg_ids:
+    state_keys: list[str] = []
+    try:
+        source.start(effective_cfg, http_session=http_session)
+    except GmailAuthError as exc:
+        logger.error("auth error: %s", exc)
+        if notifier:
+            notifier.send_auth_error(str(exc))
+        return 1
+
+    try:
+        state_keys = source.list_state_keys()
+        logger.info("found %d candidate batches", len(state_keys))
+
+        for state_key in state_keys:
             # Extract mode bypasses state — its job is to surface every URL so
             # the user can click manually. Stale anonymous-success records and
             # exhausted-attempt records would otherwise hide URLs the user
             # never actually got credit for.
-            if not extract_links and state.is_message_complete(msg_id, cfg.max_attempts):
+            if not extract_links and state.is_message_complete(state_key, cfg.max_attempts):
                 continue
-            try:
-                parsed = gmail.get_message(msg_id)
-            except GmailParseError as exc:
-                logger.warning("get_message failed for %s: %s", msg_id, exc)
-                parse_failure_ids.append(msg_id)
+            batch = source.fetch_batch(state_key)
+            if batch.parse_failed:
+                parse_failure_ids.append(state_key)
                 continue
-
-            if not parsed.has_body:
-                parse_failure_ids.append(msg_id)
-                continue
-
-            if parsed.plaintext_body:
-                body, is_html = parsed.plaintext_body, False
-            else:
-                assert parsed.html_body is not None
-                body, is_html = parsed.html_body, True
-            candidates, anomalies = parse_email(body, is_html)
-            if anomalies:
+            if batch.anomalies:
                 logger.warning(
                     "anomalous parse for %s: anomalies=%s candidates=%d",
-                    msg_id,
-                    anomalies,
-                    len(candidates),
+                    state_key,
+                    batch.anomalies,
+                    len(batch.candidates),
                 )
-                anomaly_ids.append(msg_id)
+                anomaly_ids.append(state_key)
                 continue
-            if not candidates:
-                # No click-coin URLs: legitimate non-coin email (newsletter,
-                # confirmation, etc.). Mark so future runs skip it.
-                # Skip labeling in dry_run / extract_links to keep state pristine.
-                if not dry_run and not extract_links and cfg.no_coins_label:
-                    gmail.add_label(msg_id, cfg.no_coins_label)
+            if not batch.candidates:
+                # No click-coin URLs: legitimate non-coin batch (newsletter,
+                # confirmation, etc.). Source decides how to mark it.
+                # Skip in dry_run / extract_links to keep state pristine.
+                if not dry_run and not extract_links:
+                    source.mark_no_credit(batch)
                 continue
 
             new_candidates: list[ClickCandidate] = [
-                c for c in candidates if not state.is_url_done(msg_id, str(c.url), cfg.max_attempts)
+                c for c in batch.candidates if not state.is_url_done(state_key, str(c.url), cfg.max_attempts)
             ]
 
             if dry_run:
                 dry_run_view.append(
                     (
-                        msg_id,
-                        redact_subject(parsed.subject),
+                        state_key,
+                        redact_subject(batch.label),
                         [redact_url(str(c.url)) for c in new_candidates],
                     )
                 )
@@ -345,14 +334,14 @@ def cmd_run(
 
             if extract_links:
                 # Post full URLs so the user can click in their logged-in browser.
-                # Subjects are NOT redacted here (private channel, user needs
+                # Labels are NOT redacted here (private channel, user needs
                 # to triage). State is intentionally untouched so re-runs after
                 # a manual click won't be blocked.
                 extract_view.append(
                     (
-                        msg_id,
-                        parsed.subject,
-                        [str(c.url) for c in candidates],
+                        state_key,
+                        batch.label,
+                        [str(c.url) for c in batch.candidates],
                     )
                 )
                 continue
@@ -361,25 +350,24 @@ def cmd_run(
                 continue
 
             assert clicker is not None  # narrowed by the extract_links branch above
-            state.increment_attempt(msg_id)
+            state.increment_attempt(state_key)
+            new_urls = {c.url for c in new_candidates}
             for idx, candidate in enumerate(new_candidates):
                 if idx > 0:
                     clicker.sleep_between()
                 result = clicker.click(candidate)
-                state.record_attempt(msg_id, result)
+                state.record_attempt(state_key, result)
                 all_results.append(result)
                 if result.final_status == "success" and candidate.estimated_points:
                     estimated_pt_total += candidate.estimated_points
             state.save()
 
-            if state.is_message_complete(msg_id, cfg.max_attempts) and all(
-                r.final_status == "success" for r in all_results if r.candidate.url in {c.url for c in new_candidates}
+            if state.is_message_complete(state_key, cfg.max_attempts) and all(
+                r.final_status == "success" for r in all_results if r.candidate.url in new_urls
             ):
-                gmail.mark_as_read(msg_id)
-                if cfg.clicked_label:
-                    gmail.add_label(msg_id, cfg.clicked_label)
+                source.mark_complete(batch)
     finally:
-        gmail.close()
+        source.close()
 
     # Snapshot the balance again *after* the click loop so we can compare
     # against ``balance_before``. Skipped on dry/extract runs (no clicks
@@ -397,7 +385,7 @@ def cmd_run(
     summary = RunSummary(
         started_at=started_at,
         finished_at=finished_at,
-        messages_processed=len(msg_ids),
+        messages_processed=len(state_keys),
         candidates_total=len(all_results),
         success_count=sum(1 for r in all_results if r.final_status == "success"),
         failure_count=sum(1 for r in all_results if r.final_status != "success"),
@@ -413,7 +401,7 @@ def cmd_run(
         tracker = OutcomeTracker(cfg.outcome_path)
         outcome = make_outcome(
             mode="click",
-            messages_found=len(msg_ids),
+            messages_found=len(state_keys),
             click_success=summary.success_count,
             click_fail=summary.failure_count,
             expected_pt=estimated_pt_total,

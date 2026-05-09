@@ -21,6 +21,7 @@ Required Secrets:
 
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
+from ...common.sources import GmailSource
 from .parser import parse as parse_email
 
 ADAPTER = Adapter(
@@ -32,7 +33,7 @@ ADAPTER = Adapter(
     gmail_query=("from:gendama.jp -label:gendama-clicked -label:gendama-no-coins newer_than:3d"),
     clicked_label="gendama-clicked",
     no_coins_label="gendama-no-coins",
-    parse_email=parse_email,
+    source=GmailSource(parse_email=parse_email),
     balance_patterns=DEFAULT_BALANCE_PATTERNS,
     discover_seeds=(
         "https://www.gendama.jp/mypage/",
