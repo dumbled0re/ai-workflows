@@ -21,6 +21,10 @@ on:
       inspect_url:
         type: string
         default: ""
+      force_fresh_cookies:
+        description: "delete persisted cookie jar before run, forcing re-bootstrap from Secret"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
