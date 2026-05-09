@@ -16,6 +16,15 @@ holds per-run live state (Gmail handle, http session) created in
 """
 
 from .base import ClickBatch, ClickUrlSource
+from .endpoint_poll import EndpointPollSource
 from .gmail import GmailSource
+from .onsite_inbox import InboxEntry, OnsiteInboxSource
 
-__all__ = ["ClickBatch", "ClickUrlSource", "GmailSource"]
+__all__ = [
+    "ClickBatch",
+    "ClickUrlSource",
+    "EndpointPollSource",
+    "GmailSource",
+    "InboxEntry",
+    "OnsiteInboxSource",
+]

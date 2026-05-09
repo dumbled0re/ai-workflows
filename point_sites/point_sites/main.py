@@ -227,12 +227,17 @@ def cmd_run(
     dry_run_view: list[tuple[str, str, list[str]]] = []
     extract_view: list[tuple[str, str, list[str]]] = []
 
-    # Extract-links mode skips the click path entirely, so we don't need a
-    # Clicker (and don't need cookies). Only construct it when actually clicking.
+    # Build the Clicker when (a) we'll actually click, or (b) cookies are
+    # present and the source might need an authenticated http_session for
+    # enumeration (e.g. ``OnsiteInboxSource`` reading an on-site mailbox
+    # via extract-links). The Gmail/endpoint-poll sources ignore
+    # http_session, so the only "extra" cost in case (b) is building a
+    # requests Session with the cookie jar — cheap.
     clicker: Clicker | None = None
-    if not extract_links:
-        clicker = _build_clicker(cfg, _resolve_cookies(cfg) or [])
-        if _resolve_cookies(cfg) is None:
+    cookies = _resolve_cookies(cfg)
+    if cookies is not None or not extract_links:
+        clicker = _build_clicker(cfg, cookies or [])
+        if cookies is None:
             clicker.authenticated = False
 
     if not dry_run and not extract_links and clicker is not None and not clicker.authenticated:

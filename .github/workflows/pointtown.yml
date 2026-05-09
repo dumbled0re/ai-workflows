@@ -1,0 +1,55 @@
+name: pointtown
+
+# ポイントタウン onsite-inbox click-coin automation. Daily cron at JST
+# 9:30 AM (offset from amefuri 9:15 / gendama 9:00 / chobirich 8:45 etc).
+# Mode follows vars.POINTTOWN_CRON_MODE: 'click' enables credited
+# auto-click, anything else keeps cron in extract-links mode.
+#
+# **GMO anti-fraud is the strictest in the industry**. The very first
+# authenticated run after POINTTOWN_COOKIES is registered should be
+# discover-only or extract-links — no credited clicks until the parser
+# regexes have been confirmed against real inbox HTML. Until then this
+# yml will sit in extract-links mode (the default unless cron_mode is
+# explicitly set to 'click').
+
+on:
+  schedule:
+    - cron: "30 0 * * *"  # JST 9:30
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "extract candidates only, redacted"
+        type: boolean
+        default: false
+      extract_links:
+        description: "post full clickable URLs to Slack instead of clicking"
+        type: boolean
+        default: false
+      discover:
+        description: "read-only recon of mypage / mailbox (use to find real URL patterns)"
+        type: boolean
+        default: false
+      inspect_url:
+        description: "GET this URL with auth and dump body to log (use for /mypage/mail HTML inspection)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    uses: ./.github/workflows/_site-runner.yml
+    with:
+      site: pointtown
+      cron_mode: ${{ vars.POINTTOWN_CRON_MODE }}
+      dry_run: ${{ inputs.dry_run == true }}
+      extract_links: ${{ inputs.extract_links == true }}
+      discover: ${{ inputs.discover == true }}
+      inspect_url: ${{ inputs.inspect_url }}
+    secrets:
+      slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
+      slack_channel: ${{ secrets.SLACK_CHANNEL_POINTTOWN }}
+      cookies: ${{ secrets.POINTTOWN_COOKIES }}
+      gmail_user: ${{ secrets.GMAIL_USER }}
+      gmail_app_password: ${{ secrets.GMAIL_APP_PASSWORD }}

@@ -1,0 +1,56 @@
+name: amefuri
+
+# アメフリ daily-bonus endpoint poll. Daily cron at JST 9:15 AM (offset
+# from moppy 8:00 / pointincome 8:15 / hapitas 8:30 / chobirich 8:45 /
+# gendama 9:00 so per-IP traffic is spread across an hour rather than a
+# minute). Mode follows the same vars.AMEFURI_CRON_MODE pattern: 'click'
+# enables credited auto-click, anything else keeps cron in extract-links
+# mode.
+#
+# Until AMEFURI_COOKIES is registered the click path aborts fast (no
+# uncredited HTTP traffic). The endpoint URL in adapters/amefuri/
+# is a placeholder pending discover; first credited run after cookie
+# registration should be done in extract-links mode and verified
+# against balance delta before flipping to click mode.
+
+on:
+  schedule:
+    - cron: "15 0 * * *"  # JST 9:15
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "extract candidates only, redacted"
+        type: boolean
+        default: false
+      extract_links:
+        description: "post full clickable URLs to Slack instead of clicking"
+        type: boolean
+        default: false
+      discover:
+        description: "read-only recon of mypage / top page (use to find real bonus URL)"
+        type: boolean
+        default: false
+      inspect_url:
+        description: "GET this URL with auth and dump body to log"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    uses: ./.github/workflows/_site-runner.yml
+    with:
+      site: amefuri
+      cron_mode: ${{ vars.AMEFURI_CRON_MODE }}
+      dry_run: ${{ inputs.dry_run == true }}
+      extract_links: ${{ inputs.extract_links == true }}
+      discover: ${{ inputs.discover == true }}
+      inspect_url: ${{ inputs.inspect_url }}
+    secrets:
+      slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
+      slack_channel: ${{ secrets.SLACK_CHANNEL_AMEFURI }}
+      cookies: ${{ secrets.AMEFURI_COOKIES }}
+      gmail_user: ${{ secrets.GMAIL_USER }}
+      gmail_app_password: ${{ secrets.GMAIL_APP_PASSWORD }}
