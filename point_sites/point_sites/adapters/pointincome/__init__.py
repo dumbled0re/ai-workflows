@@ -1,25 +1,26 @@
 """ポイントインカム (https://pointi.jp) adapter.
 
-Status: scaffolded. The mypage URL, login keyword, allowed hosts, and
-discover seeds below are best guesses based on public site structure.
-The click-coin URL regex in ``parser.py`` likewise needs to be
-verified against real ポイントインカム emails on first run.
+Status: cookies + auth verified 2026-05-09. Click-coin email pipeline
+ready (waiting for first real mail to validate regex).
+
+**Known limitation — balance scrape unavailable**: pointincome serves a
+"コンテンツブロッカー" warning page (``/information.php?cn=2&sn=1``) to
+non-browser HTTP clients on every authenticated mypage URL we tried
+(``/my/my_page.php``, ``/exchange/pts_exchange_top.php``,
+``sp.pointi.jp/`` and others, 2026-05-09). The session cookies are
+valid (header shows logged-in nav with ログアウト link), but the body
+is the warning page and never the real mypage. Without a way past the
+JS-driven detection, ``fetch_balance`` returns None and the orchestrator's
+degradation alert is inactive for pointincome. The actual click-coin
+URLs in emails route through different server-side paths, so the email
+→ click pipeline can still credit even though balance verification is
+blind. Outcome tracking still records HTTP success/fail (a less
+reliable proxy for credit landing).
 
 Required Secrets to enable:
-  - ``POINTINCOME_COOKIES`` — JSON array exported from Cookie-Editor
-    after logging into pointi.jp on the user's browser.
+  - ``POINTINCOME_COOKIES`` — JSON array exported from a logged-in
+    pointi.jp browser session.
   - ``SLACK_CHANNEL_POINTINCOME`` — Slack channel ID or ``#name``.
-
-Bring-up flow:
-  1. Register the two secrets above on the GitHub repo.
-  2. ``gh workflow run pointincome.yml -f discover=true`` for read-only
-     recon. Inspect the workflow log for actual click-mail URL pattern
-     and refine ``parser.py``.
-  3. ``gh workflow run pointincome.yml -f inspect_url=...`` to dump
-     specific page HTML if needed.
-  4. Once the regex is confirmed, ``gh workflow run pointincome.yml``
-     for live click-mode. Cookie persistence + degradation detection
-     come for free via the shared pipeline.
 """
 
 from ...common.adapter import Adapter
