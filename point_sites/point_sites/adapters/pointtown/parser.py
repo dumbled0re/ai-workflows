@@ -36,12 +36,14 @@ logger = logging.getLogger(__name__)
 
 _INBOX_BASE = "https://www.pointtown.com"
 
-# Best-guess: each row in the mail listing links to a per-message detail
-# page under ``/mypage/mail/<id>`` or ``/mypage/mail/show?id=<id>``.
-# Refine after the first authenticated discover.
+# Verified pattern from real /mypage/mail HTML (2026-05-09): each row in
+# the mail listing links to ``/mypage/mail/<id>``. The empty-inbox case
+# shows "現在閲覧できるメールはございません" instead of any message
+# rows, so we detect that explicitly to avoid false-positive anomalies.
 _MESSAGE_LINK_RE = re.compile(
     r"^/mypage/mail/(?:show\?id=\d+|(?:show/)?\d+)/?$",
 )
+_EMPTY_INBOX_MARKER = "現在閲覧できるメールはございません"
 
 # Best-guess click-coin URL on a message detail page. Common GMO/Pointown
 # patterns: ``/coin/c/<token>``, ``/click/<token>``, ``/cc/<token>``.
@@ -68,6 +70,11 @@ def parse_inbox(html: str) -> tuple[list[InboxEntry], list[str]]:
     """
     if not html.strip():
         return [], ["empty inbox HTML"]
+    # Legitimate empty-inbox case (new account or fully consumed inbox)
+    # — return no entries and no anomaly so the daily cron stops noisy
+    # Slack ``send_parse_failure`` posts.
+    if _EMPTY_INBOX_MARKER in html:
+        return [], []
     soup = BeautifulSoup(html, "html.parser")
     entries: list[InboxEntry] = []
     seen_urls: set[str] = set()
