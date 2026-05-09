@@ -198,6 +198,28 @@ codex review path/to/file.py
 - **同意できない指摘** → 理由を user に説明して判断を仰ぐ（codex は時に過度に保守的な提案をするので鵜呑みは禁物）
 - **両者の意見が割れた場合** → 最終決定は user
 
+### セッションコンテキスト管理
+
+長時間セッションで context が圧迫してきたら **handoff skill を起動して新セッションに引き継ぐ**。
+
+#### Claude が自発的に handoff を提案する条件
+- 1 セッションの token 使用量が体感で重い（複数の長文ファイル read、多数の workflow run を回した、等）
+- 1 つのまとまった作業が完了したタイミング（次の作業は別 context で始めた方が clean）
+- user が「疲れた」「一旦切る」「セッション分けたい」と言ったとき
+
+#### Claude が提案するときの動き
+1. `/handoff` skill を invoke（=「引き継ぎ書いて」と user が言わなくても自発的に）
+2. skill が `<project>/HANDOFF.md` を生成（commit しない、`.gitignore` 済）
+3. resume prompt を chat に出力
+4. user に **「`/clear` してから resume prompt を貼ってください」** と通知
+
+#### 自動化の限界（現状）
+Claude 自身は session を再起動できない。`/clear` + resume prompt 貼り付けは user 操作が必要。これを完全自動化するには `~/.claude/settings.json` の hook 設定が必要 (別タスク)。
+
+#### 関連 memory
+- `feedback_handoff_transient.md` — HANDOFF.md は commit しない / 引き継ぎ後削除
+- `feedback_skill_scope.md` — skill は project-local
+
 ### 自律ワークフロー設計原則
 
 このリポジトリの目的は **「人が介在しなくても回り続ける自動化」**。新しい cron / バッチ / クリック系を追加する時は次の3層を必ず備える:
