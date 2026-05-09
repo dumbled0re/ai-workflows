@@ -198,23 +198,34 @@ codex review path/to/file.py
 - **同意できない指摘** → 理由を user に説明して判断を仰ぐ（codex は時に過度に保守的な提案をするので鵜呑みは禁物）
 - **両者の意見が割れた場合** → 最終決定は user
 
-### セッションコンテキスト管理
+### セッションコンテキスト管理 (自動引き継ぎ)
 
-長時間セッションで context が圧迫してきたら **handoff skill を起動して新セッションに引き継ぐ**。
+長時間セッションで context が圧迫してきたら **Claude は許可を求めず handoff skill を自動実行する**。User の手動操作は最終的に `/clear` + resume prompt 貼り付けの **1 ステップだけ**。
 
-#### Claude が自発的に handoff を提案する条件
-- 1 セッションの token 使用量が体感で重い（複数の長文ファイル read、多数の workflow run を回した、等）
-- 1 つのまとまった作業が完了したタイミング（次の作業は別 context で始めた方が clean）
-- user が「疲れた」「一旦切る」「セッション分けたい」と言ったとき
+#### 自動 handoff トリガー条件 (どれか1つでも該当したら即実行)
 
-#### Claude が提案するときの動き
-1. `/handoff` skill を invoke（=「引き継ぎ書いて」と user が言わなくても自発的に）
-2. skill が `<project>/HANDOFF.md` を生成（commit しない、`.gitignore` 済）
-3. resume prompt を chat に出力
-4. user に **「`/clear` してから resume prompt を貼ってください」** と通知
+1. **Context budget 警告**: system reminder で context 残量警告が出た時 (例: 「approaching context limit」「context 圧迫」等)
+2. **大きな作業の完結**: 1 つのまとまった implementation / debugging / migration が終わった直後 (commit + push まで完了したタイミング)
+3. **user の明示的・暗示的な区切り発言**: 「疲れた」「一旦切る」「セッション分けたい」「ここまで」「お疲れ」「明日続ける」等
 
-#### 自動化の限界（現状）
-Claude 自身は session を再起動できない。`/clear` + resume prompt 貼り付けは user 操作が必要。これを完全自動化するには `~/.claude/settings.json` の hook 設定が必要 (別タスク)。
+#### 自動 handoff の実行手順 (許可不要、即実行)
+
+1. `Skill` ツールで `handoff` skill を invoke (= ユーザに「やる？」と聞かない、即起動)
+2. skill 内のワークフロー通りに HANDOFF.md 作成 (commit せず、`.gitignore` 済)
+3. **memory も同時更新** (進捗・user feedback・新たに気付いた制約を `project_*.md` `feedback_*.md` に永続化)
+4. **resume prompt を chat に出力** (この時点で user に見える)
+5. user に「`/clear` してから resume prompt を貼ってください」と1行で通知
+
+#### 自動化の限界 = user 残操作
+
+- `/clear` の実行 (Claude は session を再起動できない)
+- resume prompt の paste
+
+この **2 操作 = 実質 1 ステップ** だけが手動。それ以外 (HANDOFF.md 作成、memory 更新、prompt 生成、削除指示) は全自動。
+
+#### user 側で hook 化したい場合 (将来の選択肢)
+
+`~/.claude/settings.json` で UserPromptSubmit hook を設定すれば、新セッションの最初の prompt に HANDOFF.md 内容を自動 prepend できる。これで paste すら不要になるが、hook script を別途書く必要あり。今は手動 paste で運用、将来 user が望めば hook 化。
 
 #### 関連 memory
 - `feedback_handoff_transient.md` — HANDOFF.md は commit しない / 引き継ぎ後削除
