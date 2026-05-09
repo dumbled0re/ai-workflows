@@ -1,0 +1,58 @@
+name: moppy
+
+# Moppy click-coin email automation. Daily cron at JST 8:00 AM picks
+# up the previous day's click-coin mails, GETs each URL with a
+# logged-in session (Cookie persistence in actions/cache), and posts a
+# verified summary to Slack.
+#
+# Mode is controlled by vars.MOPPY_CRON_MODE:
+#   - 'click': credited auto-click using MOPPY_COOKIES Secret. Aborts the
+#     run if MOPPY_COOKIES is not registered (verify_login fails).
+#   - unset / anything else: extract-links mode — posts the full URLs to
+#     Slack so the user clicks them manually. No state mutations.
+#
+# workflow_dispatch overrides the cron mode per-run for dry-run / extract /
+# discover / single-URL inspection. discover and inspect_url are read-only
+# recon shortcuts that never touch state or labels.
+
+on:
+  schedule:
+    - cron: "0 23 * * *"  # JST 朝8時
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "extract candidates only, redacted (legacy)"
+        type: boolean
+        default: false
+      extract_links:
+        description: "post full clickable URLs to Slack instead of clicking"
+        type: boolean
+        default: false
+      discover:
+        description: "read-only recon of 毎日貯める section"
+        type: boolean
+        default: false
+      inspect_url:
+        description: "GET this URL with auth and dump body to log"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    uses: ./.github/workflows/_site-runner.yml
+    with:
+      site: moppy
+      cron_mode: ${{ vars.MOPPY_CRON_MODE }}
+      dry_run: ${{ inputs.dry_run == true }}
+      extract_links: ${{ inputs.extract_links == true }}
+      discover: ${{ inputs.discover == true }}
+      inspect_url: ${{ inputs.inspect_url }}
+    secrets:
+      slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
+      slack_channel: ${{ secrets.SLACK_CHANNEL_MOPPY }}
+      cookies: ${{ secrets.MOPPY_COOKIES }}
+      gmail_user: ${{ secrets.GMAIL_USER }}
+      gmail_app_password: ${{ secrets.GMAIL_APP_PASSWORD }}

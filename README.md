@@ -67,7 +67,7 @@ uv run python -m todo.main notify               # Slack 通知
 | `weekly-review.yml` | 株戦略の週次レビュー | 土曜朝 |
 | `tech-catchup.yml` | AI ニュースキャッチアップ | 毎朝 |
 | `moppy.yml` | モッピーメール自動クリック (point_sites の moppy adapter) | 毎日 |
-| `moppy-clicker-ci.yml` | point_sites の mypy | PR 時 |
+| `point_sites-ci.yml` | point_sites の mypy | PR 時 |
 | `todo.yml` | TODO リマインダーを Slack に通知 | 毎朝 9:00 JST |
 
 手動実行は GitHub Actions タブから `Run workflow` で。

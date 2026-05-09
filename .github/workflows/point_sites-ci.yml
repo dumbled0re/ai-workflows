@@ -7,7 +7,7 @@ on:
   pull_request:
     paths:
       - "point_sites/**"
-      - ".github/workflows/moppy-clicker-ci.yml"
+      - ".github/workflows/point_sites-ci.yml"
   workflow_dispatch:
 
 permissions:

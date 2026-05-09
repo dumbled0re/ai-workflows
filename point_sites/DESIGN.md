@@ -49,7 +49,7 @@ point_sites/.pytest_cache/
 ## 処理フロー
 
 ```
-[GitHub Actions cron 1日1回 / concurrency=moppy-clicker]
+[GitHub Actions cron 1日1回 / concurrency=site-moppy]
    ↓
 [1] state_store ロード（実行中の重複・前回失敗URLを把握）
    ↓
@@ -363,7 +363,7 @@ uv run python -m point_sites.main state --message-id <uid>
 
 ## GitHub Actions
 
-`.github/workflows/moppy-clicker.yml` を参照（cron `0 23 * * *` UTC = JST 朝8時、`workflow_dispatch` で手動 dry-run 可能）。
+`.github/workflows/moppy.yml` を参照（cron `0 23 * * *` UTC = JST 朝8時、`workflow_dispatch` で手動 dry-run 可能）。
 
 **必要な GitHub Secrets:**
 | Secret 名 | 値 |
@@ -381,7 +381,7 @@ uv run python -m point_sites.main state --message-id <uid>
 
 ## CI（PR 時）
 
-`.github/workflows/moppy-clicker-ci.yml`:
+`.github/workflows/point_sites-ci.yml`:
 - ruff check + ruff format --check
 - mypy
 - pytest（fixture ベースの parser/redaction/state_store テスト）
@@ -409,7 +409,7 @@ uv run python -m point_sites.main state --message-id <uid>
    - `SLACK_BOT_TOKEN` = `xoxb-...`（既存の場合はそのまま）
    - `SLACK_CHANNEL_MOPPY` = ステップ3で決めたチャンネル名（例: `#moppy`）または ID
    - `MOPPY_COOKIES` = ステップ4で書き出した JSON（**未設定だとポイント加算されない**）
-6. **`.github/workflows/moppy-clicker.yml` の cron 行のコメントを外す** → 定期実行開始
+6. **`.github/workflows/moppy.yml` の cron 行のコメントを外す** → 定期実行開始
 5. **手動 workflow_dispatch で dry-run** → Slack に候補リンクが届くか確認
 6. 問題なければ自動 cron 運用へ
 3. **Google Cloud Console** で OAuth client 作成 → Production 公開設定（refresh token 7日失効回避）

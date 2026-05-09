@@ -1,0 +1,126 @@
+name: _site-runner
+
+# Reusable workflow shared by every per-site yml (moppy.yml,
+# pointincome.yml, etc). All site-specific knobs come in via ``inputs``
+# / ``secrets``; the per-site caller is then small (just a cron line +
+# dispatch inputs + secret routing).
+#
+# Cache key prefix is ``<site>-state-`` so each site's data is isolated
+# even though they share the same cache namespace. Concurrency group is
+# also per-site so one site's stuck run doesn't block the others.
+
+on:
+  workflow_call:
+    inputs:
+      site:
+        description: "adapter name passed to --site (must exist in REGISTRY)"
+        type: string
+        required: true
+      cron_mode:
+        description: "value of vars.<SITE>_CRON_MODE; only 'click' triggers credited auto-click on schedule"
+        type: string
+        default: ""
+      dry_run:
+        type: boolean
+        default: false
+      extract_links:
+        type: boolean
+        default: false
+      discover:
+        type: boolean
+        default: false
+      inspect_url:
+        type: string
+        default: ""
+    secrets:
+      slack_bot_token:
+        required: true
+      slack_channel:
+        required: true
+      cookies:
+        required: false
+      gmail_user:
+        required: true
+      gmail_app_password:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: site-${{ inputs.site }}
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: point_sites
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Sync deps
+        run: uv sync --frozen
+
+      - name: Restore state cache
+        # actions/cache survives across workflow runs (unlike artifacts),
+        # so the rotated cookie jar from yesterday's run is what we boot
+        # from today. Per-site key prefix keeps adapters isolated.
+        uses: actions/cache/restore@v4
+        with:
+          path: point_sites/data/
+          key: ${{ inputs.site }}-state-${{ github.run_id }}
+          restore-keys: |
+            ${{ inputs.site }}-state-
+
+      - name: Run
+        env:
+          SITE: ${{ inputs.site }}
+          DRY_RUN_FLAG: ${{ inputs.dry_run && '1' || '0' }}
+          # Schedule events default to extract-links unless cron_mode == 'click'.
+          # Once cookies are registered + cron_mode set, this flips to credited
+          # auto-click. workflow_dispatch ignores cron_mode and follows its inputs.
+          CRON_EXTRACT: ${{ (github.event_name == 'schedule' && inputs.cron_mode != 'click') && '1' || '0' }}
+          DISPATCH_EXTRACT: ${{ inputs.extract_links && '1' || '0' }}
+          INSPECT_URL: ${{ inputs.inspect_url }}
+          DISCOVER: ${{ inputs.discover && '1' || '0' }}
+          SLACK_BOT_TOKEN: ${{ secrets.slack_bot_token }}
+          SITE_SLACK_CHANNEL: ${{ secrets.slack_channel }}
+          SITE_COOKIES: ${{ secrets.cookies }}
+          GMAIL_USER: ${{ secrets.gmail_user }}
+          GMAIL_APP_PASSWORD: ${{ secrets.gmail_app_password }}
+        run: |
+          set -e
+          SITE_UPPER=$(echo "$SITE" | tr '[:lower:]' '[:upper:]')
+          # Map per-site secrets to the env-var names the Python config
+          # expects (MOPPY_COOKIES / SLACK_CHANNEL_MOPPY / etc).
+          export "${SITE_UPPER}_COOKIES=$SITE_COOKIES"
+          export "SLACK_CHANNEL_${SITE_UPPER}=$SITE_SLACK_CHANNEL"
+          export "${SITE_UPPER}_DRY_RUN=$DRY_RUN_FLAG"
+          if [[ "$DISPATCH_EXTRACT" == "1" || "$CRON_EXTRACT" == "1" ]]; then
+            export "${SITE_UPPER}_EXTRACT_LINKS=1"
+          fi
+          # inspect_url and discover are dispatch-only debug paths and
+          # override the click pipeline. inspect_url has highest priority.
+          if [[ -n "$INSPECT_URL" ]]; then
+            uv run python -m point_sites.main html --site "$SITE" "$INSPECT_URL"
+          elif [[ "$DISCOVER" == "1" ]]; then
+            uv run python -m point_sites.main discover --site "$SITE"
+          else
+            uv run python -m point_sites.main run --site "$SITE"
+          fi
+
+      - name: Save state cache
+        # always() so a failed click step still preserves whatever
+        # rotated cookies we managed to capture before the failure.
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: point_sites/data/
+          key: ${{ inputs.site }}-state-${{ github.run_id }}
