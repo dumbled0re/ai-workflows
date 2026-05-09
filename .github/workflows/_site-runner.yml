@@ -32,6 +32,10 @@ on:
       inspect_url:
         type: string
         default: ""
+      force_fresh_cookies:
+        description: "delete persisted cookie jar before run, forcing re-bootstrap from <SITE>_COOKIES Secret. Use after rotating the Secret in GitHub when the cached jar would otherwise overwrite the fresh value."
+        type: boolean
+        default: false
     secrets:
       slack_bot_token:
         required: true
@@ -118,6 +122,26 @@ jobs:
           key: ${{ inputs.site }}-state-${{ github.run_id }}
           restore-keys: |
             ${{ inputs.site }}-state-
+
+      - name: Force fresh cookie bootstrap
+        # When the user rotates the <SITE>_COOKIES Secret in GitHub but
+        # the previously-persisted ``cookies.json`` is still in the
+        # actions cache, ``_resolve_cookies`` would prefer the stale
+        # persisted jar and ignore the fresh Secret — wedging the run
+        # in stale-cookie mode until cache is manually purged. This
+        # opt-in input deletes the persisted jar so the next run
+        # bootstraps from the Secret. State.json is preserved (only
+        # cookies are fresh-bootstrapped).
+        if: inputs.force_fresh_cookies
+        run: |
+          set -e
+          JAR="$GITHUB_WORKSPACE/point_sites/data/${{ inputs.site }}/cookies.json"
+          if [ -f "$JAR" ]; then
+            echo "force_fresh_cookies=true → removing $JAR"
+            rm -f "$JAR"
+          else
+            echo "no persisted jar at $JAR (already fresh)"
+          fi
 
       - name: Run
         env:

@@ -35,6 +35,7 @@ jobs:
       extract_links: ${{ inputs.extract_links == true }}
       discover: ${{ inputs.discover == true }}
       inspect_url: ${{ inputs.inspect_url }}
+      force_fresh_cookies: ${{ inputs.force_fresh_cookies == true }}
     secrets:
       slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
       slack_channel: ${{ secrets.SLACK_CHANNEL_CHOBIRICH }}
