@@ -27,10 +27,11 @@ from .parser import parse as parse_email
 ADAPTER = Adapter(
     name="chobirich",
     site_label="ちょびリッチ",
-    # ``/mypage/`` (trailing slash) is 301'd to ``/mypage`` — using the
-    # noslash form directly avoids one redirect and any anti-bot rule
-    # that flags the redirect chain.
-    mypage_url="https://www.chobirich.com/mypage",
+    # ``/mypage`` returns 403 even with valid cookies (chobirich CDN
+    # WAF appears to block direct access to mypage from datacenter IPs).
+    # Top page ``/`` returns 200 and the header nav contains ログアウト
+    # link when authenticated, which is sufficient for verify_login.
+    mypage_url="https://www.chobirich.com/",
     allowed_hosts=frozenset({"chobirich.com", "www.chobirich.com", "sp.chobirich.com"}),
     login_keyword="ログアウト",
     gmail_query=("from:chobirich.com -label:chobirich-clicked -label:chobirich-no-coins newer_than:3d"),
