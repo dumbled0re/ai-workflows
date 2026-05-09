@@ -28,15 +28,23 @@ Required Secrets to enable:
   - ``SLACK_CHANNEL_AMEFURI`` — Slack channel ID or ``#name``.
 """
 
+import re
+
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
 from ...common.sources import EndpointPollSource
 
-# Best-guess daily-bonus URL. Refine after first authenticated discover.
-# The "ログインボーナスを受け取る" button on the top page hits an
-# auth-guarded path — this is a documented placeholder, not a confirmed
-# endpoint.
-_DAILY_BONUS_URL = "https://www.amefri.net/login_bonus"
+# Daily-login GET target. アメフリ has no discrete "claim bonus" button
+# (verified via inspect_url 2026-05-09: /account shows the bonus as a
+# status block, no onclick/AJAX trigger in the HTML). Per the in-page
+# copy ("毎日のログイン 1pt") the trigger appears to be a daily session
+# GET to an authenticated page; /account is the canonical logged-in
+# landing and the most likely trigger.
+#
+# If balance doesn't grow after ~2 days of cron, the trigger may be the
+# SSO login flow itself (not session reuse), in which case this source
+# can't credit the bonus and amefuri should be disabled.
+_DAILY_BONUS_URL = "https://www.amefri.net/account"
 
 ADAPTER = Adapter(
     name="amefuri",
@@ -54,7 +62,15 @@ ADAPTER = Adapter(
     login_keyword="ログアウト",
     # Gmail fields stay blank — endpoint-poll source ignores them.
     source=EndpointPollSource(endpoint_url=_DAILY_BONUS_URL),
-    balance_patterns=DEFAULT_BALANCE_PATTERNS,
+    # The default 保有ポイント patterns expect uppercase ``P``/``Ｐ`` near
+    # the digits. アメフリ renders ``<span class="point">N</span>pt``
+    # (lowercase ``pt``) with the digits buried 60+ chars after the
+    # ``保有ポイント`` label, so we add a site-specific pattern that
+    # anchors on the ``ownedPoint__point`` container instead.
+    balance_patterns=(
+        re.compile(r'class="ownedPoint__point"[\s\S]{0,120}?<span[^>]*class="point"[^>]*>([0-9,]+)</span>'),
+        *DEFAULT_BALANCE_PATTERNS,
+    ),
     discover_seeds=(
         "https://www.amefri.net/",
         "https://www.amefri.net/account",
