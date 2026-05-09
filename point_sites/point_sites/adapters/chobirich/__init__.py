@@ -1,12 +1,22 @@
 """ちょびリッチ (https://www.chobirich.com) adapter.
 
-Status: **blocked at WAF level (2026-05-09)**. chobirich's CDN returns
-HTTP 403 to every request from GitHub Actions IP ranges, even for the
-public top page ``/``. Tested from local curl: 200. Tested from GHA
-runner with valid cookies: 403. This is L7 IP-based blocklisting that
-cannot be bypassed without (a) a self-hosted runner on a residential
-IP, or (b) some kind of proxy. Both are gross overkill given the
-small expected yield (5-15 円/month) post-2025-11 rate cuts.
+Status: **blocked at WAF level (2026-05-09, retested with full browser
+headers)**. chobirich's CDN returns HTTP 403 to every request from
+GitHub Actions IP ranges, even for the public top page ``/``.
+Verified:
+
+- Local curl from residential JP IP: 200
+- GHA runner with bare User-Agent: 403
+- GHA runner with full browser headers (Accept / Accept-Language /
+  Sec-Fetch-* / Upgrade-Insecure-Requests): 403 (no improvement)
+
+So the block is **IP-based**, not header / fingerprint based. Bypass
+options that remain:
+
+1. ``curl_cffi`` TLS-fingerprint impersonation — uncertain payoff
+   given the IP-only conclusion
+2. Self-hosted runner on a residential IP — gross overkill for a
+   site whose post-2025-11 yield is 5-15 円/month
 
 Adapter is left in place so the framework remains symmetric, but it
 will fail every run. Disable the schedule by NOT setting
