@@ -7,12 +7,18 @@ follow the keys of ``REGISTRY``.
 """
 
 from ..common.adapter import Adapter
+from .chobirich import ADAPTER as CHOBIRICH
+from .gendama import ADAPTER as GENDAMA
+from .hapitas import ADAPTER as HAPITAS
 from .moppy import ADAPTER as MOPPY
 from .pointincome import ADAPTER as POINTINCOME
 
 REGISTRY: dict[str, Adapter] = {
     MOPPY.name: MOPPY,
     POINTINCOME.name: POINTINCOME,
+    HAPITAS.name: HAPITAS,
+    CHOBIRICH.name: CHOBIRICH,
+    GENDAMA.name: GENDAMA,
 }
 
 

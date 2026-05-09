@@ -1,0 +1,49 @@
+name: gendama
+
+# げん玉 click-mail automation.
+#
+# ⚠ ENABLEMENT WARNING:
+# げん玉 has a 180-day inactivity rule that auto-deletes accounts.
+# Click points DO NOT count as activity for this rule — only real
+# shopping or registration transactions do. Before enabling this
+# adapter, decide whether the user is willing to do at least one real
+# transaction per ~6 months. If not, accumulated points will be
+# forfeited when the account is purged.
+
+on:
+  schedule:
+    - cron: "0 0 * * *"  # JST 9:00
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        type: boolean
+        default: false
+      extract_links:
+        type: boolean
+        default: false
+      discover:
+        type: boolean
+        default: false
+      inspect_url:
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    uses: ./.github/workflows/_site-runner.yml
+    with:
+      site: gendama
+      cron_mode: ${{ vars.GENDAMA_CRON_MODE }}
+      dry_run: ${{ inputs.dry_run == true }}
+      extract_links: ${{ inputs.extract_links == true }}
+      discover: ${{ inputs.discover == true }}
+      inspect_url: ${{ inputs.inspect_url }}
+    secrets:
+      slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
+      slack_channel: ${{ secrets.SLACK_CHANNEL_GENDAMA }}
+      cookies: ${{ secrets.GENDAMA_COOKIES }}
+      gmail_user: ${{ secrets.GMAIL_USER }}
+      gmail_app_password: ${{ secrets.GMAIL_APP_PASSWORD }}

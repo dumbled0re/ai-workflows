@@ -2,7 +2,7 @@
 
 新しい Claude セッションでこのプロジェクトを引き継ぐとき、まずこのファイルを読んでから作業を始めてください。`/Users/ritsushi/.claude/projects/-Users-ritsushi-git-ai-workflows/memory/MEMORY.md` の各 memory ファイルもあわせて読むこと。
 
-最終更新: 2026-05-09
+最終更新: 2026-05-09 (ハピタス・ちょびリッチ・げん玉 adapter scaffold 追加)
 
 ---
 
@@ -15,6 +15,16 @@
 実装済み adapter:
 - `moppy` (本番運用中、毎日 JST 8:00 cron)
 - `pointincome` (scaffold 完了、Cookie 登録 + 実 regex 検証待ち)
+- `hapitas` (scaffold、JST 8:30 cron、2FA OFF 前提・Cookie 登録待ち)
+- `chobirich` (scaffold、JST 8:45 cron、Cookie 登録待ち)
+- `gendama` (scaffold、JST 9:00 cron、180日休眠で account 消滅リスクあり、enable 前に user 判断必要)
+
+未着手 (framework 拡張が必要):
+- `ポイントタウン` — on-site inbox model (Gmail 不要、サイト内のメールボックスを scrape する path)。`Adapter` に inbox-strategy フィールドを足して `cmd_run` を polymorphic にする必要あり
+- `アメフリ` — daily login bonus endpoint poll (Gmail なし、HTTP GET 1発で完結)。同じく framework 拡張が必要
+
+その他 (低優先):
+- `ECナビ`, `ニフティポイントクラブ`, `ワラウ` 等 — yield 低・blocker あり、agent research で除外推奨
 
 ## 重要な設計上の制約 (絶対に変えない)
 
@@ -223,6 +233,27 @@ gh workflow run <site>.yml --repo dumbled0re/ai-workflows -f extract_links=true
 7. extract_links → click の段階的本番化
 
 不明な設計判断は user に確認するか codex に相談。**独走しない**。
+
+## 各 adapter の Cookie 登録手順 (共通)
+
+1. ブラウザで対象サイトにログイン（PC、Cookie-Editor 拡張入り）
+2. Cookie-Editor → Export → Export as JSON で対象ドメインの Cookie を全部 JSON 配列として取得
+3. GitHub repo Settings → Secrets and variables → Actions → New repository secret
+   - 名前: `<SITE_UPPER>_COOKIES` (例: `HAPITAS_COOKIES`)
+   - 値: コピーした JSON
+4. 通知用 Slack channel を準備、Bot 招待。Secret に `SLACK_CHANNEL_<SITE_UPPER>` 追加
+5. `gh workflow run <site>.yml --repo dumbled0re/ai-workflows -f discover=true` で接続確認
+6. ログから実 click email URL pattern を読み、`adapters/<site>/parser.py` の `CLICK_COIN_URL_RE` / `CALLOUT_RE` を refine
+7. workflow を `extract_links=true` で1日試して Slack に URL が流れること確認
+8. OK なら GitHub Variables に `<SITE_UPPER>_CRON_MODE = click` を設定して本番化
+
+## 開発周辺で欲しいスキル候補 (user 提案 2026-05-09)
+
+context が圧迫されてきた時用の補助スキル:
+- session 長くなって token 消費が大きくなったら自動的に HANDOFF.md / memory を更新して /clear 推奨を出す
+- 引き継ぎ用 prompt を auto-生成して chat に出す
+- 現在の作業を「中断点」としてまとめてくれる
+- これらは `~/.claude/skills/` に置く形で、複数プロジェクトから使い回せる skill としてまとめると良い
 
 ## 既存 memory 一覧
 

@@ -1,0 +1,48 @@
+name: hapitas
+
+# ハピタス click-mail automation. Cron offset 30 min after moppy.yml so
+# the two sites' traffic is staggered. Click URLs are valid 7 days
+# from receipt so we use newer_than:7d in the gmail query (vs 3d for
+# Moppy/pointincome) — gives plenty of margin for daily cadence.
+#
+# 2FA caveat: if the user has TOTP enabled on ハピタス this cookie-only
+# flow will fail. The default is 2FA off; if it's on, either disable
+# it or skip enabling this adapter.
+
+on:
+  schedule:
+    - cron: "30 23 * * *"  # JST 8:30
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        type: boolean
+        default: false
+      extract_links:
+        type: boolean
+        default: false
+      discover:
+        type: boolean
+        default: false
+      inspect_url:
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    uses: ./.github/workflows/_site-runner.yml
+    with:
+      site: hapitas
+      cron_mode: ${{ vars.HAPITAS_CRON_MODE }}
+      dry_run: ${{ inputs.dry_run == true }}
+      extract_links: ${{ inputs.extract_links == true }}
+      discover: ${{ inputs.discover == true }}
+      inspect_url: ${{ inputs.inspect_url }}
+    secrets:
+      slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
+      slack_channel: ${{ secrets.SLACK_CHANNEL_HAPITAS }}
+      cookies: ${{ secrets.HAPITAS_COOKIES }}
+      gmail_user: ${{ secrets.GMAIL_USER }}
+      gmail_app_password: ${{ secrets.GMAIL_APP_PASSWORD }}

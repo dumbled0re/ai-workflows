@@ -1,0 +1,43 @@
+name: chobirich
+
+# ちょびリッチ click-mail automation. Cron offset another 15 min from
+# hapitas.yml. Site-specific yield is modest (2pt = 1円); enable only
+# if the user wants the diversification across operators.
+
+on:
+  schedule:
+    - cron: "45 23 * * *"  # JST 8:45
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        type: boolean
+        default: false
+      extract_links:
+        type: boolean
+        default: false
+      discover:
+        type: boolean
+        default: false
+      inspect_url:
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    uses: ./.github/workflows/_site-runner.yml
+    with:
+      site: chobirich
+      cron_mode: ${{ vars.CHOBIRICH_CRON_MODE }}
+      dry_run: ${{ inputs.dry_run == true }}
+      extract_links: ${{ inputs.extract_links == true }}
+      discover: ${{ inputs.discover == true }}
+      inspect_url: ${{ inputs.inspect_url }}
+    secrets:
+      slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
+      slack_channel: ${{ secrets.SLACK_CHANNEL_CHOBIRICH }}
+      cookies: ${{ secrets.CHOBIRICH_COOKIES }}
+      gmail_user: ${{ secrets.GMAIL_USER }}
+      gmail_app_password: ${{ secrets.GMAIL_APP_PASSWORD }}
