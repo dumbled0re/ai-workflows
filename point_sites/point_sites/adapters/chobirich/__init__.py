@@ -27,9 +27,10 @@ from .parser import parse as parse_email
 ADAPTER = Adapter(
     name="chobirich",
     site_label="ちょびリッチ",
-    # Best-guess mypage. If chobirich uses a different path (e.g.
-    # ``/membersite/?action=mypage``), update after discover confirms.
-    mypage_url="https://www.chobirich.com/mypage/",
+    # ``/mypage/`` (trailing slash) is 301'd to ``/mypage`` — using the
+    # noslash form directly avoids one redirect and any anti-bot rule
+    # that flags the redirect chain.
+    mypage_url="https://www.chobirich.com/mypage",
     allowed_hosts=frozenset({"chobirich.com", "www.chobirich.com", "sp.chobirich.com"}),
     login_keyword="ログアウト",
     gmail_query=("from:chobirich.com -label:chobirich-clicked -label:chobirich-no-coins newer_than:3d"),
