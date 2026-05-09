@@ -80,10 +80,7 @@ jobs:
         if: inputs.site == 'moppy'
         uses: actions/cache/restore@v4
         with:
-          path: |
-            moppy_clicker/data/state.json
-            moppy_clicker/data/outcomes.jsonl
-            moppy_clicker/data/cookies.json
+          path: moppy_clicker/data/
           key: legacy-bridge-${{ github.run_id }}
           restore-keys: |
             ${{ inputs.site }}-state-
@@ -92,16 +89,26 @@ jobs:
       - name: Apply legacy cache bridge
         if: inputs.site == 'moppy'
         run: |
-          # The legacy cache may be partial (state.json without cookies, etc).
-          # Dump what survived restore so the workflow log is auditable, then
-          # copy each file into the new layout.
-          echo "post-bridge filesystem:"
-          ls -la moppy_clicker/data/ 2>/dev/null || echo "  (no moppy_clicker/data dir)"
+          # Dump everything the bridge restore could plausibly have
+          # written to, so we can diagnose where the cache content
+          # actually landed if the obvious moppy_clicker/data/ path
+          # turns out to be empty.
+          echo "post-bridge filesystem dump:"
+          echo "--- pwd ---"
+          pwd
+          echo "--- top-level ---"
+          ls -la "$GITHUB_WORKSPACE"
+          echo "--- moppy_clicker/ ---"
+          ls -laR "$GITHUB_WORKSPACE/moppy_clicker" 2>/dev/null || echo "  (no moppy_clicker dir)"
+          echo "--- point_sites/data/ ---"
+          ls -laR "$GITHUB_WORKSPACE/point_sites/data" 2>/dev/null || echo "  (no point_sites/data dir)"
+          # Find ANY file that looks like our state outside of code dirs.
+          echo "--- find json files ---"
+          find "$GITHUB_WORKSPACE" -maxdepth 5 -type f \( -name "state.json" -o -name "cookies.json" -o -name "outcomes.jsonl" \) 2>/dev/null | head
           if [ -d moppy_clicker/data ] && [ -n "$(ls -A moppy_clicker/data 2>/dev/null)" ]; then
             echo "bridging moppy_clicker/data/ → point_sites/data/"
             mkdir -p point_sites/data
             cp -r moppy_clicker/data/. point_sites/data/ || true
-            ls -la point_sites/data/
           else
             echo "no legacy data to bridge"
           fi
