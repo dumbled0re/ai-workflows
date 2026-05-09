@@ -8,9 +8,11 @@ follow the keys of ``REGISTRY``.
 
 from ..common.adapter import Adapter
 from .moppy import ADAPTER as MOPPY
+from .pointincome import ADAPTER as POINTINCOME
 
 REGISTRY: dict[str, Adapter] = {
     MOPPY.name: MOPPY,
+    POINTINCOME.name: POINTINCOME,
 }
 
 
