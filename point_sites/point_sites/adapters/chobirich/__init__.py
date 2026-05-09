@@ -1,20 +1,24 @@
 """ちょびリッチ (https://www.chobirich.com) adapter.
 
-Status: scaffolded. mypage_url + login_keyword + click URL regex are
-best guesses pending discover. The public landing didn't expose enough
-markup to nail down the exact paths, so first-run recon is the only
-way to confirm.
+Status: **blocked at WAF level (2026-05-09)**. chobirich's CDN returns
+HTTP 403 to every request from GitHub Actions IP ranges, even for the
+public top page ``/``. Tested from local curl: 200. Tested from GHA
+runner with valid cookies: 403. This is L7 IP-based blocklisting that
+cannot be bypassed without (a) a self-hosted runner on a residential
+IP, or (b) some kind of proxy. Both are gross overkill given the
+small expected yield (5-15 円/month) post-2025-11 rate cuts.
 
-Site-specific risks:
-- Site rate is **2pt = 1円** (most others are 10pt = 1円), so
-  estimated_points × pt-value computation must NOT assume 10:1.
-- 2025-11-01 banner-click credit clamped to 1/account. This affects
-  in-site banner clicks, not mail-driven URLs, but watch the
-  degradation alert closely after enabling.
-- Operator is actively tightening anti-fraud; treat as moderate
-  detection risk.
+Adapter is left in place so the framework remains symmetric, but it
+will fail every run. Disable the schedule by NOT setting
+``vars.CHOBIRICH_CRON_MODE=click`` (default extract-links also 403s
+because it still calls verify_login). Realistic state: this site is
+abandoned for our purposes.
 
-Required Secrets:
+Original site-specific risks (still relevant if anyone retries):
+- Site rate is **2pt = 1円** (most others are 10pt = 1円).
+- 2025-11-01 banner-click credit clamped to 1/account.
+
+Required Secrets (kept for symmetry, won't help past the WAF):
   - ``CHOBIRICH_COOKIES``
   - ``SLACK_CHANNEL_CHOBIRICH``
 """
