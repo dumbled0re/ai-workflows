@@ -92,14 +92,12 @@ class Adapter:
     daily_banner_selector: str | None = None
 
     # Daily lottery-ticket exchange (hapitas mini takarakuji style).
-    # Two-step UI: ``open_selector`` opens the confirmation panel
-    # (which already has the user's full ticket count pre-filled in
-    # a hidden input), ``confirm_selector`` triggers the actual
-    # exchange XHR. Single round-trip drains the entire daily ticket
-    # balance — no per-ticket loop needed.
+    # Multi-step UI: each tuple in ``takarakuji_exchange_clicks`` is a
+    # (selector, repeat_count) — Playwright clicks the selector N
+    # times with a short wait between, advancing the UI through its
+    # mode → count → confirm → exchange flow. Empty tuple = no exchange.
     takarakuji_exchange_url: str | None = None
-    takarakuji_exchange_open_selector: str | None = None
-    takarakuji_exchange_confirm_selector: str | None = None
+    takarakuji_exchange_clicks: tuple[tuple[str, int], ...] = ()
 
     @property
     def env_prefix(self) -> str:

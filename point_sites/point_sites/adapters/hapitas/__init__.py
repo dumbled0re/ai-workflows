@@ -55,14 +55,18 @@ ADAPTER = Adapter(
     # credits the ticket on GET.
     daily_banner_url="https://hapitas.jp/",
     daily_banner_selector="div.clickget_banner > a[href]",
-    # Spend 宝くじ交換券 on バラ (random individual numbers) — same
-    # day's banner-click tickets get exchanged for entries into the
-    # mini-takarakuji daily drawing. The バラ flow is two clicks: the
-    # initial ``apart_ctrl`` opens a confirmation panel that already
-    # has the full ticket count pre-filled, then ``btn_exchanges_10``
-    # fires the actual exchange XHR. One round-trip drains the entire
-    # daily ticket balance.
+    # Spend 宝くじ交換券 on バラ (random individual numbers). The flow
+    # is a 4-step wizard: pick mode → set count → next → confirm.
+    # ``apart_ctrl`` opens the count-selector panel ``_08`` (default
+    # count 10); ``up_takarakuji_exchange_08`` increments the count
+    # to drain more tickets per run; 次へ advances to the ``_10``
+    # confirmation; 交換する fires the AJAX. 30 Up clicks caps at the
+    # user's actual ticket balance — extras hit a disabled max.
     takarakuji_exchange_url="https://hapitas.jp/minitakarakuji/",
-    takarakuji_exchange_open_selector="#apart_ctrl",
-    takarakuji_exchange_confirm_selector="#takarakuji_exchange_btn_exchanges_10",
+    takarakuji_exchange_clicks=(
+        ("#apart_ctrl", 1),
+        ("#up_takarakuji_exchange_08", 30),
+        ("#takarakuji_exchange_btn_next_08", 1),
+        ("#takarakuji_exchange_btn_exchanges_10", 1),
+    ),
 )

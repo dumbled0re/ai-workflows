@@ -513,13 +513,13 @@ def cmd_run(
 
     # Convert hapitas-style 宝くじ交換券 into lottery numbers — runs
     # right after the banner click loop so the day's freshly-earned
-    # tickets land in the same drawing window. Two-step UI: open the
-    # confirmation panel (which pre-fills the full ticket count into
-    # a hidden form), then click the exchange button to fire the AJAX.
+    # tickets land in the same drawing window. Multi-step UI; each
+    # configured (selector, repeat_count) advances the wizard one
+    # screen. force=True bypasses the pointer-events interception
+    # from sibling panels during slide-in animations.
     if (
         cfg.adapter.takarakuji_exchange_url
-        and cfg.adapter.takarakuji_exchange_open_selector
-        and cfg.adapter.takarakuji_exchange_confirm_selector
+        and cfg.adapter.takarakuji_exchange_clicks
         and not dry_run
         and not extract_links
         and clicker is not None
@@ -539,34 +539,32 @@ def cmd_run(
                 page = bc.goto(cfg.adapter.takarakuji_exchange_url)
                 exchanged = False
                 try:
-                    page.click(cfg.adapter.takarakuji_exchange_open_selector, timeout=5000)
-                    # The confirm panel slides in via a CSS animation
-                    # that leaves the target anchor in DOM but not
-                    # actionable for a beat. wait_for_selector with
-                    # state=visible polls past the animation, then
-                    # force=True bypasses any lingering pointer-events
-                    # interception from sibling panels.
-                    page.wait_for_selector(
-                        cfg.adapter.takarakuji_exchange_confirm_selector,
-                        state="visible",
-                        timeout=5000,
-                    )
-                    page.click(
-                        cfg.adapter.takarakuji_exchange_confirm_selector,
-                        timeout=5000,
-                        force=True,
-                    )
-                    # Settle for the exchange XHR + the success-pane
-                    # render so the next page.close doesn't tear down
-                    # mid-flight.
+                    for step_idx, (selector, repeat) in enumerate(cfg.adapter.takarakuji_exchange_clicks):
+                        for _ in range(repeat):
+                            try:
+                                page.click(selector, timeout=5000, force=True)
+                            except Exception as exc:
+                                logger.warning(
+                                    "takarakuji step %d (%s) failed: %s",
+                                    step_idx,
+                                    selector,
+                                    exc,
+                                )
+                                raise
+                            page.wait_for_timeout(400)
+                        # Longer wait between steps to let the panel
+                        # animation settle before the next selector
+                        # becomes actionable.
+                        page.wait_for_timeout(800)
+                    # Final settle for the exchange XHR + success pane.
                     page.wait_for_timeout(2500)
                     exchanged = True
-                except Exception as exc:
-                    logger.warning("takarakuji exchange click sequence failed: %s", exc)
+                except Exception:
+                    pass
                 finally:
                     page.close()
                 _merge_browser_cookies(clicker, bc.export_cookies())
-            logger.info("takarakuji exchange %s", "succeeded" if exchanged else "skipped")
+            logger.info("takarakuji exchange %s", "succeeded" if exchanged else "failed")
         except Exception as exc:
             logger.warning("takarakuji exchange session failed: %s", exc)
 
