@@ -44,6 +44,36 @@ DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
 )
 
+# Stealth init script. Runs in every new page before any site script,
+# masking the most reliable Playwright tells. pointincome's
+# "コンテンツブロッカー" interstitial detected the headless session even
+# with valid cookies; the navigator.webdriver flag is the single
+# strongest signal so it gets first priority. ja-JP locale + plugins
+# array + chrome runtime stub round out the most common checks. Sites
+# with deeper fingerprinting (canvas / WebGL / audio context) would
+# need additional scripts; we add those only when a specific site
+# proves to need them so the surface area stays minimal.
+_STEALTH_INIT_SCRIPT = """
+Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+Object.defineProperty(navigator, 'languages', {get: () => ['ja-JP', 'ja', 'en-US', 'en']});
+Object.defineProperty(navigator, 'plugins', {
+  get: () => [
+    {name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer'},
+    {name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai'},
+    {name: 'Native Client', filename: 'internal-nacl-plugin'},
+  ],
+});
+window.chrome = window.chrome || {runtime: {}};
+const originalQuery = window.navigator.permissions && window.navigator.permissions.query;
+if (originalQuery) {
+  window.navigator.permissions.query = (parameters) => (
+    parameters.name === 'notifications'
+      ? Promise.resolve({state: Notification.permission})
+      : originalQuery(parameters)
+  );
+}
+"""
+
 
 def _to_playwright_cookies(
     cookies: list[dict[str, object]],
@@ -133,6 +163,11 @@ class BrowserClicker:
             timezone_id="Asia/Tokyo",
             viewport={"width": 1280, "height": 800},
         )
+        # Apply stealth before any cookie or navigation: scripts added
+        # via add_init_script run in every Page and Frame, even those
+        # spawned mid-navigation, so anti-bot checks that fire on the
+        # very first page load see the masked navigator.webdriver.
+        self._context.add_init_script(_STEALTH_INIT_SCRIPT)
         if self._cookies_in:
             # ``add_cookies`` types its argument as the SetCookieParam
             # TypedDict, but that type isn't part of Playwright's public
