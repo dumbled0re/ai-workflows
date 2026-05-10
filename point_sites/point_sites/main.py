@@ -602,6 +602,10 @@ def cmd_html(cfg: Config, url: str) -> int:
     where the 'play' button isn't an anchor with a recognizable text).
     The body is filtered to drop common header/footer/jQuery noise so
     the relevant markup fits within reasonable log size.
+
+    For adapters with ``balance_uses_browser=True``, the body is
+    fetched through Playwright Chromium so JS-rendered content is
+    visible and anti-bot interstitials are bypassed.
     """
     if not is_manual_url_allowed(url, cfg.adapter.allowed_hosts):
         print(f"refused: {url} is not under {cfg.adapter.site_label} hosts", file=sys.stderr)
@@ -615,17 +619,43 @@ def cmd_html(cfg: Config, url: str) -> int:
         print(f"refused: {cfg.adapter.site_label} login verification failed", file=sys.stderr)
         return 2
     _persist_cookies(clicker, cfg)
-    resp = clicker.session.get(url, timeout=(10.0, 30.0), allow_redirects=True)
-    _persist_cookies(clicker, cfg)
-    print(f"=== {resp.url} (HTTP {resp.status_code}, len={len(resp.text)}) ===")
-    body = re.sub(r"<script\b[^>]*>.*?</script>", "<!-- script removed -->", resp.text, flags=re.DOTALL)
+
+    if cfg.adapter.balance_uses_browser:
+        from urllib.parse import urlparse
+
+        from .common.browser import BrowserClicker
+
+        host = urlparse(cfg.adapter.mypage_url).hostname or ""
+        default_domain = "." + (host.split(".", 1)[-1] if "." in host else host)
+        with BrowserClicker(
+            cookies=_jar_to_cookies(clicker),
+            default_cookie_domain=default_domain,
+        ) as bc:
+            page = bc.goto(url)
+            try:
+                final_url = page.url
+                body_text = page.content()
+            finally:
+                page.close()
+            _merge_browser_cookies(clicker, bc.export_cookies())
+        original_len = len(body_text)
+        _persist_cookies(clicker, cfg)
+        print(f"=== {final_url} (browser, len={original_len}) ===")
+    else:
+        resp = clicker.session.get(url, timeout=(10.0, 30.0), allow_redirects=True)
+        _persist_cookies(clicker, cfg)
+        body_text = resp.text
+        original_len = len(body_text)
+        print(f"=== {resp.url} (HTTP {resp.status_code}, len={original_len}) ===")
+
+    body = re.sub(r"<script\b[^>]*>.*?</script>", "<!-- script removed -->", body_text, flags=re.DOTALL)
     body = re.sub(r"<style\b[^>]*>.*?</style>", "<!-- style removed -->", body, flags=re.DOTALL)
     body = re.sub(r"<!--.*?-->", "", body, flags=re.DOTALL)
     body = re.sub(r"\n\s*\n+", "\n", body)
     cap = 80_000
     print(body[:cap])
     if len(body) > cap:
-        print(f"\n=== TRUNCATED (showed {cap} of {len(body)} stripped bytes; original {len(resp.text)}) ===")
+        print(f"\n=== TRUNCATED (showed {cap} of {len(body)} stripped bytes; original {original_len}) ===")
     return 0
 
 
