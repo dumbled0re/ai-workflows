@@ -40,8 +40,8 @@ on:
         default: false
       inspect_cap:
         description: "max stripped-body bytes to print (default 80000)"
-        type: number
-        default: 80000
+        type: string
+        default: "80000"
       force_fresh_cookies:
         description: "delete persisted cookie jar before run, forcing re-bootstrap from Secret (use after rotating <SITE>_COOKIES)"
         type: boolean

@@ -37,9 +37,9 @@ on:
         type: boolean
         default: false
       inspect_cap:
-        description: "max stripped-body bytes to print (default 80000)"
-        type: number
-        default: 80000
+        description: "max stripped-body bytes to print (default 80000); pass as string for cross-workflow compat"
+        type: string
+        default: "80000"
       force_fresh_cookies:
         description: "delete persisted cookie jar before run, forcing re-bootstrap from <SITE>_COOKIES Secret. Use after rotating the Secret in GitHub when the cached jar would otherwise overwrite the fresh value."
         type: boolean
