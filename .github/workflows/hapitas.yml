@@ -47,7 +47,6 @@ jobs:
     uses: ./.github/workflows/_site-runner.yml
     with:
       site: hapitas
-      cron_mode: ${{ vars.HAPITAS_CRON_MODE }}
       dry_run: ${{ inputs.dry_run == true }}
       extract_links: ${{ inputs.extract_links == true }}
       discover: ${{ inputs.discover == true }}

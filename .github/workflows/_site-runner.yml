@@ -16,10 +16,6 @@ on:
         description: "adapter name passed to --site (must exist in REGISTRY)"
         type: string
         required: true
-      cron_mode:
-        description: "value of vars.<SITE>_CRON_MODE; only 'click' triggers credited auto-click on schedule"
-        type: string
-        default: ""
       dry_run:
         type: boolean
         default: false
@@ -170,10 +166,9 @@ jobs:
         env:
           SITE: ${{ inputs.site }}
           DRY_RUN_FLAG: ${{ inputs.dry_run && '1' || '0' }}
-          # Schedule events default to extract-links unless cron_mode == 'click'.
-          # Once cookies are registered + cron_mode set, this flips to credited
-          # auto-click. workflow_dispatch ignores cron_mode and follows its inputs.
-          CRON_EXTRACT: ${{ (github.event_name == 'schedule' && inputs.cron_mode != 'click') && '1' || '0' }}
+          # Cron always runs in click (credited) mode. Use
+          # ``workflow_dispatch -f extract_links=true`` for one-off
+          # read-only runs while shaking down a new adapter.
           DISPATCH_EXTRACT: ${{ inputs.extract_links && '1' || '0' }}
           INSPECT_URL: ${{ inputs.inspect_url }}
           INSPECT_BROWSER: ${{ inputs.inspect_browser && '1' || '0' }}
@@ -192,7 +187,7 @@ jobs:
           export "${SITE_UPPER}_COOKIES=$SITE_COOKIES"
           export "SLACK_CHANNEL_${SITE_UPPER}=$SITE_SLACK_CHANNEL"
           export "${SITE_UPPER}_DRY_RUN=$DRY_RUN_FLAG"
-          if [[ "$DISPATCH_EXTRACT" == "1" || "$CRON_EXTRACT" == "1" ]]; then
+          if [[ "$DISPATCH_EXTRACT" == "1" ]]; then
             export "${SITE_UPPER}_EXTRACT_LINKS=1"
           fi
           # inspect_url and discover are dispatch-only debug paths and

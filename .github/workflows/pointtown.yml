@@ -2,15 +2,9 @@ name: pointtown
 
 # ポイントタウン onsite-inbox click-coin automation. Daily cron at JST
 # 9:30 AM (offset from amefuri 9:15 / gendama 9:00 / chobirich 8:45 etc).
-# Mode follows vars.POINTTOWN_CRON_MODE: 'click' enables credited
-# auto-click, anything else keeps cron in extract-links mode.
-#
-# **GMO anti-fraud is the strictest in the industry**. The very first
-# authenticated run after POINTTOWN_COOKIES is registered should be
-# discover-only or extract-links — no credited clicks until the parser
-# regexes have been confirmed against real inbox HTML. Until then this
-# yml will sit in extract-links mode (the default unless cron_mode is
-# explicitly set to 'click').
+# Cron always runs in click (credited) mode; for one-off shake-down
+# of new parser changes use ``gh workflow run pointtown.yml -f
+# extract_links=true`` to surface URLs in Slack instead of clicking.
 
 on:
   schedule:
@@ -55,7 +49,6 @@ jobs:
     uses: ./.github/workflows/_site-runner.yml
     with:
       site: pointtown
-      cron_mode: ${{ vars.POINTTOWN_CRON_MODE }}
       dry_run: ${{ inputs.dry_run == true }}
       extract_links: ${{ inputs.extract_links == true }}
       discover: ${{ inputs.discover == true }}

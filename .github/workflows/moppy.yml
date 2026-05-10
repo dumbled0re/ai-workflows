@@ -58,7 +58,6 @@ jobs:
     uses: ./.github/workflows/_site-runner.yml
     with:
       site: moppy
-      cron_mode: ${{ vars.MOPPY_CRON_MODE }}
       dry_run: ${{ inputs.dry_run == true }}
       extract_links: ${{ inputs.extract_links == true }}
       discover: ${{ inputs.discover == true }}
