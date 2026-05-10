@@ -232,6 +232,17 @@ codex review path/to/file.py
 - `feedback_handoff_transient.md` — HANDOFF.md は commit しない / 引き継ぎ後削除
 - `feedback_skill_scope.md` — skill は project-local
 
+### CLAUDE.md への追記は user 確認必須
+
+CLAUDE.md は repo の **正規ルール** (commit されて他環境にも伝播)。 一方 memory feedback (`~/.claude/projects/.../memory/feedback_*.md`) は Claude の個人観察。両者を混同しない:
+
+- **memory feedback の追加・更新**: Claude が自分の振る舞いに反映するためのメモ。**確認なしで OK**
+- **CLAUDE.md の追加・変更**: 「これはプロジェクト共通ルールにすべき」と思ったら、**まず user に提案して合意してから commit**。Claude が独断で開発ルールを増やさない
+
+理由: CLAUDE.md は user の意思決定を反映する場所。Claude が勝手にルール化すると user の意図と食い違う。memory なら commit されないので独断追記でも実害は小さい。
+
+判断に迷う例: 「これは便利な慣習なので CLAUDE.md に書くべき？」と思った瞬間 = 要確認サイン。memory に書いておいて、 user に「次の機会に CLAUDE.md にも書くか相談したい」と伝える方が安全。
+
 ### 自律ワークフロー設計原則
 
 このリポジトリの目的は **「人が介在しなくても回り続ける自動化」**。新しい cron / バッチ / クリック系を追加する時は次の3層を必ず備える:
