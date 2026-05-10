@@ -32,6 +32,7 @@ import re
 
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
+from ...common.browser_action import BrowserAction
 from ...common.sources import EndpointPollSource
 
 # Daily-login GET target. アメフリ has no discrete "claim bonus" button
@@ -74,5 +75,18 @@ ADAPTER = Adapter(
     discover_seeds=(
         "https://www.amefri.net/",
         "https://www.amefri.net/account",
+    ),
+    # アメフリ is an Angular SPA — the daily login bonus + 1pt-per-4
+    # chance + free gacha all wire to client JS that doesn't run for
+    # pure HTTP GETs. Two diagnostic visits via Playwright cover the
+    # baseline: home loads the bonus state machine, /account renders
+    # the rank dashboard. If balance doesn't grow after a couple of
+    # cron runs, gacha spinning needs an explicit click_selector and
+    # we add a third action with the discovered selector. balance_uses_browser
+    # is intentionally NOT set — /account scrapes fine via HTTP for
+    # the OwnedPoint widget.
+    browser_actions=(
+        BrowserAction(name="login_visit_home", url="https://www.amefri.net/"),
+        BrowserAction(name="login_visit_account", url="https://www.amefri.net/account"),
     ),
 )

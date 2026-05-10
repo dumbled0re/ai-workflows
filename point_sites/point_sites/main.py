@@ -440,6 +440,44 @@ def cmd_run(
     finally:
         source.close()
 
+    # Run any browser-driven daily actions (login bonus visits, gacha
+    # spins, banner clicks). One Chromium boot covers all of them so
+    # the per-action overhead stays low. Skipped on dry/extract runs
+    # for the same reason the click loop is.
+    browser_action_names: list[str] = []
+    browser_action_failures: list[str] = []
+    if (
+        cfg.adapter.browser_actions
+        and not dry_run
+        and not extract_links
+        and clicker is not None
+        and clicker.authenticated
+    ):
+        from urllib.parse import urlparse
+
+        from .common.browser import BrowserClicker
+        from .common.browser_action import run_browser_actions
+
+        host = urlparse(cfg.adapter.mypage_url).hostname or ""
+        default_domain = "." + (host.split(".", 1)[-1] if "." in host else host)
+        try:
+            with BrowserClicker(
+                cookies=_jar_to_cookies(clicker),
+                default_cookie_domain=default_domain,
+            ) as bc:
+                action_results = run_browser_actions(bc, cfg.adapter.browser_actions)
+                _merge_browser_cookies(clicker, bc.export_cookies())
+            for r in action_results:
+                browser_action_names.append(r.name)
+                if r.ok:
+                    logger.info("browser action %s: %s", r.name, r.message)
+                else:
+                    logger.warning("browser action %s failed: %s", r.name, r.message)
+                    browser_action_failures.append(f"{r.name}: {r.message}")
+        except Exception as exc:
+            logger.warning("browser actions session failed: %s", exc)
+            browser_action_failures.append(f"session: {exc}")
+
     # Snapshot the balance again *after* the click loop so we can compare
     # against ``balance_before``. Skipped on dry/extract runs (no clicks
     # were issued) and on failed-auth paths (we already returned earlier).

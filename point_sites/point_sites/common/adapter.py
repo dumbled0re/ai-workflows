@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from re import Pattern
 from typing import TYPE_CHECKING
 
+from .browser_action import BrowserAction
+
 if TYPE_CHECKING:
     from .sources import ClickUrlSource
 
@@ -68,6 +70,15 @@ class Adapter:
     # Click-coin URL clicking continues to use ``Clicker`` regardless;
     # only the balance verification step is upgraded to a real browser.
     balance_uses_browser: bool = False
+
+    # Daily browser-driven side-effect actions (login bonus visits,
+    # gacha spin, banner clicks). Run as a single Chromium session
+    # between the click loop and balance_after so any credit they
+    # trigger lands in the post-click balance delta. Adapters not
+    # using browser actions leave this empty and never pay the
+    # browser-launch cost. See ``common.browser_action`` for the
+    # action shape.
+    browser_actions: tuple[BrowserAction, ...] = field(default_factory=tuple)
 
     @property
     def env_prefix(self) -> str:
