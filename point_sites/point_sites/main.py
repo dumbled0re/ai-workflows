@@ -344,7 +344,10 @@ def cmd_run(
         if not _verify_login(clicker, cfg):
             msg = (
                 f"{cfg.adapter.site_label} login verification failed: cookies are stale or invalid. "
-                f"Re-export them from the browser and update the {cfg.adapter.cookies_env} secret."
+                f"対応: (1) ブラウザで {cfg.adapter.site_label} にログイン → "
+                f"Cookie-Editor で JSON export → "
+                f"GitHub Secret `{cfg.adapter.cookies_env}` を更新 → "
+                f"(2) workflow を `force_fresh_cookies=true` で手動 dispatch"
             )
             logger.error(msg)
             if notifier:
