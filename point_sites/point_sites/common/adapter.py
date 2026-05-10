@@ -91,6 +91,17 @@ class Adapter:
     daily_banner_url: str | None = None
     daily_banner_selector: str | None = None
 
+    # Daily lottery-ticket exchange (hapitas mini takarakuji style):
+    # navigate to ``takarakuji_exchange_url``, click
+    # ``takarakuji_exchange_selector`` repeatedly to consume one
+    # 宝くじ交換券 per click. ``takarakuji_max_exchanges`` caps the
+    # loop so a stuck button can't burn the whole timeout budget;
+    # the hapitas case sees up to 15 banner clicks/day so 30 leaves
+    # headroom and any extras simply hit a disabled button.
+    takarakuji_exchange_url: str | None = None
+    takarakuji_exchange_selector: str | None = None
+    takarakuji_max_exchanges: int = 30
+
     @property
     def env_prefix(self) -> str:
         """For env-var naming: prefix uppercase of ``name``."""

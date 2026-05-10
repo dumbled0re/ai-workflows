@@ -55,4 +55,11 @@ ADAPTER = Adapter(
     # credits the ticket on GET.
     daily_banner_url="https://hapitas.jp/",
     daily_banner_selector="div.clickget_banner > a[href]",
+    # Spend 宝くじ交換券 on バラ (random individual numbers) — same
+    # day's banner-click tickets get exchanged for entries into the
+    # mini-takarakuji daily drawing. Loop caps at 30 so a stuck or
+    # rate-limited button can't burn the whole timeout budget. ``apart_ctrl``
+    # is the JS-driven anchor that fires the exchange XHR per click.
+    takarakuji_exchange_url="https://hapitas.jp/minitakarakuji/",
+    takarakuji_exchange_selector="#apart_ctrl",
 )

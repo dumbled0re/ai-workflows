@@ -511,6 +511,56 @@ def cmd_run(
         except Exception as exc:
             logger.warning("daily banner discover/click failed: %s", exc)
 
+    # Convert hapitas-style 宝くじ交換券 into lottery numbers — runs
+    # right after the banner click loop so the day's freshly-earned
+    # tickets land in the same drawing window. Each click on the
+    # configured selector consumes one ticket; we cap iterations so a
+    # button that becomes disabled (no tickets remaining) breaks the
+    # loop without hanging.
+    if (
+        cfg.adapter.takarakuji_exchange_url
+        and cfg.adapter.takarakuji_exchange_selector
+        and not dry_run
+        and not extract_links
+        and clicker is not None
+        and clicker.authenticated
+    ):
+        from urllib.parse import urlparse
+
+        from .common.browser import BrowserClicker
+
+        host = urlparse(cfg.adapter.mypage_url).hostname or ""
+        default_domain = "." + (host.split(".", 1)[-1] if "." in host else host)
+        try:
+            with BrowserClicker(
+                cookies=_jar_to_cookies(clicker),
+                default_cookie_domain=default_domain,
+            ) as bc:
+                page = bc.goto(cfg.adapter.takarakuji_exchange_url)
+                exchanged = 0
+                try:
+                    for i in range(cfg.adapter.takarakuji_max_exchanges):
+                        try:
+                            page.click(cfg.adapter.takarakuji_exchange_selector, timeout=3000)
+                        except Exception as exc:
+                            logger.info(
+                                "takarakuji exchange stopped at iteration %d: %s",
+                                i,
+                                exc,
+                            )
+                            break
+                        # Wait for the AJAX exchange XHR to settle; the
+                        # site updates the on-page ticket counter then
+                        # re-enables the button. 1.5s is generous.
+                        page.wait_for_timeout(1500)
+                        exchanged += 1
+                finally:
+                    page.close()
+                _merge_browser_cookies(clicker, bc.export_cookies())
+            logger.info("takarakuji exchanged %d tickets", exchanged)
+        except Exception as exc:
+            logger.warning("takarakuji exchange session failed: %s", exc)
+
     # Run any browser-driven daily actions (login bonus visits, gacha
     # spins, banner clicks). One Chromium boot covers all of them so
     # the per-action overhead stays low. Skipped on dry/extract runs
