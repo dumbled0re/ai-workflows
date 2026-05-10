@@ -38,11 +38,10 @@ from .parser import parse as parse_email
 ADAPTER = Adapter(
     name="getmoney",
     site_label="GetMoney!",
-    # Best-guess mypage URL — refine after first discover/inspect.
-    # ``dietnavi.com/pc/mypage.php`` is the most likely path given the
-    # rest of the ``/pc/`` namespace; ``dietnavi.com/pc/`` may also work
-    # as a logged-in landing.
-    mypage_url="https://dietnavi.com/pc/mypage.php",
+    # Verified anonymously 2026-05-10: ``/pc/mypage/`` (trailing slash)
+    # returns 200; ``/pc/mypage.php`` is 404. Logged-in mypage is the
+    # same path with auth — verify_login uses ログアウト keyword.
+    mypage_url="https://dietnavi.com/pc/mypage/",
     # ``dietnavi.com`` is the canonical host post-rebrand. Keep
     # ``getmoney.jp`` in the allowlist too in case some click-mail
     # links still point at the legacy domain (which then 301s).
@@ -68,7 +67,7 @@ ADAPTER = Adapter(
     # add a site-specific pattern here.
     balance_patterns=DEFAULT_BALANCE_PATTERNS,
     discover_seeds=(
-        "https://dietnavi.com/pc/mypage.php",
+        "https://dietnavi.com/pc/mypage/",
         "https://dietnavi.com/pc/daily_click.php",
     ),
 )
