@@ -1,0 +1,72 @@
+name: fruitmail
+
+# フルーツメール (https://www.fruitmail.net) click-coin email automation.
+# Daily cron at JST 10:00 — 15-min staggered after getmoney.yml so all
+# point-site runs are spread across 8:00〜10:00 JST and look less bot-y.
+#
+# Cron will fail fast (verify_login redirect → exit code 2) until both
+# FRUITMAIL_COOKIES and SLACK_CHANNEL_FRUITMAIL are registered. After
+# registration:
+#   1. ``gh workflow run fruitmail.yml -f discover=true`` で earning
+#      section の URL 構造確認、必要なら adapter の seeds を refine
+#   2. ``-f inspect_url=https://www.fruitmail.net/mypage/`` で実 mypage
+#      HTML を見て balance pattern が動くか検証
+#   3. 初メール後 ``-f extract_links=true`` で URL 抽出を Slack で確認、
+#      parser regex を実 click-mail に narrow
+
+on:
+  schedule:
+    - cron: "0 1 * * *"  # JST 10:00 (15 min after getmoney.yml)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "extract candidates only, redacted"
+        type: boolean
+        default: false
+      extract_links:
+        description: "post full clickable URLs to Slack instead of clicking"
+        type: boolean
+        default: false
+      discover:
+        description: "read-only recon of 毎日貯める section"
+        type: boolean
+        default: false
+      inspect_url:
+        description: "GET this URL with auth and dump body to log"
+        type: string
+        default: ""
+      inspect_browser:
+        description: "render inspect_url via Playwright Chromium so JS-driven content is visible"
+        type: boolean
+        default: false
+      inspect_cap:
+        description: "max stripped-body bytes to print (default 80000)"
+        type: string
+        default: "80000"
+      force_fresh_cookies:
+        description: "delete persisted cookie jar before run, forcing re-bootstrap from Secret (use after rotating <SITE>_COOKIES)"
+        type: boolean
+        default: false
+
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    uses: ./.github/workflows/_site-runner.yml
+    with:
+      site: fruitmail
+      dry_run: ${{ inputs.dry_run == true }}
+      extract_links: ${{ inputs.extract_links == true }}
+      discover: ${{ inputs.discover == true }}
+      inspect_url: ${{ inputs.inspect_url }}
+      inspect_browser: ${{ inputs.inspect_browser == true }}
+      inspect_cap: ${{ inputs.inspect_cap }}
+      force_fresh_cookies: ${{ inputs.force_fresh_cookies == true }}
+    secrets:
+      slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
+      slack_channel: ${{ secrets.SLACK_CHANNEL_FRUITMAIL }}
+      cookies: ${{ secrets.FRUITMAIL_COOKIES }}
+      gmail_user: ${{ secrets.GMAIL_USER }}
+      gmail_app_password: ${{ secrets.GMAIL_APP_PASSWORD }}

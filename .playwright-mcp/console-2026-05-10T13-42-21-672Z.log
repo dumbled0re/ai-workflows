@@ -1,0 +1,32 @@
+[    1521ms] [WARNING] [GPT] PubAdsService.setTargeting is deprecated, use googletag.setConfig({targeting: ...}) instead.
+https://goo.gle/gpt-message#170 @ https://securepubads.g.doubleclick.net/pagead/managed/js/gpt/m202604300101/pubads_impl.js?cb=31098253:18
+[    1860ms] [ERROR] Unrecognized Content-Security-Policy directive 'reflected-xss'. @ https://www.gpoint.co.jp/scripts/pages/userinfo/mmSpecificInfo.jsp:0
+[    1887ms] [ERROR] Unrecognized Content-Security-Policy directive 'reflected-xss'. @ https://www.gpoint.co.jp/gop/stamp/TopInfoseekNews.jsp:0
+[    2307ms] [WARNING] Failed to execute 'write' on 'Document': It isn't possible to write into a document from an asynchronously-loaded external script unless it is explicitly opened. @ https://img.gpoint.co.jp/www/ugc-point/granking_answer.js:2
+[    2307ms] [WARNING] Failed to execute 'write' on 'Document': It isn't possible to write into a document from an asynchronously-loaded external script unless it is explicitly opened. @ https://img.gpoint.co.jp/www/ugc-point/granking_answer.js:2
+[    2307ms] [WARNING] Failed to execute 'write' on 'Document': It isn't possible to write into a document from an asynchronously-loaded external script unless it is explicitly opened. @ https://img.gpoint.co.jp/www/ugc-point/granking_answer.js:2
+[    2680ms] [LOG] Called iframe: creative-p.undertone.com [] 
+Number of topics:  0 @ https://creative-p.undertone.com/spk-public/topics_frame.html?bidder=undertone:17
+[    2810ms] [LOG] Called iframe: onetag-sys.com [] 
+Number of topics:  0 @ https://onetag-sys.com/static/topicsapi.html?bidder=onetag:13
+[    3608ms] [LOG] Called iframe: ads.pubmatic.com [] 
+Number of topics:  0 @ https://ads.pubmatic.com/AdServer/js/topics/topics_frame.html?bidder=pubmatic:19
+[    3638ms] TypeError: Cannot set properties of null (setting 'height')
+    at <anonymous>:1:119
+[    3954ms] [WARNING] Allow attribute will take precedence over 'allowfullscreen'. @ https://yads.c.yimg.jp/js/yads-async.js:0
+[    3955ms] [LOG] Called iframe: cdn.taboola.com [] 
+Number of topics:  0 @ https://cdn.taboola.com/libtrc/static/topics/taboola-prebid-browsing-topics.html?bidder=taboola:11
+[    3956ms] [LOG] Message: {"segment":{"domain":"cdn.taboola.com","bidder":"taboola","topics":[]},"date":1778420545627} @ https://cdn.taboola.com/libtrc/static/topics/taboola-prebid-browsing-topics.html?bidder=taboola:37
+[    5277ms] [TIMEEND] a: 0.0009765625 ms @ https://static.adsafeprotected.com/sca.17.6.4.js:31
+[    5433ms] [DIR] SyntaxError @ https://js.ad-score.com/score.min.js?pid=1000943&tt=g:1
+[    5663ms] TypeError: Cannot set properties of null (setting 'height')
+    at <anonymous>:1:119
+[    6150ms] TypeError: Cannot set properties of null (setting 'height')
+    at <anonymous>:1:107
+[   61580ms] [WARNING] [GPT] Using deprecated googletag.encryptedSignalProviders. Please use googletag.secureSignalProviders instead.
+https://goo.gle/gpt-message#155 @ https://securepubads.g.doubleclick.net/pagead/managed/js/gpt/m202604300101/pubads_impl.js?cb=31098253:18
+[   61584ms] [WARNING] Google Deploy of the SharedId library has been deprecated. Please select another option in the GAM UI. If you use Prebid, we suggest the Prebid.js UserId option. If you do not, you may configure GAM to allow Google to share a first party user identifier with OB and AB participants, which is either the publisherProvidedId or the __gads value when that is missing. @ https://cdn.jsdelivr.net/gh/prebid/shared-id/pubcid.js/docs/pubcid.min.js:0
+[   61586ms] [WARNING] [GPT] Using deprecated googletag.encryptedSignalProviders. Please use googletag.secureSignalProviders instead.
+https://goo.gle/gpt-message#155 @ https://securepubads.g.doubleclick.net/pagead/managed/js/gpt/m202604300101/pubads_impl.js?cb=31098253:18
+[   61879ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ https://cs.nex8.net/cs/openx:0
+[   61899ms] [ERROR] Failed to load resource: net::ERR_NAME_NOT_RESOLVED @ https://dps.jp.cinarra.com/pxd?PLATFORM_ID=1&USER_ID=720da111-9a7e-84ae-c4b8-819d216cabc9:0

@@ -8,12 +8,14 @@ follow the keys of ``REGISTRY``.
 
 from ..common.adapter import Adapter
 from .amefuri import ADAPTER as AMEFURI
+from .fruitmail import ADAPTER as FRUITMAIL
 from .gendama import ADAPTER as GENDAMA
 from .getmoney import ADAPTER as GETMONEY
 from .hapitas import ADAPTER as HAPITAS
 from .moppy import ADAPTER as MOPPY
 from .pointincome import ADAPTER as POINTINCOME
 from .pointtown import ADAPTER as POINTTOWN
+from .warau import ADAPTER as WARAU
 
 REGISTRY: dict[str, Adapter] = {
     MOPPY.name: MOPPY,
@@ -23,6 +25,8 @@ REGISTRY: dict[str, Adapter] = {
     AMEFURI.name: AMEFURI,
     POINTTOWN.name: POINTTOWN,
     GETMONEY.name: GETMONEY,
+    FRUITMAIL.name: FRUITMAIL,
+    WARAU.name: WARAU,
 }
 
 

@@ -1,0 +1,854 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - generic:
+        - list [ref=e4]:
+          - listitem [ref=e5]:
+            - link "会員の方はログイン" [ref=e6] [cursor=pointer]:
+              - /url: https://www.gpoint.co.jp/scripts/auth/LoginEntry.do
+        - generic [ref=e8]:
+          - textbox [ref=e9]: ショップ、サービス、交換など
+          - button "" [ref=e10]
+    - generic [ref=e12]:
+      - heading "Ｇポイント" [level=1] [ref=e13]:
+        - link "Ｇポイント" [ref=e14] [cursor=pointer]:
+          - /url: https://www.gpoint.co.jp/
+      - list [ref=e15]:
+        - listitem [ref=e16]:
+          - link "はじめての方へ" [ref=e17] [cursor=pointer]:
+            - /url: https://www.gpoint.co.jp/aboutg/
+            - text: はじめての方へ
+        - listitem [ref=e19]:
+          - link "ヘルプ/お知らせ" [ref=e20] [cursor=pointer]:
+            - /url: https://s.gpoint.co.jp/suptoolf/front/supportTop.do
+            - generic [ref=e21]: 
+            - text: ヘルプ/お知らせ
+        - listitem [ref=e22]
+      - list [ref=e23]:
+        - listitem [ref=e24]:
+          - link "利用料金へ交換" [ref=e25] [cursor=pointer]:
+            - /url: https://www.gpoint.co.jp/scripts/partner/detail/pen.jsp?partnerid=81062371
+            - text: 利用料金へ交換
+        - listitem [ref=e27]:
+          - link "Ｇポイントギフト" [ref=e28] [cursor=pointer]:
+            - /url: https://www.gpoint.co.jp/gift/
+            - text: Ｇポイントギフト
+      - link "いますぐポイントを貯めるなら無料新規会員登録" [ref=e31] [cursor=pointer]:
+        - /url: https://www.gpoint.co.jp/scripts/register/RegistUserBasicEntry.do?siteid=81007087&serviceid=R10000100270
+  - generic [ref=e32]:
+    - generic [ref=e33]:
+      - paragraph [ref=e34]: Ｇポイントで毎日をおトクに。
+      - generic [ref=e35]:
+        - link "最短1分！無料会員登録はこちら" [ref=e36] [cursor=pointer]:
+          - /url: https://www.gpoint.co.jp/scripts/register/RegistUserBasicEntry.do?siteid=81007087&serviceid=R10000100270
+          - generic [ref=e37]: 最短1分！無料会員登録はこちら
+        - generic [ref=e38]:
+          - paragraph [ref=e40]:
+            - text: 会員数累計
+            - text: 737万人
+          - paragraph [ref=e42]:
+            - text: KDDI
+            - text: グループ
+          - paragraph [ref=e44]:
+            - text: 運営実績
+            - text: 20年以上
+      - generic [ref=e45]:
+        - img [ref=e46]
+        - generic [ref=e47]:
+          - img "Amazonギフト券" [ref=e48]
+          - img "BIGLOBE" [ref=e49]
+          - img "ANAマイレージクラブ" [ref=e50]
+          - img "JALマイレージバンク" [ref=e51]
+          - img "Tポイント" [ref=e52]
+          - img "au PAY ギフトカード" [ref=e53]
+      - paragraph [ref=e54]:
+        - text: ※1Ｇ＝1円相当は、Ｇポイントの価値の目安となります。Ｇポイントの交換には、一部の交換パートナーを除き、原則として交換手数料が発生します。
+        - text: また、交換レートや最低交換数量がパートナーごとに設定されているため、一部を除き、実質的には1円相当を下回ります。詳細は各パートナーの交換詳細ページをご確認ください。
+    - generic [ref=e55]:
+      - heading "おすすめ高還元サービス 1,000Ｇ以上！" [level=2] [ref=e57]:
+        - img "おすすめ高還元サービス" [ref=e58]
+        - generic [ref=e59]: 1,000Ｇ以上！
+      - generic [ref=e60]:
+        - generic [ref=e63]:
+          - button "Previous" [ref=e64] [cursor=pointer]: ←Previous
+          - generic [ref=e66]:
+            - link [ref=e68] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/free/allshop/134493/
+              - strong [ref=e69]: 2,000Ｇ
+              - img [ref=e71]
+              - generic [ref=e72]: SBI証券「iDeCo口座」
+              - generic [ref=e73]: 口座開設
+            - link [ref=e75] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/free/allshop/134566/
+              - strong [ref=e76]: 8,300Ｇ
+              - img [ref=e78]
+              - generic [ref=e79]: 三井住友カード（NL）オーロラデザイン
+              - generic [ref=e80]: カード発行
+            - link [ref=e82] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/free/allshop/131905/
+              - strong [ref=e83]: 3,500Ｇ
+              - img [ref=e85]
+              - generic [ref=e86]: エポスカード
+              - generic [ref=e87]: カード発行
+            - link [ref=e89] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/free/allshop/122265/
+              - strong [ref=e90]: 14,000Ｇ
+              - img [ref=e92]
+              - generic [ref=e93]: インヴァスト証券「トライオートFX」
+              - generic [ref=e94]: 取引
+            - link "12,000Ｇ SBI証券「総合口座」 SBI証券「総合口座」 口座開設" [ref=e96] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/free/allshop/134492/
+              - strong [ref=e97]: 12,000Ｇ
+              - img "SBI証券「総合口座」" [ref=e99]
+              - generic [ref=e100]: SBI証券「総合口座」
+              - generic [ref=e101]: 口座開設
+            - link "8,300Ｇ 三井住友カード（NL） 三井住友カード（NL） カード発行" [ref=e103] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/free/allshop/133806/
+              - strong [ref=e104]: 8,300Ｇ
+              - img "三井住友カード（NL）" [ref=e106]
+              - generic [ref=e107]: 三井住友カード（NL）
+              - generic [ref=e108]: カード発行
+            - link "8,300Ｇ 三井住友カード ゴールド（NL） 三井住友カード ゴールド（NL） カード発行" [ref=e110] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/free/allshop/133961/
+              - strong [ref=e111]: 8,300Ｇ
+              - img "三井住友カード ゴールド（NL）" [ref=e113]
+              - generic [ref=e114]: 三井住友カード ゴールド（NL）
+              - generic [ref=e115]: カード発行
+            - link "2,000Ｇ 楽天証券 楽天証券 口座開設" [ref=e117] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/free/allshop/112878/
+              - strong [ref=e118]: 2,000Ｇ
+              - img "楽天証券" [ref=e120]
+              - generic [ref=e121]: 楽天証券
+              - generic [ref=e122]: 口座開設
+            - link [ref=e124] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/free/allshop/134493/
+              - strong [ref=e125]: 2,000Ｇ
+              - img [ref=e127]
+              - generic [ref=e128]: SBI証券「iDeCo口座」
+              - generic [ref=e129]: 口座開設
+            - link [ref=e131] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/free/allshop/134566/
+              - strong [ref=e132]: 8,300Ｇ
+              - img [ref=e134]
+              - generic [ref=e135]: 三井住友カード（NL）オーロラデザイン
+              - generic [ref=e136]: カード発行
+            - link [ref=e138] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/free/allshop/131905/
+              - strong [ref=e139]: 3,500Ｇ
+              - img [ref=e141]
+              - generic [ref=e142]: エポスカード
+              - generic [ref=e143]: カード発行
+            - link [ref=e145] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/free/allshop/122265/
+              - strong [ref=e146]: 14,000Ｇ
+              - img [ref=e148]
+              - generic [ref=e149]: インヴァスト証券「トライオートFX」
+              - generic [ref=e150]: 取引
+            - link [ref=e152] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/free/allshop/134492/
+              - strong [ref=e153]: 12,000Ｇ
+              - img [ref=e155]
+              - generic [ref=e156]: SBI証券「総合口座」
+              - generic [ref=e157]: 口座開設
+            - link [ref=e159] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/free/allshop/133806/
+              - strong [ref=e160]: 8,300Ｇ
+              - img [ref=e162]
+              - generic [ref=e163]: 三井住友カード（NL）
+              - generic [ref=e164]: カード発行
+            - link [ref=e166] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/free/allshop/133961/
+              - strong [ref=e167]: 8,300Ｇ
+              - img [ref=e169]
+              - generic [ref=e170]: 三井住友カード ゴールド（NL）
+              - generic [ref=e171]: カード発行
+            - link [ref=e173] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/free/allshop/112878/
+              - strong [ref=e174]: 2,000Ｇ
+              - img [ref=e176]
+              - generic [ref=e177]: 楽天証券
+              - generic [ref=e178]: 口座開設
+            - link [ref=e180] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/free/allshop/134493/
+              - strong [ref=e181]: 2,000Ｇ
+              - img [ref=e183]
+              - generic [ref=e184]: SBI証券「iDeCo口座」
+              - generic [ref=e185]: 口座開設
+            - link [ref=e187] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/free/allshop/134566/
+              - strong [ref=e188]: 8,300Ｇ
+              - img [ref=e190]
+              - generic [ref=e191]: 三井住友カード（NL）オーロラデザイン
+              - generic [ref=e192]: カード発行
+            - link [ref=e194] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/free/allshop/131905/
+              - strong [ref=e195]: 3,500Ｇ
+              - img [ref=e197]
+              - generic [ref=e198]: エポスカード
+              - generic [ref=e199]: カード発行
+            - link [ref=e201] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/free/allshop/122265/
+              - strong [ref=e202]: 14,000Ｇ
+              - img [ref=e204]
+              - generic [ref=e205]: インヴァスト証券「トライオートFX」
+              - generic [ref=e206]: 取引
+          - button "Next" [ref=e207] [cursor=pointer]: →Next
+        - link "高還元サービスは他にもたくさん！もっと見る" [ref=e209] [cursor=pointer]:
+          - /url: https://pmall.gpoint.co.jp/kokangen/
+        - paragraph [ref=e210]:
+          - text: ※詳細な条件は各ページをご確認ください。
+          - text: ※ポイント数・還元率は時期により変動します。
+    - generic [ref=e211]:
+      - text: 
+      - generic [ref=e212]:
+        - heading "ニュースをクリックするだけでたまる！" [level=2] [ref=e213]
+        - generic [ref=e214]:
+          - generic [ref=e215]:
+            - list [ref=e217]:
+              - listitem [ref=e218]:
+                - generic [ref=e219]:
+                  - generic [ref=e220]: step1
+                  - strong [ref=e221]: step1
+                  - text: ニュース件名をクリックすると
+              - listitem [ref=e222]:
+                - generic [ref=e223]:
+                  - generic [ref=e224]: step2
+                  - strong [ref=e225]: step2
+                  - text: スタンプがたまる！
+              - listitem [ref=e226]:
+                - generic [ref=e227]:
+                  - generic [ref=e228]: step3
+                  - strong [ref=e229]: step3
+                  - text: スタンプためて1Ｇゲット
+            - generic [ref=e230]:
+              - generic [ref=e231]:
+                - generic [ref=e232] [cursor=pointer]: 総合
+                - generic [ref=e233]:
+                  - list:
+                    - listitem [ref=e234]:
+                      - link "バス事業者側と食い違い埋まらず" [ref=e235] [cursor=pointer]:
+                        - /url: https://www.gpoint.co.jp/LoginGate/gw/entry.do?vctrl=isnews&serviceid=GA0000121396&nexturl=http%3A%2F%2Frd.rakuten.co.jp%2Fc%2F%3FR2%3Dhttps%3A%2F%2Fnews.infoseek.co.jp%2Ftopics%2Fjiji_2026051000386%26D2%3D1100.580416.36130984.0.10983926.2
+                      - text: NEW
+                    - listitem [ref=e236]:
+                      - link "コンビニ系銀行はATM設置台数増" [ref=e237] [cursor=pointer]:
+                        - /url: https://www.gpoint.co.jp/LoginGate/gw/entry.do?vctrl=isnews&serviceid=GA0000121396&nexturl=http%3A%2F%2Frd.rakuten.co.jp%2Fc%2F%3FR2%3Dhttps%3A%2F%2Fnews.infoseek.co.jp%2Ftopics%2Fyomiuri_20260509_gyt1t00453%26D2%3D1100.580416.36130984.0.10983926.2
+                      - img [ref=e238]
+                      - text: NEW
+                    - listitem [ref=e239]:
+                      - link "クルーズ船乗客らの退避始まる" [ref=e240] [cursor=pointer]:
+                        - /url: https://www.gpoint.co.jp/LoginGate/gw/entry.do?vctrl=isnews&serviceid=GA0000121396&nexturl=http%3A%2F%2Frd.rakuten.co.jp%2Fc%2F%3FR2%3Dhttps%3A%2F%2Fnews.infoseek.co.jp%2Ftopics%2Fntv_2026051002681931%26D2%3D1100.580416.36130984.0.10983926.2
+                      - img [ref=e241]
+                      - text: NEW
+                    - listitem [ref=e242]:
+                      - link "小芝風花､大河で感じた“試練”" [ref=e243] [cursor=pointer]:
+                        - /url: https://www.gpoint.co.jp/LoginGate/gw/entry.do?vctrl=isnews&serviceid=GA0000121396&nexturl=http%3A%2F%2Frd.rakuten.co.jp%2Fc%2F%3FR2%3Dhttps%3A%2F%2Fnews.infoseek.co.jp%2Ftopics%2Fmodelpress_4778911%26D2%3D1100.580416.36130984.0.10983926.2
+                      - img [ref=e244]
+                      - text: NEW
+                    - listitem [ref=e245]:
+                      - link "りくりゅう2ショット｢尊い｣沸く" [ref=e246] [cursor=pointer]:
+                        - /url: https://www.gpoint.co.jp/LoginGate/gw/entry.do?vctrl=isnews&serviceid=GA0000121396&nexturl=http%3A%2F%2Frd.rakuten.co.jp%2Fc%2F%3FR2%3Dhttps%3A%2F%2Fnews.infoseek.co.jp%2Ftopics%2Fhochi_20260510-OHT1T51178%26D2%3D1100.580416.36130984.0.10983926.2
+                      - img [ref=e247]
+                      - text: NEW
+                    - listitem [ref=e248]:
+                      - link "杏｢結構ブチギレましたね｣" [ref=e249] [cursor=pointer]:
+                        - /url: https://www.gpoint.co.jp/LoginGate/gw/entry.do?vctrl=isnews&serviceid=GA0000121396&nexturl=http%3A%2F%2Frd.rakuten.co.jp%2Fc%2F%3FR2%3Dhttps%3A%2F%2Fnews.infoseek.co.jp%2Ftopics%2Fsponichin_20260510_0297%26D2%3D1100.580416.36130984.0.10983926.2
+                      - img [ref=e250]
+                      - text: NEW
+                    - listitem [ref=e251]:
+                      - link "顧問｢同乗しなかった判断は誤り｣" [ref=e252] [cursor=pointer]:
+                        - /url: https://www.gpoint.co.jp/LoginGate/gw/entry.do?vctrl=isnews&serviceid=GA0000121396&nexturl=http%3A%2F%2Frd.rakuten.co.jp%2Fc%2F%3FR2%3Dhttps%3A%2F%2Fnews.infoseek.co.jp%2Ftopics%2Fmainichi_20260510k0000m040120000c%26D2%3D1100.580416.36130984.0.10983926.2
+                      - img [ref=e253]
+                      - text: NEW
+                    - listitem [ref=e254]:
+                      - link "｢離婚寸前までいった｣動画に驚き" [ref=e255] [cursor=pointer]:
+                        - /url: https://www.gpoint.co.jp/LoginGate/gw/entry.do?vctrl=isnews&serviceid=GA0000121396&nexturl=http%3A%2F%2Frd.rakuten.co.jp%2Fc%2F%3FR2%3Dhttps%3A%2F%2Fnews.infoseek.co.jp%2Ftopics%2F20260510jcast20262514509%26D2%3D1100.580416.36130984.0.10983926.2
+                      - img [ref=e256]
+                      - text: NEW
+                    - listitem [ref=e257]:
+                      - link "尾形の嫌いな芸人｢俺の可能性…｣" [ref=e258] [cursor=pointer]:
+                        - /url: https://www.gpoint.co.jp/LoginGate/gw/entry.do?vctrl=isnews&serviceid=GA0000121396&nexturl=http%3A%2F%2Frd.rakuten.co.jp%2Fc%2F%3FR2%3Dhttps%3A%2F%2Fnews.infoseek.co.jp%2Ftopics%2Fnikkansports_202605100000859%26D2%3D1100.580416.36130984.0.10983926.2
+                      - img [ref=e259]
+                      - text: NEW
+                    - listitem [ref=e260]:
+                      - link "ヤンキーに一撃必殺｢魔法の言葉｣" [ref=e261] [cursor=pointer]:
+                        - /url: https://www.gpoint.co.jp/LoginGate/gw/entry.do?vctrl=isnews&serviceid=GA0000121396&nexturl=http%3A%2F%2Frd.rakuten.co.jp%2Fc%2F%3FR2%3Dhttps%3A%2F%2Fnews.infoseek.co.jp%2Ftopics%2Fspa_20260510_02159139%26D2%3D1100.580416.36130984.0.10983926.2
+                      - img [ref=e262]
+                - generic [ref=e263] [cursor=pointer]: 社会
+                - generic [ref=e264] [cursor=pointer]: 国際
+                - generic [ref=e265] [cursor=pointer]: 経済
+                - generic [ref=e266] [cursor=pointer]: 芸能
+                - generic [ref=e267] [cursor=pointer]: スポーツ
+                - generic [ref=e268] [cursor=pointer]: IT
+                - generic [ref=e269] [cursor=pointer]: ライフ
+              - paragraph [ref=e270]: powered by Infoseek
+          - iframe [ref=e272]:
+            - generic [ref=f2e3]:
+              - heading "スタンプを毎日ためよう" [level=3] [ref=f2e4]
+              - generic [ref=f2e6]:
+                - text: スタンプを確認するには、
+                - text: ログインが必要です。
+                - link "ログインする" [ref=f2e7] [cursor=pointer]:
+                  - /url: https://www.gpoint.co.jp/scripts/auth/LoginEntry.do
+                  - img "ログインする" [ref=f2e8]
+          - generic [ref=e273]:
+            - heading "1日3回、スタンプチャンス！" [level=3] [ref=e274]
+            - generic [ref=e275]: スタンプ獲得時間
+      - generic [ref=e276]:
+        - heading "おすすめ回答でためる！ 回答するだけでＧポイントを簡単ゲット！" [level=2] [ref=e277]:
+          - text: おすすめ回答でためる！
+          - generic [ref=e278]: 回答するだけでＧポイントを簡単ゲット！
+        - generic [ref=e280]:
+          - generic [ref=e281]:
+            - paragraph [ref=e282]:
+              - img "Ｇランキング" [ref=e283]
+              - text: おすすめアイテム回答で
+              - strong [ref=e284]: 2Ｇ
+              - generic [ref=e285]:
+                - text: 
+                - link "Ｇランキングとは？" [ref=e286] [cursor=pointer]:
+                  - /url: https://pmall.gpoint.co.jp/g-ranking/guide/
+            - generic [ref=e287]:
+              - link "2Ｇ 小学生低学年向けの人気本は？ベストセラーから新作まで面白い本のおすすめを知りたい！ さっそく回答する" [ref=e289] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/g-ranking/ranking.php?themeid=66919&utm_source=gtop
+                - generic [ref=e290]: 2Ｇ
+                - paragraph [ref=e291]:
+                  - img [ref=e292]
+                - paragraph [ref=e293]: 小学生低学年向けの人気本は？ベストセラーから新作まで面白い本のおすすめを知りたい！
+                - generic [ref=e294]: さっそく回答する
+              - link "2Ｇ おむつ収納ボックス・おむつストッカー！フタ付きタイプなど、おしゃれなデザインのおすすめはどれ？ さっそく回答する" [ref=e296] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/g-ranking/ranking.php?themeid=66542&utm_source=gtop
+                - generic [ref=e297]: 2Ｇ
+                - paragraph [ref=e298]:
+                  - img [ref=e299]
+                - paragraph [ref=e300]: おむつ収納ボックス・おむつストッカー！フタ付きタイプなど、おしゃれなデザインのおすすめはどれ？
+                - generic [ref=e301]: さっそく回答する
+              - link "2Ｇ 【2026年最新】最強に落ちないリップ！ドラッグストアで買えるプチプラなどおすすめは？ さっそく回答する" [ref=e303] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/g-ranking/ranking.php?themeid=67565&utm_source=gtop
+                - generic [ref=e304]: 2Ｇ
+                - paragraph [ref=e305]:
+                  - img [ref=e306]
+                - paragraph [ref=e307]: 【2026年最新】最強に落ちないリップ！ドラッグストアで買えるプチプラなどおすすめは？
+                - generic [ref=e308]: さっそく回答する
+            - link "受付中の質問をもっとみる " [ref=e309] [cursor=pointer]:
+              - /url: https://pmall.gpoint.co.jp/g-ranking/enqlist.php
+              - generic [ref=e310]: 受付中の質問をもっとみる 
+          - generic [ref=e311]:
+            - paragraph [ref=e312]:
+              - img "だれどこ" [ref=e313]
+              - text: おすすめホテル回答で
+              - strong [ref=e314]: 5Ｇ
+              - generic [ref=e315]:
+                - text: 
+                - link "だれどことは？" [ref=e316] [cursor=pointer]:
+                  - /url: https://travel.gpoint.co.jp/daredoko/about/
+            - generic [ref=e317]:
+              - link "5Ｇ 東京ディズニーリゾート周辺の人気ホテルについて教えて！ さっそく回答する" [ref=e319] [cursor=pointer]:
+                - /url: https://travel.gpoint.co.jp/daredoko/12b001/#question-area
+                - generic [ref=e320]: 5Ｇ
+                - paragraph [ref=e321]
+                - paragraph [ref=e322]: 東京ディズニーリゾート周辺の人気ホテルについて教えて！
+                - generic [ref=e323]: さっそく回答する
+              - link "5Ｇ 温泉・露天が自慢のゆったりできるおすすめ宿を教えて！ さっそく回答する" [ref=e325] [cursor=pointer]:
+                - /url: https://travel.gpoint.co.jp/daredoko/d005/#question-area
+                - generic [ref=e326]: 5Ｇ
+                - paragraph [ref=e327]
+                - paragraph [ref=e328]: 温泉・露天が自慢のゆったりできるおすすめ宿を教えて！
+                - generic [ref=e329]: さっそく回答する
+              - link "5Ｇ 観光に便利なホテルを教えて！ さっそく回答する" [ref=e331] [cursor=pointer]:
+                - /url: https://travel.gpoint.co.jp/daredoko/d00a/#question-area
+                - generic [ref=e332]: 5Ｇ
+                - paragraph [ref=e333]
+                - paragraph [ref=e334]: 観光に便利なホテルを教えて！
+                - generic [ref=e335]: さっそく回答する
+            - link "受付中の質問をもっとみる " [ref=e336] [cursor=pointer]:
+              - /url: https://travel.gpoint.co.jp/daredoko/rec/#question-area
+              - generic [ref=e337]: 受付中の質問をもっとみる 
+      - generic [ref=e338]:
+        - generic [ref=e339]:
+          - heading "ショップアイコン お買いものでかしこくためる" [level=2] [ref=e340]:
+            - generic [ref=e341]: ショップアイコン
+            - text: お買いものでかしこくためる
+          - generic [ref=e342]:
+            - text: いつものお買いものがＧポイント経由でおトクッポ！
+            - generic [ref=e343]: キャラクター
+        - generic [ref=e344]:
+          - generic [ref=e346]:
+            - heading "注目ショップでお得にポイントGET！ サービスをもっと見る" [level=3] [ref=e347]:
+              - text: 注目ショップでお得にポイントGET！
+              - link "サービスをもっと見る" [ref=e349] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shopsearch/?pupflg=1
+            - generic [ref=e350]:
+              - link "購入7％Ｇ 山田養蜂場" [ref=e351] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shoplist/allshop/133346/
+                - generic [ref=e352]:
+                  - generic [ref=e353]: 購入7％Ｇ
+                  - img [ref=e355]
+                  - text: 山田養蜂場
+              - link "購入2％Ｇ DELL（個人様向け製品）" [ref=e356] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shoplist/allshop/102603/
+                - generic [ref=e357]:
+                  - generic [ref=e358]: 購入2％Ｇ
+                  - img [ref=e360]
+                  - text: DELL（個人様向け製品）
+              - link "購入3％Ｇ ベルーナ（Belluna）" [ref=e361] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shoplist/allshop/127966/
+                - generic [ref=e362]:
+                  - generic [ref=e363]: 購入3％Ｇ
+                  - img [ref=e365]
+                  - text: ベルーナ（Belluna）
+              - link "利用20,000Ｇ BIGLOBE WiMAX +5G" [ref=e366] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shoplist/allshop/133972/
+                - generic [ref=e367]:
+                  - generic [ref=e368]: 利用20,000Ｇ
+                  - img [ref=e370]
+                  - text: BIGLOBE WiMAX +5G
+              - link "購入2％Ｇ DELL（法人様向け製品）" [ref=e371] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shoplist/allshop/106506/
+                - generic [ref=e372]:
+                  - generic [ref=e373]: 購入2％Ｇ
+                  - img [ref=e375]
+                  - text: DELL（法人様向け製品）
+              - link "購入6％Ｇ イイハナ・ドットコム（e87.com）" [ref=e376] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shoplist/allshop/102600/
+                - generic [ref=e377]:
+                  - generic [ref=e378]: 購入6％Ｇ
+                  - img [ref=e380]
+                  - text: イイハナ・ドットコム（e87.com）
+          - generic [ref=e381]:
+            - heading "毎回たまる、人気の定番ショップ！" [level=3] [ref=e382]
+            - generic [ref=e383]:
+              - link "楽天市場 0.5％Ｇ 楽天市場" [ref=e384] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shoplist/allshop/100195/
+                - generic [ref=e385]:
+                  - img "楽天市場" [ref=e387]
+                  - generic [ref=e388]: 0.5％Ｇ
+                  - generic [ref=e389]: 楽天市場
+              - link "Yahoo!ショッピング 0.5％Ｇ Yahoo!ショッピング" [ref=e390] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shoplist/allshop/100967/
+                - generic [ref=e391]:
+                  - img "Yahoo!ショッピング" [ref=e393]
+                  - generic [ref=e394]: 0.5％Ｇ
+                  - generic [ref=e395]: Yahoo!ショッピング
+              - link "Joshin 0.5％Ｇ Joshin" [ref=e396] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shoplist/allshop/130663/
+                - generic [ref=e397]:
+                  - img "Joshin" [ref=e399]
+                  - generic [ref=e400]: 0.5％Ｇ
+                  - generic [ref=e401]: Joshin
+              - link "DHC 0.5％Ｇ DHC" [ref=e402] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shoplist/allshop/132778/
+                - generic [ref=e403]:
+                  - img "DHC" [ref=e405]
+                  - generic [ref=e406]: 0.5％Ｇ
+                  - generic [ref=e407]: DHC
+              - link "楽天トラベル 2％Ｇ 楽天トラベル" [ref=e408] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shoplist/allshop/119244/
+                - generic [ref=e409]:
+                  - img "楽天トラベル" [ref=e411]
+                  - generic [ref=e412]: 2％Ｇ
+                  - generic [ref=e413]: 楽天トラベル
+      - generic [ref=e414]:
+        - heading "他にもこんなポイントのため方も！" [level=2] [ref=e415]
+        - generic [ref=e418]:
+          - link "BIGLOBEロゴ BIGLOBEのサービスでたまる たまったポイントは、BIGLOBEの利用料金支払いや各種サービスにつかえます！ BIGLOBE会員の方へ もっと詳しく " [ref=e419] [cursor=pointer]:
+            - /url: https://mypage.sso.biglobe.ne.jp/member/gpoint
+            - generic [ref=e420]:
+              - generic [ref=e421]: BIGLOBEロゴ
+              - paragraph [ref=e422]:
+                - strong [ref=e423]: BIGLOBEのサービスでたまる
+                - text: たまったポイントは、BIGLOBEの利用料金支払いや各種サービスにつかえます！
+              - generic [ref=e424]:
+                - text: BIGLOBE会員の方へ
+                - text: もっと詳しく 
+          - link "Ｇポイントギフトロゴ Ｇポイントギフトでたまる Ｇポイントがもらえる16桁のシリアルコードです。お持ちの方はこちらからＧポイントを獲得できます。 Ｇポイントギフトをお持ちの方 Ｇポイントをもらう " [ref=e425] [cursor=pointer]:
+            - /url: https://www.gpoint.co.jp/gift/
+            - generic [ref=e426]:
+              - generic [ref=e427]: Ｇポイントギフトロゴ
+              - paragraph [ref=e428]:
+                - strong [ref=e429]: Ｇポイントギフトでたまる
+                - text: Ｇポイントがもらえる16桁のシリアルコードです。お持ちの方はこちらからＧポイントを獲得できます。
+              - generic [ref=e430]:
+                - text: Ｇポイントギフトをお持ちの方
+                - text: Ｇポイントをもらう 
+          - link "Ｇポイントトラベル ホテル予約でポイントをためる Ｇポイント経由で旅行サイトからホテルやツアーを予約をするとポイントがたまります。 Ｇポイントトラベルで ポイントをためる " [ref=e431] [cursor=pointer]:
+            - /url: https://travel.gpoint.co.jp/
+            - generic [ref=e432]:
+              - generic [ref=e433]: Ｇポイントトラベル
+              - paragraph [ref=e434]:
+                - strong [ref=e435]: ホテル予約でポイントをためる
+                - text: Ｇポイント経由で旅行サイトからホテルやツアーを予約をするとポイントがたまります。
+              - generic [ref=e436]:
+                - text: Ｇポイントトラベルで
+                - text: ポイントをためる 
+      - generic [ref=e437]:
+        - generic [ref=e438]:
+          - heading "交換アイコン ポイントを交換する/まとめる" [level=2] [ref=e439]:
+            - generic [ref=e440]: 交換アイコン
+            - text: ポイントを交換する/まとめる
+          - generic [ref=e441]:
+            - text: お好きな交換先を選べるッポ！！
+            - generic [ref=e442]: キャラクター
+        - generic [ref=e443]:
+          - generic [ref=e444]:
+            - list [ref=e447]:
+              - listitem [ref=e448]:
+                - link "[お知らせ] 更新日：2026.4.13 【重要】スルガ銀行Gポイントクラブ：一部口座振替の特典終了と規定改定のお知らせ（9/1） " [ref=e449] [cursor=pointer]:
+                  - /url: https://www.surugabank.co.jp/gpoint/info/260413.html
+                  - generic [ref=e450]:
+                    - generic [ref=e451]:
+                      - generic [ref=e452]: "[お知らせ]"
+                      - strong [ref=e453]: 更新日：2026.4.13
+                    - generic [ref=e454]: 【重要】スルガ銀行Gポイントクラブ：一部口座振替の特典終了と規定改定のお知らせ（9/1）
+                  - text: 
+            - generic [ref=e455]:
+              - heading " カテゴリーから探す" [level=3] [ref=e456]:
+                - generic [ref=e457]: 
+                - text: カテゴリーから探す
+              - list [ref=e458]:
+                - listitem [ref=e459]:
+                  - link "# 電子マネー" [ref=e460] [cursor=pointer]:
+                    - /url: https://pmall.gpoint.co.jp/shopsearch/?category=01300
+                - listitem [ref=e461]:
+                  - link "# ギフト券" [ref=e462] [cursor=pointer]:
+                    - /url: https://pmall.gpoint.co.jp/shopsearch/?category=00800
+                - listitem [ref=e463]:
+                  - link "# 旅行・マイル" [ref=e464] [cursor=pointer]:
+                    - /url: https://pmall.gpoint.co.jp/shopsearch/?category=00100
+                - listitem [ref=e465]:
+                  - link "# スマホ決済" [ref=e466] [cursor=pointer]:
+                    - /url: https://pmall.gpoint.co.jp/shopsearch/?category=01200
+                - listitem [ref=e467]:
+                  - link "# 銀行・投資" [ref=e468] [cursor=pointer]:
+                    - /url: https://pmall.gpoint.co.jp/shopsearch/?category=00600
+                - listitem [ref=e469]:
+                  - link "# ショッピング" [ref=e470] [cursor=pointer]:
+                    - /url: https://pmall.gpoint.co.jp/shopsearch/?category=00700
+                - listitem [ref=e471]:
+                  - link "# グルメ" [ref=e472] [cursor=pointer]:
+                    - /url: https://pmall.gpoint.co.jp/shopsearch/?category=00900
+                - listitem [ref=e473]:
+                  - link "# 車・鉄道" [ref=e474] [cursor=pointer]:
+                    - /url: https://pmall.gpoint.co.jp/shopsearch/?category=00200
+                - listitem [ref=e475]:
+                  - link "# 寄付" [ref=e476] [cursor=pointer]:
+                    - /url: https://pmall.gpoint.co.jp/shopsearch/?category=01700
+            - generic [ref=e477]:
+              - heading "人気ランキング" [level=3] [ref=e478]
+              - list [ref=e479]:
+                - listitem [ref=e480]:
+                  - link "BIGLOBE" [ref=e481] [cursor=pointer]:
+                    - /url: http://www.gpoint.co.jp/scripts/partner/detail/partnerdetails81062371.jsp
+                    - generic [ref=e482]:
+                      - img [ref=e483]
+                      - text: BIGLOBE
+                - listitem [ref=e484]:
+                  - link "PayPayポイント" [ref=e485] [cursor=pointer]:
+                    - /url: http://www.gpoint.co.jp/scripts/partner/detail/partnerdetails81202181.jsp
+                    - generic [ref=e486]:
+                      - img [ref=e487]
+                      - text: PayPayポイント
+                - listitem [ref=e488]:
+                  - link "Amazonギフトカード" [ref=e489] [cursor=pointer]:
+                    - /url: http://www.gpoint.co.jp/scripts/partner/detail/partnerdetails81122986.jsp
+                    - generic [ref=e490]:
+                      - img [ref=e491]
+                      - text: Amazonギフトカード
+                - listitem [ref=e492]:
+                  - link "Pontaポイント(au)" [ref=e493] [cursor=pointer]:
+                    - /url: http://www.gpoint.co.jp/scripts/partner/detail/partnerdetails81172371.jsp
+                    - generic [ref=e494]:
+                      - img [ref=e495]
+                      - text: Pontaポイント(au)
+                - listitem [ref=e496]:
+                  - link "dポイント" [ref=e497] [cursor=pointer]:
+                    - /url: http://www.gpoint.co.jp/scripts/partner/detail/partnerdetails81175371.jsp
+                    - generic [ref=e498]:
+                      - img [ref=e499]
+                      - text: dポイント
+                - listitem [ref=e500]:
+                  - link "Vポイント" [ref=e501] [cursor=pointer]:
+                    - /url: http://www.gpoint.co.jp/scripts/partner/detail/partnerdetails81043377.jsp
+                    - generic [ref=e502]:
+                      - img [ref=e503]
+                      - text: Vポイント
+          - generic [ref=e504]:
+            - iframe [ref=e507]:
+              - generic [active] [ref=f9e1]:
+                - generic [ref=f9e3]:
+                  - generic [ref=f9e7]:
+                    - generic [ref=f9e10]:
+                      - link "Click Here" [ref=f9e11] [cursor=pointer]:
+                        - /url: https://exch.quantserve.com/r?&a=p-1RYxePXT9bCS2&labels=_qc.clk,_click.adserver.rtb,_click.rand.1989822081&rtbip=103.229.8.46&rtbdata2=EAQ6GGh0dHBzOi8vd3d3Lmdwb2ludC5jby5qcFokWHRYSC1nTDI3T0ZSMy12NlhfWGJoMUhzX2RSSDZNQWwyZm89gAGBjem0B7oBKDE4NDI2NmEyYzAyNDllZDAzNzU3ZDllYWIzMWY5OTQ0ODM2YTEzMzfAAc-2AcgBmef_kOEz2gEoZDY5N2E2YTg2NmQ1ZDIxMjNlMDY1ZDJkNGVlNTk0MmViMDUxMWQwYbACDsgCANACzuGG-_if98ypAegCmwHyAg8I0JcJELizoNz1qbak0wHyAg4ImwEQmti5wIb6g_DPAfgCAIoDBTExNTM0mAMAqAMAsgME2bKDYLoDEgkcTfl8B-DPdBEhzZDNiGiOg8IDEgl2RhV8mgfvMRF8z5uoU3oNpsgDkIDAggHYA4GN6bQH4gMPcC0xUll4ZVBYVDliQ1My6gMGCKwCEPoB8gMIOTk1LTAwMjT4AwCABOI0igQCNzeaBBIJI0dmVotpZYUR_9nvHO45vreiBBIJHE35fAfgz3QRIc2QzYhojoOqBBIJHE35fAfgz3QRIc2QzYhojoO4BNAF0AQN8gQCSlCABQGKBSoyMDQ1OTQ4Yzk4MTgwNGZjMzZkMWE2NWZjZmI0OWEzZjM0NTA4ZWE1NGOQBQGaBRUgRZSMmBgE_DbRpl_PtJo_NFCOpUyiBSRYdFhILWdMMjdPRlIzLXY2WF9YYmgxSHNfZFJINk1BbDJmbz2wBQK4BQDABYGN6bQHyAWysaoE0gUGCAQQAhgB6AUGmgYUChIJI0dmVotpZYUR_9nvHO45vregBgC1BoKzIjm6BmQKAkpQEgIwNhgAIghtdXJheWFtYSoIOTk1LTAwMjQ6GmludGVybmV0JTIwbXVsdGlmZWVkJTIwY28uWhppbnRlcm5ldCUyMG11bHRpZmVlZCUyMGNvLqIBC21mZWVkLmFkLmpwyQYMAAKZizpCEvEGAigCmYs6QhL4BgOABwCKBxIJdkYVfJoH7zERfM-bqFN6DaawB_2cswS4B7C3lAXYBwQ&rtb_id=CQwAApmLOkISEQIoApmLOkISGDzu2j8Tuef1oXBTPs0&redirecturl3=https://servedby.flashtalking.com/click/7/226834;10010047;5082758;210;0/?gdpr=0&ft_impID=911179B5-FFDD-B828-1943-FD3C9BF21850&ft_custom=lP0Gi5H9XoTG_VuJlPkOjsOuD4rFrw3YxK5aicn_DdmS-wqNwa8P3eS0esU=&g=67043DD4EF0306&random=308043.7554221637&ft_width=300&ft_height=250&url=https://www.adobe.com/jp/acrobat/roc/scan-acrobat-mitsumori.html?sdid=5NHJ81TS&mv=display&mv2=display
+                        - img "Click Here" [ref=f9e12]
+                      - link "AdChoices arrow" [ref=f9e14] [cursor=pointer]:
+                        - /url: https://www.flashtalking.com/consumer-privacy
+                        - img "AdChoices arrow" [ref=f9e15]
+                      - link "Privacy Notification" [ref=f9e17] [cursor=pointer]:
+                        - /url: https://www.flashtalking.com/consumer-privacy
+                        - img [ref=f9e18]
+                      - link "Privacy Notification" [ref=f9e20] [cursor=pointer]:
+                        - /url: https://www.flashtalking.com/consumer-privacy
+                        - img [ref=f9e21]
+                      - link "Privacy Notification" [ref=f9e23] [cursor=pointer]:
+                        - /url: https://www.flashtalking.com/consumer-privacy
+                        - img [ref=f9e24]
+                    - link [ref=f9e25] [cursor=pointer]:
+                      - /url: https://pixel.quantcount.com/r?a=p-9fYuixa7g_Hm2;rand=1989822081;labels=_click.creative.iab,_qc.iab.clk.p-1RYxePXT9bCS2.0.10820528;redirecturl2=http://www.quantcast.com/adchoices
+                      - img [ref=f9e27]
+                  - generic:
+                    - iframe
+                - iframe
+                - iframe
+            - generic "PR広告はポイントが加算されません" [ref=e508]: PR
+  - contentinfo [ref=e509]:
+    - generic [ref=e510]:
+      - generic [ref=e511]:
+        - generic [ref=e512]:
+          - generic [ref=e513]:
+            - term [ref=e514]:
+              - link "お買いものでためる" [ref=e515] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/
+            - definition [ref=e516]:
+              - text: 
+              - link "ポイントアップ" [ref=e517] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shopsearch/?pupflg=1
+            - definition [ref=e518]:
+              - text: 
+              - link "ポイント二重取り" [ref=e519] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shopsearch/?wpointflg=1
+            - definition [ref=e520]:
+              - text: 
+              - link "すべてのショップ" [ref=e521] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shopsearch/
+          - generic [ref=e522]:
+            - term [ref=e523]:
+              - link "登録応募でためる" [ref=e524] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/free/
+            - definition [ref=e525]:
+              - text: 
+              - link "会員登録・キャンペーン応募" [ref=e526] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shopsearch/?carry=1&category=A01
+            - definition [ref=e527]:
+              - text: 
+              - link "資料請求" [ref=e528] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shopsearch/?carry=1&category=A02
+            - definition [ref=e529]:
+              - text: 
+              - link "予約・申込" [ref=e530] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shopsearch/?carry=1&category=A03
+            - definition [ref=e531]:
+              - text: 
+              - link "見積・査定" [ref=e532] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shopsearch/?carry=1&category=A04
+            - definition [ref=e533]:
+              - text: 
+              - link "すべてのサービス" [ref=e534] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shopsearch/?carry=1
+        - generic [ref=e535]:
+          - generic [ref=e536]:
+            - term [ref=e537]:
+              - link "旅行でためる" [ref=e538] [cursor=pointer]:
+                - /url: https://travel.gpoint.co.jp/
+            - definition [ref=e539]:
+              - text: 
+              - link "国内ホテル・旅館" [ref=e540] [cursor=pointer]:
+                - /url: https://travel.gpoint.co.jp/
+          - generic [ref=e541]:
+            - term [ref=e542]: その他でためる
+            - definition [ref=e543]:
+              - text: 
+              - link "高還元サービス" [ref=e544] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/kokangen/
+            - definition [ref=e545]:
+              - text: 
+              - link "もっと答えてＧ" [ref=e546] [cursor=pointer]:
+                - /url: https://kotaete.gpoint.co.jp/
+            - definition [ref=e547]:
+              - text: 
+              - link "ゲーム" [ref=e548] [cursor=pointer]:
+                - /url: https://www.gpoint.co.jp/gpark/
+            - definition [ref=e549]:
+              - text: 
+              - link "おすすめ回答" [ref=e550] [cursor=pointer]:
+                - /url: https://www.gpoint.co.jp/get/
+            - definition [ref=e551]:
+              - text: 
+              - link "バナークリック" [ref=e552] [cursor=pointer]:
+                - /url: https://www.gpoint.co.jp/get/#daily
+            - definition [ref=e553]:
+              - text: 
+              - link "商品モニター" [ref=e554] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/monitor/
+            - definition [ref=e555]:
+              - text: 
+              - link "お友達招待" [ref=e556] [cursor=pointer]:
+                - /url: https://www.gpoint.co.jp/special/friends/
+        - generic [ref=e558]:
+          - term [ref=e559]: サービス
+          - generic [ref=e560]:
+            - definition [ref=e561]:
+              - text: 
+              - link "Ｇランキング" [ref=e562] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/g-ranking/?utm_source=gpoint&utm_medium=referral&utm_campaign=footer_link
+            - definition [ref=e563]:
+              - text: 
+              - link "だれどこ" [ref=e564] [cursor=pointer]:
+                - /url: https://travel.gpoint.co.jp/daredoko/?utm_source=gpoint&utm_medium=referral&utm_campaign=footer_link
+            - definition [ref=e565]:
+              - text: 
+              - link "ocruyo" [ref=e566] [cursor=pointer]:
+                - /url: https://gift.biglobe.ne.jp/?utm_source=gpoint&utm_medium=referral&utm_campaign=footer_link
+            - definition [ref=e567]:
+              - text: 
+              - link "お湯たび" [ref=e568] [cursor=pointer]:
+                - /url: https://oyutabi.biglobe.ne.jp/?utm_source=gpoint&utm_medium=referral&utm_campaign=footer_link
+            - definition [ref=e569]:
+              - text: 
+              - link "わたしと、暮らし。" [ref=e570] [cursor=pointer]:
+                - /url: https://kurashi.biglobe.ne.jp/?utm_source=gpoint&utm_medium=referral&utm_campaign=footer_link
+            - definition [ref=e571]:
+              - text: 
+              - link "キテミヨ" [ref=e572] [cursor=pointer]:
+                - /url: https://fashion.biglobe.ne.jp/?utm_source=gpoint&utm_medium=referral&utm_campaign=footer_link
+            - definition [ref=e573]:
+              - text: 
+              - link "ベストオイシー" [ref=e574] [cursor=pointer]:
+                - /url: https://food.biglobe.ne.jp/?utm_source=gpoint&utm_medium=referral&utm_campaign=footer_link
+            - definition [ref=e575]:
+              - text: 
+              - link "モノスポ" [ref=e576] [cursor=pointer]:
+                - /url: https://sports.biglobe.ne.jp/?utm_source=gpoint&utm_medium=referral&utm_campaign=footer_link
+            - definition [ref=e577]:
+              - text: 
+              - link "野に行く。" [ref=e578] [cursor=pointer]:
+                - /url: https://outdoor.biglobe.ne.jp/?utm_source=gpoint&utm_medium=referral&utm_campaign=footer_link
+            - definition [ref=e579]:
+              - text: 
+              - link "カウナラ" [ref=e580] [cursor=pointer]:
+                - /url: https://kaunara.cplaza.ne.jp/?utm_source=gpoint&utm_medium=referral&utm_campaign=footer_link
+            - definition [ref=e581]:
+              - text: 
+              - link "ミツケヨ" [ref=e582] [cursor=pointer]:
+                - /url: https://mitsukeyo.twipple.jp/?utm_source=gpoint&utm_medium=referral&utm_campaign=footer_link
+            - definition [ref=e583]:
+              - text: 
+              - link "たびゆかし" [ref=e584] [cursor=pointer]:
+                - /url: https://tabiyukashi.cplaza.ne.jp/?utm_source=gpoint&utm_medium=referral&utm_campaign=footer_link
+            - definition [ref=e585]:
+              - text: 
+              - link "Ｇ-Ranking 推し活" [ref=e586] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/g-ranking/o4katsu/?utm_source=gpoint&utm_medium=referral&utm_campaign=footer_link
+        - generic [ref=e587]:
+          - generic [ref=e588]:
+            - term [ref=e589]:
+              - link "ポイント交換" [ref=e590] [cursor=pointer]:
+                - /url: https://www.gpoint.co.jp/pen/
+            - definition [ref=e591]:
+              - text: 
+              - link "交換先一覧" [ref=e592] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shopsearch/?penservice=1
+            - definition [ref=e593]:
+              - text: 
+              - link "即時交換" [ref=e594] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shopsearch/?kind=instantexchange
+            - definition [ref=e595]:
+              - text: 
+              - link "Ｇポイントを交換する一覧" [ref=e596] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shopsearch/?penservice=gtop
+            - definition [ref=e597]:
+              - text: 
+              - link "他ポイントを交換する一覧" [ref=e598] [cursor=pointer]:
+                - /url: https://pmall.gpoint.co.jp/shopsearch/?penservice=ptog
+          - generic [ref=e599]:
+            - term [ref=e600]: その他
+            - definition [ref=e601]:
+              - text: 
+              - link "キャンペーン一覧" [ref=e602] [cursor=pointer]:
+                - /url: https://www.gpoint.co.jp/special/all/
+            - definition [ref=e603]:
+              - text: 
+              - link "スルガ銀行Ｇポイントクラブ" [ref=e604] [cursor=pointer]:
+                - /url: https://www.surugabank.co.jp/gpoint/
+            - definition [ref=e605]:
+              - text: 
+              - link "Ｇポイントギフト" [ref=e606] [cursor=pointer]:
+                - /url: https://www.gpoint.co.jp/gift/
+            - definition [ref=e607]:
+              - text: 
+              - link "サイトマップ" [ref=e608] [cursor=pointer]:
+                - /url: https://www.gpoint.co.jp/sitemap/
+        - generic [ref=e609]:
+          - generic [ref=e610]:
+            - term [ref=e611]: グループサービス
+            - definition [ref=e612]:
+              - text: 
+              - link "KDDI" [ref=e613] [cursor=pointer]:
+                - /url: https://www.kddi.com/
+            - definition [ref=e614]:
+              - text: 
+              - link "BIGLOBE" [ref=e615] [cursor=pointer]:
+                - /url: https://www.biglobe.ne.jp/
+          - paragraph [ref=e617]:
+            - text: 公式SNS
+            - link [ref=e619] [cursor=pointer]:
+              - /url: https://twitter.com/Gpoint_pkmr
+              - img [ref=e620]
+          - link "法人様 ポイントに関するご相談" [ref=e623] [cursor=pointer]:
+            - /url: https://www.g-plan.net/service
+            - img "法人様 ポイントに関するご相談" [ref=e624]
+      - list [ref=e626]:
+        - listitem [ref=e627]:
+          - text: 本プロモーション・キャンペーンはジー・プラン株式会社による提供です。
+          - text: 本プロモーション・キャンペーンについてのお問い合わせはAmazonではお受けしておりません。
+          - text: お問い合わせは
+          - link "Ｇポイントサポートセンター" [ref=e628] [cursor=pointer]:
+            - /url: https://support.gpoint.co.jp/hc/ja
+          - text: までお願いいたします。
+        - listitem [ref=e629]: Amazon、Amazon.co.jp およびそのロゴはAmazon.com, Inc. またはその関連会社の商標です。
+        - listitem [ref=e630]: 「EdyギフトID」を登録することで、楽天Edyとして受け取ることができます。
+        - listitem [ref=e631]: 「EdyギフトID」は、楽天Edy株式会社との発行許諾契約により、株式会社NTTカードソリューションが発行する電子マネーギフトサービスです。
+        - listitem [ref=e632]: 「楽天Edy（ラクテンエディ）」は、楽天グループのプリペイド型電子マネーサービスです。
+        - listitem [ref=e633]: 楽天Edyに交換できる「EdyギフトID」のお渡しとなります。
+        - listitem [ref=e634]: 「nanaco」は株式会社セブン・カードサービスの登録商標です。
+    - generic [ref=e635]:
+      - generic [ref=e637]:
+        - list [ref=e638]:
+          - listitem [ref=e639]:
+            - link "推奨環境" [ref=e640] [cursor=pointer]:
+              - /url: https://www.gpoint.co.jp/support/systemreqs.html
+          - listitem [ref=e641]:
+            - link "会員規約" [ref=e642] [cursor=pointer]:
+              - /url: https://www.gpoint.co.jp/mem/article.html
+          - listitem [ref=e643]:
+            - link "サイトポリシー" [ref=e644] [cursor=pointer]:
+              - /url: https://www.gpoint.co.jp/policy/
+          - listitem [ref=e645]:
+            - link "プライバシーポリシー" [ref=e646] [cursor=pointer]:
+              - /url: https://www.g-plan.net/policy/
+          - listitem [ref=e647]:
+            - link "会社概要" [ref=e648] [cursor=pointer]:
+              - /url: https://www.g-plan.net/company/
+          - listitem [ref=e649]:
+            - link "サポートセンター/Q&A" [ref=e650] [cursor=pointer]:
+              - /url: https://support.gpoint.co.jp/hc/ja
+          - listitem [ref=e651]:
+            - link "お問い合わせ・資料請求（法人様）" [ref=e652] [cursor=pointer]:
+              - /url: https://www.g-plan.net/inquiry/
+          - listitem [ref=e653]:
+            - link "ポイントに関するご相談（法人様）" [ref=e654] [cursor=pointer]:
+              - /url: https://www.g-plan.net/service
+          - listitem [ref=e655]:
+            - link "ウェブアクセシビリティの取り組み" [ref=e656] [cursor=pointer]:
+              - /url: https://www.g-plan.net/accessibility/
+        - generic [ref=e657]: ©2001-2026 G-PLAN INC.
+      - list [ref=e659]:
+        - listitem [ref=e660]:
+          - link "pmark" [ref=e661] [cursor=pointer]:
+            - /url: https://privacymark.jp/
+            - img "pmark" [ref=e662]
+          - link "当社個人情報保護方針" [ref=e663] [cursor=pointer]:
+            - /url: https://www.gpoint.co.jp/policy/personal.html
+        - listitem [ref=e664]:
+          - link "安心宣言" [ref=e665] [cursor=pointer]:
+            - /url: https://www.gpoint.co.jp/policy/anshin.html
+            - img "安心宣言" [ref=e666]

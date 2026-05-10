@@ -8,7 +8,7 @@ GitHub Actions と Claude を活用した個人用自動化ワークフロー集
 |---|---|---|---|
 | [`stock_analyzer/`](./stock_analyzer/) | 日本株の短期投資分析（テクニカル + ファンダ + ニュース + 信用残）。自律改善ループ（予測記録 → 検証 → 戦略更新）付き | 毎日 8:00 / 16:00 JST、土曜 10:00 JST にレビュー | Bot Token + `SLACK_CHANNEL_STOCK` |
 | [`tech_catchup/`](./tech_catchup/) | AI 業界のニュース・新リリースを Hacker News / GitHub Trending / arXiv / AI 企業公式ブログから収集して要約 | 毎朝 7:30 JST | Bot Token + `SLACK_CHANNEL_TECH` |
-| [`point_sites/`](./point_sites/) | 日本のポイ活サイト自動化（adapter 構造）。moppy / hapitas / pointincome / amefuri / pointtown / getmoney に対応。Cookie rotation 永続化 + 加算検証 (3 層 degradation alert) 付き | サイト別 (8:00〜9:45 JST) | Bot Token + `SLACK_CHANNEL_<SITE>` |
+| [`point_sites/`](./point_sites/) | 日本のポイ活サイト自動化（adapter 構造）。moppy / hapitas / pointincome / amefuri / pointtown / getmoney に対応 (fruitmail / warau は scaffold 済、secret 登録待ち)。Cookie rotation 永続化 + 加算検証 (3 層 degradation alert) 付き | サイト別 (8:00〜10:15 JST) | Bot Token + `SLACK_CHANNEL_<SITE>` |
 | [`todo/`](./todo/) | 個人 TODO リスト。Claude Code の `todo` skill で `todos.md` を編集し、毎朝 Slack に未完了タスクを通知 | 毎朝 9:00 JST | Bot Token + `SLACK_CHANNEL_TODO` |
 
 > 詳細な設計・運用方針は [`CLAUDE.md`](./CLAUDE.md) と [`point_sites/CLAUDE.md`](./point_sites/CLAUDE.md) を参照。
@@ -26,7 +26,7 @@ GitHub Actions と Claude を活用した個人用自動化ワークフロー集
 |---|---|
 | `CLAUDE_CODE_OAUTH_TOKEN` | 全 Claude Code Action 共通の認証 |
 | `SLACK_BOT_TOKEN` | Slack Bot User OAuth Token (`xoxb-...`)。全プロジェクト共有 |
-| `SLACK_CHANNEL_<PROJECT>` | プロジェクト別 channel (`SLACK_CHANNEL_TODO` / `_TECH` / `_STOCK` / `_MOPPY` / `_HAPITAS` / `_POINTINCOME` / `_AMEFURI` / `_POINTTOWN` / `_GETMONEY`) |
+| `SLACK_CHANNEL_<PROJECT>` | プロジェクト別 channel (`SLACK_CHANNEL_TODO` / `_TECH` / `_STOCK` / `_MOPPY` / `_HAPITAS` / `_POINTINCOME` / `_AMEFURI` / `_POINTTOWN` / `_GETMONEY` / `_FRUITMAIL` / `_WARAU`) |
 | `GMAIL_USER` / `GMAIL_APP_PASSWORD` | ポイ活専用 Gmail (`poikatsu.box@gmail.com` 系) の IMAP 認証 |
 | `<SITE>_COOKIES` | point_sites 各サイト用 Cookie JSON (Cookie-Editor export) |
 
@@ -64,7 +64,7 @@ uv run python -m todo.main notify               # Slack 通知
 | `stock-analysis.yml` | 株分析（保有銘柄予測 + 有望株発掘） | 毎日 8:00 / 16:00 |
 | `weekly-review.yml` | 株戦略の週次レビュー | 土 10:00 |
 | `tech-catchup.yml` | AI ニュースキャッチアップ | 毎朝 7:30 |
-| `moppy.yml` / `pointincome.yml` / `hapitas.yml` / `amefuri.yml` / `pointtown.yml` / `getmoney.yml` | point_sites 各サイトのクリックメール自動化 | 8:00〜9:45 (15 分ずらし) |
+| `moppy.yml` / `pointincome.yml` / `hapitas.yml` / `amefuri.yml` / `pointtown.yml` / `getmoney.yml` / `fruitmail.yml` / `warau.yml` | point_sites 各サイトのクリックメール自動化 (fruitmail/warau は secret 登録後に活性化) | 8:00〜10:15 (15 分ずらし) |
 | `point_sites-ci.yml` | point_sites の mypy + ruff + pytest | PR 時 |
 | `todo.yml` | TODO リマインダーを Slack に通知 | 毎朝 9:00 |
 
