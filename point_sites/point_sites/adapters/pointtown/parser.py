@@ -7,11 +7,15 @@ Two parsers used by ``OnsiteInboxSource``:
 - ``parse_message`` finds click-coin URLs inside one message detail
   page.
 
-**Risk-of-validity**: Both regexes are *best-guess* — the real inbox
-HTML isn't visible without a session cookie. After
-``POINTTOWN_COOKIES`` is registered, run ``gh workflow run pointtown.yml
--f discover=true`` and ``-f inspect_url=https://www.pointtown.com/mypage/mail``
-to see the actual markup, then refine the regexes.
+**Verified 2026-05-10** against real authenticated inbox + message:
+- Inbox listing: ``<a href="/mypage/mail/<id>">`` rows.
+- Message detail: the click-coin URL lives in an iframe whose ``src``
+  is ``/mypage/mail/body/<id>``; the wrapper page itself only has
+  the iframe markup, so ``parse_inbox`` produces ``message_url``
+  pointed straight at the iframe so ``OnsiteInboxSource.fetch_batch``
+  reads the body in one GET.
+- Click-coin URL inside the iframe: ``https://www.pointtown.com/mail/click?t=<token>&u=<hex>``
+  (token short alphanumeric, hex is the long campaign signature).
 
 Per ポイントタウン FAQ (2026-05): "メール内に複数のURLがある場合、
 コインを獲得できるのは1通につき1回のクリックのみ" — so even when a
@@ -23,6 +27,7 @@ non-credited URL), reduce to first-match-only here.
 
 from __future__ import annotations
 
+import html as _html
 import logging
 import re
 from urllib.parse import urljoin
@@ -40,17 +45,19 @@ _INBOX_BASE = "https://www.pointtown.com"
 # the mail listing links to ``/mypage/mail/<id>``. The empty-inbox case
 # shows "現在閲覧できるメールはございません" instead of any message
 # rows, so we detect that explicitly to avoid false-positive anomalies.
+# The capture group pulls the numeric id so ``parse_inbox`` can build
+# the body iframe URL alongside the canonical state_key.
 _MESSAGE_LINK_RE = re.compile(
-    r"^/mypage/mail/(?:show\?id=\d+|(?:show/)?\d+)/?$",
+    r"^/mypage/mail/(?:show\?id=|show/)?(\d+)/?$",
 )
 _EMPTY_INBOX_MARKER = "現在閲覧できるメールはございません"
 
-# Best-guess click-coin URL on a message detail page. Common GMO/Pointown
-# patterns: ``/coin/c/<token>``, ``/click/<token>``, ``/cc/<token>``.
-# The regex stays loose so first-run discover surfaces matches even if
-# the exact path differs slightly.
+# Verified 2026-05-10: click-coin URLs in /mypage/mail/body/<id> look
+# like ``https://www.pointtown.com/mail/click?t=<short>&u=<long-hex>``.
+# Body is GET-served HTML-escaped (``&amp;u=``); ``parse_message`` runs
+# ``html.unescape`` first so the ``&`` literal here matches.
 _CLICK_COIN_URL_RE = re.compile(
-    r"https://www\.pointtown\.com/(?:coin|click|cc|cm|m)/[A-Za-z0-9_\-/?=&]+",
+    r"https://www\.pointtown\.com/mail/click\?t=[A-Za-z0-9_-]+&u=[A-Za-z0-9]+",
 )
 
 # Coin-amount callout near the click URL (``XXコイン獲得``,
@@ -77,19 +84,25 @@ def parse_inbox(html: str) -> tuple[list[InboxEntry], list[str]]:
         return [], []
     soup = BeautifulSoup(html, "html.parser")
     entries: list[InboxEntry] = []
-    seen_urls: set[str] = set()
+    seen_keys: set[str] = set()
     for a in soup.find_all("a", href=True):
         href = str(a["href"])
-        if not _MESSAGE_LINK_RE.match(href):
+        m = _MESSAGE_LINK_RE.match(href)
+        if not m:
             continue
-        absolute = urljoin(_INBOX_BASE, href)
-        if absolute in seen_urls:
+        msg_id = m.group(1)
+        state_key = urljoin(_INBOX_BASE, href)
+        if state_key in seen_keys:
             continue
-        seen_urls.add(absolute)
-        # Subject / preview text — best effort. Falls back to the URL
-        # itself so a missing label never crashes the orchestrator.
-        label = a.get_text(strip=True) or absolute
-        entries.append(InboxEntry(state_key=absolute, message_url=absolute, label=label[:120]))
+        seen_keys.add(state_key)
+        # ``message_url`` points at the iframe body so ``fetch_batch``
+        # reads the actual click-coin markup; the canonical wrapper URL
+        # stays as state_key so StateStore dedups across cron runs.
+        body_url = f"{_INBOX_BASE}/mypage/mail/body/{msg_id}"
+        # Subject / preview text — best effort. Falls back to the
+        # state_key URL so a missing label never crashes the orchestrator.
+        label = a.get_text(strip=True) or state_key
+        entries.append(InboxEntry(state_key=state_key, message_url=body_url, label=label[:120]))
 
     anomalies: list[str] = []
     # If the inbox HTML is non-empty but yielded zero entries, the regex
@@ -111,6 +124,10 @@ def parse_message(body: str, is_html: bool = False) -> tuple[list[ClickCandidate
     """
     if not body.strip():
         return [], ["empty message body"]
+    # The iframe body GET returns HTML-escaped text where the click URL
+    # carries ``&amp;u=`` rather than ``&u=``. Unescape before regex
+    # match so the literal ``&`` in the pattern lines up.
+    body = _html.unescape(body)
     text = _strip_html(body) if is_html else body
     candidates: list[ClickCandidate] = []
     seen_urls: set[str] = set()
