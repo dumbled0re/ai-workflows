@@ -1,142 +1,230 @@
-"""GetMoney! click-mail body parser.
+"""GetMoney! on-site Webメール inbox parser.
 
-⚠ The URL pattern + callout text format are not yet verified against
-real GetMoney! mails. Initial regex below is a best-guess; refine
-after the first mail lands and shows up in workflow logs.
+Two parsers used by ``OnsiteInboxSource``:
 
-Reference points for the guess:
-  - 旧ドメイン ``getmoney.jp`` は ``dietnavi.com`` に統合済。クリックURL
-    も dietnavi 側に寄っている可能性が高いが、メール内 link が
-    ``getmoney.jp`` 経由で発行されているケースも残っているはず。
-  - 同系の moppy / pointincome は ``/cc/c?t=...`` 形式の tracking URL
-    を使っているので、dietnavi 系も同類のパスがあると推測。
-  - 業界標準の callout は ``クリックでXpt`` ``上記URLアクセスでXpt``
-    ``タップでXpt``。
+- ``parse_inbox`` enumerates message-detail links in the inbox listing
+  at ``/pc/mypage/mail_notice/index``.
+- ``parse_message`` extracts click-coin URLs from one message detail
+  page (``/pc/mypage/mail_notice/index?recipientId=<N>``).
+
+**Verified 2026-05-10** against real authenticated inbox + 1 sample
+message (recipientId=945005814):
+
+- Inbox listing: each row is ``<a href="index?recipientId=<N>">``
+  (relative — joined against the inbox base URL).
+- Message detail uses the same path with a query parameter (no
+  iframe; body is inline in the HTML).
+- Click-coin URL: ``https://dietnavi.com/click.php?cid=<N>&id=<N>&sec=<hex>``
+  — note the host is bare ``dietnavi.com`` (no ``/pc/`` prefix), the
+  same URL repeats multiple times in the body markup, and ``&`` is
+  HTML-escaped (``&amp;``) so ``html.unescape`` runs first.
+- Callout text mixes full-width and half-width Pt: ``クリックで「１Ｐｔ」ゲット！``
+  and ``クリックで1Ptゲット（有効期限<date>まで）`` both appear in the
+  same body. The regex normalises both forms before matching.
+
+Per inbox notice (2026-05-10): ``クリックポイントは重複して獲得でき
+ません。この一覧からクリックポイントを獲得した場合、メールソフト等で
+受信したメールでのクリックポイントは加算されません。`` → on-site click
+disqualifies the matching Gmail mail. We pick on-site so the Gmail
+path is not used (the adapter switches source from GmailSource to
+OnsiteInboxSource accordingly).
 """
 
 from __future__ import annotations
 
+import html as _html
 import logging
 import re
-from dataclasses import dataclass
-from typing import Final
+from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
 from ...common.models import ClickCandidate
+from ...common.sources import InboxEntry
 
 logger = logging.getLogger(__name__)
 
-# Best-guess click-coin URL pattern. The 2 confirmed mails so far
-# are registration mails (仮登録 / 本登録) not click-coin mails, so
-# this remains unverified — refine after the first real click-mail
-# lands. Likely candidates given the dietnavi URL space:
-#   /pc/click/...
-#   /pc/cc/...
-#   /pc/c.php?...
-#   /pc/access.php?...
-# Keep moderately wide for now; the EXCLUSION_URL_RE below filters
-# out obvious non-click paths (login / regist / faq / unsubscribe).
-CLICK_COIN_URL_RE: Final[re.Pattern[str]] = re.compile(
-    r"https?://(?:[a-z0-9-]+\.)?(?:dietnavi\.com|getmoney\.jp)"
-    r"/(?:pc/)?(?:click|cc|access|c\.php|access\.php|track|jump_click|click_jump)"
-    r"[A-Za-z0-9+/=_\-?&%.]*"
+_INBOX_BASE = "https://dietnavi.com/pc/mypage/mail_notice/"
+
+# Inbox listing rows. Verified against logged-in /pc/mypage/mail_notice/index
+# 2026-05-10: ``<a href="index?recipientId=945005814">``. Same path,
+# query-param differs per message — capture the numeric id so the
+# state_key can be canonicalised to the absolute URL.
+_MESSAGE_LINK_RE = re.compile(
+    r"^index\?recipientId=(\d+)$",
+)
+# Heuristic empty-inbox marker — copy reads like
+# "現在受信中のメールはありません" / "メールが届いていません" depending
+# on the site copy. Without a confirmed real-empty fixture, fall back
+# to "no entries + non-empty html" → anomaly behaviour for safety.
+
+# Click-coin URL pattern. Verified 2026-05-10:
+# ``https://dietnavi.com/click.php?cid=57448&id=3567347&sec=bcbc0f9b``.
+# Host is the apex (``dietnavi.com``) with no subdomain or ``/pc/``
+# prefix. ``cid`` and ``id`` are decimal; ``sec`` is hex (8 chars in
+# the sample but not strictly bounded — match alphanumeric to be
+# resilient).
+_CLICK_COIN_URL_RE = re.compile(
+    r"https://dietnavi\.com/click\.php\?cid=\d+&id=\d+&sec=[A-Za-z0-9]+",
 )
 
-# Standard callout shapes across major Japanese point sites. Refine
-# once a real fixture lands.
-CALLOUT_RE: Final[re.Pattern[str]] = re.compile(
-    r"(?:クリックで|上記URLアクセスで|タップで)\s*[【\[]?\s*(\d{1,3})\s*(?:pt|P|ポイント|コイン)"
+# Callout near the click URL. Body uses both full-width 「１Ｐｔ」 and
+# half-width ``1Pt`` for the same value, often within the same message.
+# Normalise full-width digits + brackets + Ｐｔ/ｐｔ to half-width before
+# matching so a single regex covers both.
+_CALLOUT_RE = re.compile(
+    r"クリック(?:で|して)?\s*[「【\[]?\s*(\d{1,4})\s*(?:Pt|pt|ポイント)",
 )
-CALLOUT_WINDOW_CHARS: Final[int] = 200
+_CALLOUT_WINDOW_CHARS = 240
 
-# URLs to exclude even if they match the click pattern. Includes
-# the /pc/regist endpoint observed in the 2026-05-10 仮登録 mail —
-# it's an auth confirmation URL, never a click-coin URL.
-EXCLUSION_URL_RE: Final[re.Pattern[str]] = re.compile(
-    r"https?://(?:[a-z0-9-]+\.)?(?:dietnavi\.com|getmoney\.jp)"
-    r"/(?:pc/)?(?:login|logout|entrance|faq|help|contact|opt|unsubscribe|regist|withdraw|policy|terms)",
-    re.IGNORECASE,
+# Full-width → half-width translation table. Built once at import.
+# Covers digits 0-9, Pt/pt characters, and the full-width brackets that
+# wrap the amount in some templates (「」). Keep it minimal — only the
+# characters that actually appear in observed callout text.
+_FULLWIDTH_TRANSLATE = str.maketrans(
+    {
+        "０": "0",
+        "１": "1",
+        "２": "2",
+        "３": "3",
+        "４": "4",
+        "５": "5",
+        "６": "6",
+        "７": "7",
+        "８": "8",
+        "９": "9",
+        "Ｐ": "P",
+        "ｐ": "p",
+        "ｔ": "t",
+        "Ｔ": "T",
+        "「": "[",
+        "」": "]",
+        "（": "(",
+        "）": ")",
+        "　": " ",
+    }
 )
 
 
-@dataclass(frozen=True)
-class ParseAnomaly:
-    kind: str
-    detail: str
+def parse_inbox(html: str) -> tuple[list[InboxEntry], list[str]]:
+    """Extract message-link rows from the inbox listing HTML.
 
-    def __str__(self) -> str:
-        return f"{self.kind}: {self.detail}"
-
-
-def _strip_html(html: str) -> str:
-    soup = BeautifulSoup(html, "html.parser")
-    for a in soup.find_all("a", href=True):
-        a.insert_before(a["href"] + " ")
-    return soup.get_text("\n", strip=False)
-
-
-def _to_plaintext(body: str, *, is_html: bool) -> str:
-    if not body:
-        return ""
-    return _strip_html(body) if is_html else body
-
-
-def parse(body: str, is_html: bool = False) -> tuple[list[ClickCandidate], list[str]]:
-    """Extract ClickCandidate list from a GetMoney! email body.
-
-    Same shape as the moppy/pointincome parsers so the Adapter contract
-    stays uniform. Returns ``(candidates, anomalies)``.
+    Returns (entries, anomalies). Empty entries with no anomalies =
+    legitimate empty inbox; empty entries with non-empty HTML triggers
+    an anomaly so a parser breakage surfaces loudly.
     """
-    text = _to_plaintext(body, is_html=is_html)
-    if not text.strip():
-        return [], [str(ParseAnomaly(kind="empty_body", detail="no text content"))]
+    if not html.strip():
+        return [], ["empty inbox HTML"]
+    soup = BeautifulSoup(html, "html.parser")
+    entries: list[InboxEntry] = []
+    seen_keys: set[str] = set()
+    for a in soup.find_all("a", href=True):
+        href = str(a["href"])
+        m = _MESSAGE_LINK_RE.match(href)
+        if not m:
+            continue
+        msg_id = m.group(1)
+        # Canonical state_key uses the absolute URL so dedup across runs
+        # is stable even if the inbox base path changes.
+        state_key = urljoin(_INBOX_BASE, href)
+        if state_key in seen_keys:
+            continue
+        seen_keys.add(state_key)
+        # Subject lives elsewhere in the inbox row; best-effort label
+        # falls back to the recipientId so something useful shows in
+        # logs even when the regex misses.
+        label = a.get_text(strip=True) or f"recipientId={msg_id}"
+        entries.append(
+            InboxEntry(
+                state_key=state_key,
+                message_url=state_key,
+                label=label[:120],
+            )
+        )
+
+    anomalies: list[str] = []
+    if not entries and len(html) > 1500:
+        # Non-empty HTML with no message rows = either truly empty
+        # inbox or stale regex. Without a confirmed "empty inbox"
+        # fixture we surface this so the operator can verify.
+        anomalies.append("no message links matched inbox-list regex (HTML may have changed or inbox is empty)")
+    return entries, anomalies
+
+
+def parse_message(body: str, is_html: bool = False) -> tuple[list[ClickCandidate], list[str]]:
+    """Extract click-coin URL(s) from a single message detail page.
+
+    Verified body has the same click URL repeated 5+ times across the
+    HTML (anchor + plaintext + footer). Dedup by URL and keep one
+    candidate per unique click URL. If multiple distinct URLs appear,
+    keep the first only and flag an anomaly so the operator can verify
+    crediting behaviour (no public FAQ rule confirms multi-URL handling
+    on getmoney; the safe default mirrors pointtown's "one click per
+    message" assumption).
+    """
+    if not body.strip():
+        return [], ["empty message body"]
+    # ``&amp;`` → ``&`` so the literal ``&`` in the URL pattern matches.
+    body = _html.unescape(body)
+    text = _strip_html(body) if is_html else body
+    # Normalise full-width Pt / digits / brackets so the single callout
+    # regex hits both styles. Done after _strip_html so the URL itself
+    # — which only uses ASCII — is unaffected.
+    callout_text = text.translate(_FULLWIDTH_TRANSLATE)
 
     candidates: list[ClickCandidate] = []
     seen_urls: set[str] = set()
-    unconfirmed_urls: list[str] = []
-
-    for match in CLICK_COIN_URL_RE.finditer(text):
+    distinct_extra = 0
+    for match in _CLICK_COIN_URL_RE.finditer(text):
         url = match.group(0)
         if url in seen_urls:
             continue
-        if EXCLUSION_URL_RE.match(url):
+        seen_urls.add(url)
+        if candidates:
+            distinct_extra += 1
             continue
-
-        window_end = min(len(text), match.end() + CALLOUT_WINDOW_CHARS)
-        window = text[match.end() : window_end]
-        callout = CALLOUT_RE.search(window)
+        window_end = min(len(callout_text), match.end() + _CALLOUT_WINDOW_CHARS)
+        callout = _CALLOUT_RE.search(callout_text[match.end() : window_end])
+        # Also try a window before the URL — getmoney sometimes places
+        # the "クリックで1Ptゲット" line above the URL anchor rather than
+        # below.
         if callout is None:
-            unconfirmed_urls.append(url)
-            continue
-
+            window_start = max(0, match.start() - _CALLOUT_WINDOW_CHARS)
+            callout = _CALLOUT_RE.search(callout_text[window_start : match.start()])
+        estimated_points: int | None = None
+        if callout is not None:
+            try:
+                estimated_points = int(callout.group(1))
+            except ValueError:
+                estimated_points = None
         try:
-            estimated_points = int(callout.group(1))
-        except ValueError:
-            estimated_points = None
-
-        try:
-            candidate = ClickCandidate(
-                url=url,  # type: ignore[arg-type]
-                anchor_text=callout.group(0),
-                estimated_points=estimated_points,
-                extraction_reason="whitelist_url_pattern_and_anchor",
+            candidate = ClickCandidate.model_validate(
+                {
+                    "url": url,
+                    "anchor_text": (callout.group(0) if callout else "<onsite_inbox_message>"),
+                    "estimated_points": estimated_points,
+                    "extraction_reason": ("whitelist_url_pattern_and_anchor" if callout else "whitelist_url_pattern"),
+                }
             )
         except ValueError as exc:
             logger.debug("invalid candidate url %r: %s", url, exc)
             continue
-
-        seen_urls.add(url)
         candidates.append(candidate)
 
     anomalies: list[str] = []
-    if unconfirmed_urls:
+    if not candidates and len(text) > 800:
+        anomalies.append("no click-coin URLs matched message regex (HTML may have changed)")
+    if distinct_extra:
         anomalies.append(
-            str(
-                ParseAnomaly(
-                    kind="url_without_callout",
-                    detail=f"{len(unconfirmed_urls)} click URL(s) without a matching callout",
-                )
-            )
+            f"message had {distinct_extra + 1} distinct click-coin URL(s); only first kept "
+            "(verify discover output if heuristic looks wrong)"
         )
     return candidates, anomalies
+
+
+def _strip_html(html: str) -> str:
+    """Convert HTML to plaintext while preserving anchor hrefs inline."""
+    soup = BeautifulSoup(html, "html.parser")
+    for a in soup.find_all("a", href=True):
+        a.insert_before(f" {a['href']} ")
+    return soup.get_text("\n", strip=False)
