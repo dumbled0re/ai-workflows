@@ -27,13 +27,12 @@ from ...common.models import ClickCandidate
 
 logger = logging.getLogger(__name__)
 
-# Best-guess click-coin URL pattern — match anything under either
-# ``dietnavi.com`` or legacy ``getmoney.jp`` that looks like a tracking
-# endpoint. After the first real mail confirms the pattern, tighten to
-# the specific path (e.g. ``/click/c\?...``).
+# TEMPORARY: ultra-wide pattern for first-mail discovery. Once we see
+# what dietnavi click-coin URLs actually look like in the wild, narrow
+# this to the real path (e.g. ``/pc/click/c\?...``) so shopping/login
+# URLs aren't accidentally picked up.
 CLICK_COIN_URL_RE: Final[re.Pattern[str]] = re.compile(
-    r"https://(?:[a-z0-9-]+\.)?(?:dietnavi\.com|getmoney\.jp)"
-    r"/(?:click|cc|access|c|pc/click|pc/cc)/[A-Za-z0-9+/=_\-?&%.]+"
+    r"https://(?:[a-z0-9-]+\.)?(?:dietnavi\.com|getmoney\.jp)/[A-Za-z0-9+/=_\-?&%.#]+"
 )
 
 # Standard callout shapes across major Japanese point sites. Refine
