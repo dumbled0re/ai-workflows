@@ -207,6 +207,7 @@ codex review path/to/file.py
 1. **Context budget 警告**: system reminder で context 残量警告が出た時 (例: 「approaching context limit」「context 圧迫」等)
 2. **大きな作業の完結**: 1 つのまとまった implementation / debugging / migration が終わった直後 (commit + push まで完了したタイミング)
 3. **user の明示的・暗示的な区切り発言**: 「疲れた」「一旦切る」「セッション分けたい」「ここまで」「お疲れ」「明日続ける」等
+4. **大きな作業の入口で context 残量が乏しい時 (Claude 自己判断)**: 新サイト追加・大規模 refactor・複数 phase 跨ぎの実装など、所要 token を見積もると現セッションで完走できないと判断したタイミング。**user に「context 大丈夫？」と聞かれてから動くのは遅い**。Claude 自身で会話の長さ + 次の作業の重さを天秤にかけ、必要なら user 発言を待たず「先に handoff してから着手しましょう」と提案する
 
 #### 自動 handoff の実行手順 (許可不要、即実行)
 
