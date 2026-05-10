@@ -36,6 +36,10 @@ on:
         description: "render inspect_url via Playwright Chromium so JS-driven content is visible"
         type: boolean
         default: false
+      inspect_cap:
+        description: "max stripped-body bytes to print (default 80000)"
+        type: number
+        default: 80000
       force_fresh_cookies:
         description: "delete persisted cookie jar before run, forcing re-bootstrap from <SITE>_COOKIES Secret. Use after rotating the Secret in GitHub when the cached jar would otherwise overwrite the fresh value."
         type: boolean
@@ -173,6 +177,7 @@ jobs:
           DISPATCH_EXTRACT: ${{ inputs.extract_links && '1' || '0' }}
           INSPECT_URL: ${{ inputs.inspect_url }}
           INSPECT_BROWSER: ${{ inputs.inspect_browser && '1' || '0' }}
+          INSPECT_CAP: ${{ inputs.inspect_cap }}
           DISCOVER: ${{ inputs.discover && '1' || '0' }}
           SLACK_BOT_TOKEN: ${{ secrets.slack_bot_token }}
           SITE_SLACK_CHANNEL: ${{ secrets.slack_channel }}
@@ -196,6 +201,9 @@ jobs:
             HTML_FLAGS=()
             if [[ "$INSPECT_BROWSER" == "1" ]]; then
               HTML_FLAGS+=(--browser)
+            fi
+            if [[ -n "$INSPECT_CAP" && "$INSPECT_CAP" != "80000" ]]; then
+              HTML_FLAGS+=(--cap "$INSPECT_CAP")
             fi
             uv run python -m point_sites.main html --site "$SITE" "$INSPECT_URL" "${HTML_FLAGS[@]}"
           elif [[ "$DISCOVER" == "1" ]]; then

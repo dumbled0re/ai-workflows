@@ -265,6 +265,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="render the URL via Playwright Chromium so JS runs and SPA shells expand",
     )
+    p_html.add_argument(
+        "--cap",
+        type=int,
+        default=80_000,
+        help=(
+            "max stripped-body bytes to print (default: 80000). Bump for "
+            "SPA pages where the relevant section is past 80KB."
+        ),
+    )
     return parser
 
 
@@ -637,7 +646,7 @@ def cmd_discover(cfg: Config) -> int:
     return 0
 
 
-def cmd_html(cfg: Config, url: str, *, force_browser: bool = False) -> int:
+def cmd_html(cfg: Config, url: str, *, force_browser: bool = False, cap: int = 80_000) -> int:
     """Fetch a single URL and dump its body to stdout.
 
     Used to plan automation for items whose interaction shape isn't
@@ -695,7 +704,6 @@ def cmd_html(cfg: Config, url: str, *, force_browser: bool = False) -> int:
     body = re.sub(r"<style\b[^>]*>.*?</style>", "<!-- style removed -->", body, flags=re.DOTALL)
     body = re.sub(r"<!--.*?-->", "", body, flags=re.DOTALL)
     body = re.sub(r"\n\s*\n+", "\n", body)
-    cap = 80_000
     print(body[:cap])
     if len(body) > cap:
         print(f"\n=== TRUNCATED (showed {cap} of {len(body)} stripped bytes; original {original_len}) ===")
@@ -765,7 +773,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "discover":
         return cmd_discover(cfg)
     if args.cmd == "html":
-        return cmd_html(cfg, args.url, force_browser=getattr(args, "browser", False))
+        return cmd_html(
+            cfg,
+            args.url,
+            force_browser=getattr(args, "browser", False),
+            cap=getattr(args, "cap", 80_000),
+        )
     parser.error(f"unknown subcommand: {args.cmd}")
 
 

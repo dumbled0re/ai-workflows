@@ -76,15 +76,17 @@ ADAPTER = Adapter(
         "https://www.amefri.net/",
         "https://www.amefri.net/account",
     ),
-    # アメフリ is an Angular SPA — the daily login bonus + 1pt-per-4
-    # chance + free gacha all wire to client JS that doesn't run for
-    # pure HTTP GETs. Two diagnostic visits via Playwright cover the
-    # baseline: home loads the bonus state machine, /account renders
-    # the rank dashboard. If balance doesn't grow after a couple of
-    # cron runs, gacha spinning needs an explicit click_selector and
-    # we add a third action with the discovered selector. balance_uses_browser
-    # is intentionally NOT set — /account scrapes fine via HTTP for
-    # the OwnedPoint widget.
+    # アメフリ is an Angular SPA — the daily login bonus state machine
+    # only fires from client JS. The two visits below let Playwright
+    # run that JS so the 30-day login milestone counter ticks even when
+    # we're a "たぬき" rank account whose per-day 1pt bonus rounds to 0
+    # in the displayed balance.
+    #
+    # Gacha was investigated 2026-05-10: ``/game/gacha`` server-side
+    # 302s to ``/`` for our authenticated session even via Playwright,
+    # so spin automation is structurally blocked behind a feature gate
+    # we can't clear without manual user action. Login milestone is
+    # the only auto-clickable yield path on amefri.
     browser_actions=(
         BrowserAction(name="login_visit_home", url="https://www.amefri.net/"),
         BrowserAction(name="login_visit_account", url="https://www.amefri.net/account"),
