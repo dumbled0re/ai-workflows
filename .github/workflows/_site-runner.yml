@@ -72,6 +72,21 @@ jobs:
       - name: Sync deps
         run: uv sync --frozen
 
+      - name: Cache Playwright browsers
+        # Chromium is ~150MB. Caching by uv.lock so a playwright bump
+        # invalidates and re-downloads, but day-to-day runs hit the cache.
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-browsers-${{ runner.os }}-${{ hashFiles('point_sites/uv.lock') }}
+
+      - name: Install Playwright Chromium
+        # Required for adapters that opt into BrowserClicker (pointincome
+        # balance scraping, amefri SPA gacha, etc). Adapters that only
+        # use Clicker still pay the install cost but it's bounded by the
+        # cache above and runs sub-10s on a hit.
+        run: uv run playwright install chromium
+
       - name: Bridge pre-rename cache (one-time)
         # Cache version is hashed from the cache ``path`` string, so the
         # rename moppy_clicker/data/ → point_sites/data/ orphaned the
