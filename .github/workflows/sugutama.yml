@@ -1,0 +1,73 @@
+name: sugutama
+
+# すぐたま (https://www.sugutama.jp) on-site Webメール click-coin automation.
+# Daily cron at JST 10:30 — 15-min staggered after warau.yml.
+#
+# Cron will fail fast (verify_login redirect → exit code 2) until both
+# SUGUTAMA_COOKIES and SLACK_CHANNEL_SUGUTAMA are registered. After
+# registration:
+#   1. ``gh workflow run sugutama.yml -f discover=true`` で /sugutama/mail/
+#      の構造確認
+#   2. ``-f inspect_url=https://www.sugutama.jp/sugutama/mail/`` で inbox HTML
+#      を見て _MESSAGE_LINK_RE を実 link pattern に narrow
+#   3. 1 通目を inspect (``-f inspect_url=<message URL>``) で click-coin URL
+#      pattern を確定 → _CLICK_COIN_URL_RE refine
+#   4. ``-f extract_links=true`` で実 candidate を Slack 目視、ad-fraud
+#      混入なし確認後 click 本番化
+
+on:
+  schedule:
+    - cron: "30 1 * * *"  # JST 10:30 (15 min after warau.yml)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "extract candidates only, redacted"
+        type: boolean
+        default: false
+      extract_links:
+        description: "post full clickable URLs to Slack instead of clicking"
+        type: boolean
+        default: false
+      discover:
+        description: "read-only recon of 毎日貯める section"
+        type: boolean
+        default: false
+      inspect_url:
+        description: "GET this URL with auth and dump body to log"
+        type: string
+        default: ""
+      inspect_browser:
+        description: "render inspect_url via Playwright Chromium so JS-driven content is visible"
+        type: boolean
+        default: false
+      inspect_cap:
+        description: "max stripped-body bytes to print (default 80000)"
+        type: string
+        default: "80000"
+      force_fresh_cookies:
+        description: "delete persisted cookie jar before run, forcing re-bootstrap from Secret (use after rotating <SITE>_COOKIES)"
+        type: boolean
+        default: false
+
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    uses: ./.github/workflows/_site-runner.yml
+    with:
+      site: sugutama
+      dry_run: ${{ inputs.dry_run == true }}
+      extract_links: ${{ inputs.extract_links == true }}
+      discover: ${{ inputs.discover == true }}
+      inspect_url: ${{ inputs.inspect_url }}
+      inspect_browser: ${{ inputs.inspect_browser == true }}
+      inspect_cap: ${{ inputs.inspect_cap }}
+      force_fresh_cookies: ${{ inputs.force_fresh_cookies == true }}
+    secrets:
+      slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
+      slack_channel: ${{ secrets.SLACK_CHANNEL_SUGUTAMA }}
+      cookies: ${{ secrets.SUGUTAMA_COOKIES }}
+      gmail_user: ${{ secrets.GMAIL_USER }}
+      gmail_app_password: ${{ secrets.GMAIL_APP_PASSWORD }}

@@ -15,6 +15,7 @@ from .hapitas import ADAPTER as HAPITAS
 from .moppy import ADAPTER as MOPPY
 from .pointincome import ADAPTER as POINTINCOME
 from .pointtown import ADAPTER as POINTTOWN
+from .sugutama import ADAPTER as SUGUTAMA
 from .warau import ADAPTER as WARAU
 
 REGISTRY: dict[str, Adapter] = {
@@ -27,6 +28,7 @@ REGISTRY: dict[str, Adapter] = {
     GETMONEY.name: GETMONEY,
     FRUITMAIL.name: FRUITMAIL,
     WARAU.name: WARAU,
+    SUGUTAMA.name: SUGUTAMA,
 }
 
 
