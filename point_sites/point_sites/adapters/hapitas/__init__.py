@@ -46,4 +46,13 @@ ADAPTER = Adapter(
         "https://hapitas.jp/takarakuji/",
         "https://hapitas.jp/minitakarakuji/",
     ),
+    # Top-page 宝くじ交換券 banners (8/day, each grants 1 ticket). The
+    # banner URLs rotate daily and only render after the JS hydration,
+    # so cron has to discover them through a real browser before the
+    # Clicker can hit each /item/redirect-to-client-if-zero-point-item/
+    # tracking URL. ``clickget_banner`` is the wrapper class on the
+    # rendered top page; the inner ``<a>`` carries the href that
+    # credits the ticket on GET.
+    daily_banner_url="https://hapitas.jp/",
+    daily_banner_selector="div.clickget_banner > a[href]",
 )
