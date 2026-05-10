@@ -32,6 +32,10 @@ on:
       inspect_url:
         type: string
         default: ""
+      inspect_browser:
+        description: "render inspect_url via Playwright Chromium so JS-driven content is visible"
+        type: boolean
+        default: false
       force_fresh_cookies:
         description: "delete persisted cookie jar before run, forcing re-bootstrap from <SITE>_COOKIES Secret. Use after rotating the Secret in GitHub when the cached jar would otherwise overwrite the fresh value."
         type: boolean
@@ -168,6 +172,7 @@ jobs:
           CRON_EXTRACT: ${{ (github.event_name == 'schedule' && inputs.cron_mode != 'click') && '1' || '0' }}
           DISPATCH_EXTRACT: ${{ inputs.extract_links && '1' || '0' }}
           INSPECT_URL: ${{ inputs.inspect_url }}
+          INSPECT_BROWSER: ${{ inputs.inspect_browser && '1' || '0' }}
           DISCOVER: ${{ inputs.discover && '1' || '0' }}
           SLACK_BOT_TOKEN: ${{ secrets.slack_bot_token }}
           SITE_SLACK_CHANNEL: ${{ secrets.slack_channel }}
@@ -188,7 +193,11 @@ jobs:
           # inspect_url and discover are dispatch-only debug paths and
           # override the click pipeline. inspect_url has highest priority.
           if [[ -n "$INSPECT_URL" ]]; then
-            uv run python -m point_sites.main html --site "$SITE" "$INSPECT_URL"
+            HTML_FLAGS=()
+            if [[ "$INSPECT_BROWSER" == "1" ]]; then
+              HTML_FLAGS+=(--browser)
+            fi
+            uv run python -m point_sites.main html --site "$SITE" "$INSPECT_URL" "${HTML_FLAGS[@]}"
           elif [[ "$DISCOVER" == "1" ]]; then
             uv run python -m point_sites.main discover --site "$SITE"
           else

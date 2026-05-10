@@ -36,6 +36,10 @@ on:
         description: "GET this URL with auth and dump body to log"
         type: string
         default: ""
+      inspect_browser:
+        description: "render inspect_url via Playwright Chromium so JS-driven content is visible"
+        type: boolean
+        default: false
       force_fresh_cookies:
         description: "delete persisted cookie jar before run, forcing re-bootstrap from Secret (use after rotating <SITE>_COOKIES)"
         type: boolean
@@ -55,6 +59,7 @@ jobs:
       extract_links: ${{ inputs.extract_links == true }}
       discover: ${{ inputs.discover == true }}
       inspect_url: ${{ inputs.inspect_url }}
+      inspect_browser: ${{ inputs.inspect_browser == true }}
       force_fresh_cookies: ${{ inputs.force_fresh_cookies == true }}
     secrets:
       slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}

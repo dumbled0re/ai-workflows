@@ -260,6 +260,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     add_site_arg(p_html)
     p_html.add_argument("url")
+    p_html.add_argument(
+        "--browser",
+        action="store_true",
+        help="render the URL via Playwright Chromium so JS runs and SPA shells expand",
+    )
     return parser
 
 
@@ -632,7 +637,7 @@ def cmd_discover(cfg: Config) -> int:
     return 0
 
 
-def cmd_html(cfg: Config, url: str) -> int:
+def cmd_html(cfg: Config, url: str, *, force_browser: bool = False) -> int:
     """Fetch a single URL and dump its body to stdout.
 
     Used to plan automation for items whose interaction shape isn't
@@ -658,7 +663,7 @@ def cmd_html(cfg: Config, url: str) -> int:
         return 2
     _persist_cookies(clicker, cfg)
 
-    if cfg.adapter.balance_uses_browser:
+    if cfg.adapter.balance_uses_browser or force_browser:
         from urllib.parse import urlparse
 
         from .common.browser import BrowserClicker
@@ -760,7 +765,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "discover":
         return cmd_discover(cfg)
     if args.cmd == "html":
-        return cmd_html(cfg, args.url)
+        return cmd_html(cfg, args.url, force_browser=getattr(args, "browser", False))
     parser.error(f"unknown subcommand: {args.cmd}")
 
 
