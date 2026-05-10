@@ -37,3 +37,6 @@ __pycache__/
 # Transient handover docs (per-session only, deleted after read)
 HANDOFF.md
 **/HANDOFF.md
+
+# Playwright MCP working directory (console logs, page snapshots)
+.playwright-mcp/
