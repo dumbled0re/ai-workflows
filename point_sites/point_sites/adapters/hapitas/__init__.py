@@ -57,9 +57,12 @@ ADAPTER = Adapter(
     daily_banner_selector="div.clickget_banner > a[href]",
     # Spend 宝くじ交換券 on バラ (random individual numbers) — same
     # day's banner-click tickets get exchanged for entries into the
-    # mini-takarakuji daily drawing. Loop caps at 30 so a stuck or
-    # rate-limited button can't burn the whole timeout budget. ``apart_ctrl``
-    # is the JS-driven anchor that fires the exchange XHR per click.
+    # mini-takarakuji daily drawing. The バラ flow is two clicks: the
+    # initial ``apart_ctrl`` opens a confirmation panel that already
+    # has the full ticket count pre-filled, then ``btn_exchanges_10``
+    # fires the actual exchange XHR. One round-trip drains the entire
+    # daily ticket balance.
     takarakuji_exchange_url="https://hapitas.jp/minitakarakuji/",
-    takarakuji_exchange_selector="#apart_ctrl",
+    takarakuji_exchange_open_selector="#apart_ctrl",
+    takarakuji_exchange_confirm_selector="#takarakuji_exchange_btn_exchanges_10",
 )

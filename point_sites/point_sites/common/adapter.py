@@ -91,16 +91,15 @@ class Adapter:
     daily_banner_url: str | None = None
     daily_banner_selector: str | None = None
 
-    # Daily lottery-ticket exchange (hapitas mini takarakuji style):
-    # navigate to ``takarakuji_exchange_url``, click
-    # ``takarakuji_exchange_selector`` repeatedly to consume one
-    # 宝くじ交換券 per click. ``takarakuji_max_exchanges`` caps the
-    # loop so a stuck button can't burn the whole timeout budget;
-    # the hapitas case sees up to 15 banner clicks/day so 30 leaves
-    # headroom and any extras simply hit a disabled button.
+    # Daily lottery-ticket exchange (hapitas mini takarakuji style).
+    # Two-step UI: ``open_selector`` opens the confirmation panel
+    # (which already has the user's full ticket count pre-filled in
+    # a hidden input), ``confirm_selector`` triggers the actual
+    # exchange XHR. Single round-trip drains the entire daily ticket
+    # balance — no per-ticket loop needed.
     takarakuji_exchange_url: str | None = None
-    takarakuji_exchange_selector: str | None = None
-    takarakuji_max_exchanges: int = 30
+    takarakuji_exchange_open_selector: str | None = None
+    takarakuji_exchange_confirm_selector: str | None = None
 
     @property
     def env_prefix(self) -> str:
