@@ -682,7 +682,9 @@ def cmd_run(
             balance_after=balance_after,
         )
         tracker.append(outcome)
-        degradation = tracker.detect_degradation()
+        degradation = tracker.detect_degradation(
+            stagnation_window=cfg.adapter.stagnation_window,
+        )
         if degradation is not None:
             logger.warning(
                 "credit-ratio degradation detected over last %d runs (median=%.0f%%)",

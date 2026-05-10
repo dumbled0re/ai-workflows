@@ -91,4 +91,11 @@ ADAPTER = Adapter(
         BrowserAction(name="login_visit_home", url="https://www.amefri.net/"),
         BrowserAction(name="login_visit_account", url="https://www.amefri.net/account"),
     ),
+    # 1pt/day yield rounds out credit-ratio's MIN_EXPECTED_FOR_RATIO
+    # threshold (=2), so the strong detector skips amefri entirely.
+    # 30 runs ≈ one full milestone cycle (10〜100pt jump every 30
+    # logins) — if balance stays flat through that, the login bonus
+    # endpoint is genuinely silent, not just yielding below display
+    # precision.
+    stagnation_window=30,
 )

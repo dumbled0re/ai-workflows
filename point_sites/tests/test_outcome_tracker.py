@@ -182,6 +182,60 @@ def test_click_failure_alert_skipped_when_any_click_succeeded(tmp_path) -> None:
     assert tracker.detect_degradation() is None
 
 
+def test_stagnation_alert_fires_when_balance_flat_over_window(tmp_path) -> None:
+    """Low-yield sites (amefri) get caught by stagnation, not credit-ratio.
+
+    expected_pt=0 means credit-ratio detector skips every run, so the
+    pipeline could be silently broken for weeks without an alert. With
+    stagnation_window=5, five flat-balance runs should fire."""
+    tracker = OutcomeTracker(tmp_path / "outcomes.jsonl")
+    for _ in range(5):
+        tracker.append(_outcome(expected=0, before=100, after=100))
+    alert = tracker.detect_degradation(stagnation_window=5)
+    assert alert is not None
+    assert "balance 増加なし" in alert.suggestion
+    assert alert.runs_inspected == 5
+
+
+def test_stagnation_alert_skipped_when_window_disabled(tmp_path) -> None:
+    """Default behaviour (stagnation_window=None) must not change."""
+    tracker = OutcomeTracker(tmp_path / "outcomes.jsonl")
+    for _ in range(10):
+        tracker.append(_outcome(expected=0, before=100, after=100))
+    assert tracker.detect_degradation() is None
+
+
+def test_stagnation_alert_resets_on_one_positive_delta(tmp_path) -> None:
+    """One milestone bonus in the window proves the pipeline is alive."""
+    tracker = OutcomeTracker(tmp_path / "outcomes.jsonl")
+    tracker.append(_outcome(expected=0, before=100, after=100))
+    tracker.append(_outcome(expected=0, before=100, after=110))  # milestone
+    tracker.append(_outcome(expected=0, before=110, after=110))
+    tracker.append(_outcome(expected=0, before=110, after=110))
+    tracker.append(_outcome(expected=0, before=110, after=110))
+    assert tracker.detect_degradation(stagnation_window=5) is None
+
+
+def test_stagnation_skipped_when_balances_missing(tmp_path) -> None:
+    """No balance scrape = no delta = stagnation can't decide."""
+    tracker = OutcomeTracker(tmp_path / "outcomes.jsonl")
+    for _ in range(5):
+        tracker.append(_outcome(expected=0, before=None, after=None))
+    assert tracker.detect_degradation(stagnation_window=5) is None
+
+
+def test_credit_ratio_takes_precedence_over_stagnation(tmp_path) -> None:
+    """When credit-ratio has a clear signal, it wins — its 3-run
+    window beats stagnation's slower N-run window."""
+    tracker = OutcomeTracker(tmp_path / "outcomes.jsonl")
+    for _ in range(DEGRADATION_WINDOW):
+        tracker.append(_outcome(expected=10, before=100, after=100))
+    alert = tracker.detect_degradation(stagnation_window=30)
+    assert alert is not None
+    assert "Cookie" in alert.suggestion
+    assert "balance 増加なし" not in alert.suggestion
+
+
 def test_ignores_corrupt_lines(tmp_path) -> None:
     path = tmp_path / "outcomes.jsonl"
     path.write_text(

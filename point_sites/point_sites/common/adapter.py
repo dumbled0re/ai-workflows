@@ -100,6 +100,17 @@ class Adapter:
     # wizard logs a warning without aborting the run.
     daily_wizards: tuple[DailyWizard, ...] = field(default_factory=tuple)
 
+    # Recent-run window for balance-stagnation detection. Default
+    # ``None`` disables it, which is the right call for high-yield
+    # sites where credit-ratio degradation already covers them.
+    # Set to e.g. 30 for low-yield sites whose per-day point gain is
+    # too small to anchor credit-ratio (amefri's 1pt/day login bonus
+    # has expected_pt below ``MIN_EXPECTED_FOR_RATIO`` so the strong
+    # detector skips it). 30 runs is one full milestone cycle for
+    # amefri — if the 30-day jump didn't land either, the pipeline
+    # is genuinely silent and worth alerting on.
+    stagnation_window: int | None = None
+
     @property
     def env_prefix(self) -> str:
         """For env-var naming: prefix uppercase of ``name``."""

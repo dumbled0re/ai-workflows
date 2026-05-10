@@ -45,6 +45,13 @@ MIN_EXPECTED_FOR_RATIO = 2
 # underlying credit landed — but we CAN tell whether the HTTP layer
 # stopped working entirely.
 CLICK_FAILURE_WINDOW = 3
+# Long-window weak signal for low-yield sites whose per-day point
+# gain is below ``MIN_EXPECTED_FOR_RATIO`` (amefri's 1pt/day login
+# bonus rounds-out the credit-ratio detector entirely). When the
+# adapter opts in via ``stagnation_window``, alert if every recent
+# run in that window shows zero or negative balance delta — the
+# 30-day milestone bonus would surface as a positive delta, so a
+# full window of zeros means the bonus pipeline is silent.
 
 
 @dataclass(frozen=True)
@@ -119,20 +126,29 @@ class OutcomeTracker:
         self,
         window: int = DEGRADATION_WINDOW,
         ratio_threshold: float = DEGRADATION_RATIO_THRESHOLD,
+        stagnation_window: int | None = None,
     ) -> DegradationAlert | None:
         """Return an alert when crediting (or, fallback, the click
         pipeline itself) stops working over the recent window.
 
-        Credit-ratio degradation runs first because it's the strongest
-        signal — we can only compute it for sites where balance scraping
-        works. When that's unavailable (pointincome's anti-bot
-        interstitial), fall through to the HTTP-success fallback so the
-        operator still gets paged on a fully broken click pipeline.
+        Detector precedence — strongest, fastest signal first:
+        1. Credit-ratio degradation (3-run, ratio<threshold) — needs
+           balance scraping AND non-trivial expected_pt, fires fast.
+        2. Click-failure (3-run, 100% HTTP fail) — fires for sites
+           without balance (pointincome) on broken click pipelines.
+        3. Balance-stagnation (long window, no growth) — opt-in via
+           ``stagnation_window``, catches low-yield sites that fall
+           through the first two because expected_pt is too small.
         """
         credit_alert = self._detect_credit_degradation(window, ratio_threshold)
         if credit_alert is not None:
             return credit_alert
-        return self._detect_click_failure(window)
+        click_alert = self._detect_click_failure(window)
+        if click_alert is not None:
+            return click_alert
+        if stagnation_window is not None:
+            return self._detect_balance_stagnation(stagnation_window)
+        return None
 
     def _detect_credit_degradation(
         self,
@@ -176,6 +192,46 @@ class OutcomeTracker:
         return DegradationAlert(
             runs_inspected=len(ratios),
             median_ratio=median,
+            suggestion=suggestion,
+        )
+
+    def _detect_balance_stagnation(
+        self,
+        window: int,
+    ) -> DegradationAlert | None:
+        """Catch silent failures on low-yield sites where credit-ratio
+        skips because expected_pt is below the noise threshold.
+
+        Looks at the most recent ``window`` runs that have a computable
+        balance delta and fires when every one of them shows zero or
+        negative growth. One positive delta in the window resets the
+        alert — that's a confirmed signal the pipeline is alive.
+
+        Tuned for amefri's 1pt/day login bonus + 30-day milestone:
+        a full window of flat balance means even the milestone jump
+        didn't land, so credit is genuinely silent.
+        """
+        runs = self.recent(window * 2)
+        deltas: list[int] = []
+        for r in runs:
+            delta = r.get("actual_pt_delta")
+            if not isinstance(delta, int):
+                continue
+            deltas.append(delta)
+        deltas = deltas[-window:]
+        if len(deltas) < window:
+            return None
+        if not all(d <= 0 for d in deltas):
+            return None
+        suggestion = (
+            f"連続 {window} 回、balance 増加なし (yield 観測ゼロ)。"
+            "ログインボーナス未受領・milestone 未到達の可能性。"
+            "(1) ブラウザでマイページを確認 (2) Cookie 失効なら再エクスポートして "
+            "<SITE>_COOKIES Secret を更新 (3) ガチャ等のサイト内導線変更も疑う"
+        )
+        return DegradationAlert(
+            runs_inspected=len(deltas),
+            median_ratio=0.0,
             suggestion=suggestion,
         )
 
