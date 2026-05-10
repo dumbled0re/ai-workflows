@@ -143,8 +143,8 @@ class OutcomeTracker:
             f"連続 {window} 回、加算比率が {ratio_threshold:.0%} 未満。"
             "Cookie 失効 or 既クリック URL の再クリックの可能性。"
             "(1) ブラウザでマイページを確認 (2) Cookie を再エクスポートして "
-            "MOPPY_COOKIES Secret を更新 (3) 治らなければ MOPPY_CRON_MODE "
-            "Variable を削除して extract モードに戻してください。"
+            "<SITE>_COOKIES Secret を更新 (3) 治らなければ GitHub Actions "
+            "UI で workflow を一旦 disable して原因切り分けしてください。"
         )
         return DegradationAlert(
             runs_inspected=len(ratios),

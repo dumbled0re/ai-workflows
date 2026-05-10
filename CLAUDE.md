@@ -289,7 +289,6 @@ codex review path/to/file.py
 | `SLACK_CHANNEL_STOCK` | 株分析の通知先チャンネル |
 | `GMAIL_USER` / `GMAIL_APP_PASSWORD` | モッピーメール受信用 |
 | `MOPPY_COOKIES` | モッピーログイン済み Cookie の JSON 配列。未設定時は匿名でアクセスし **ポイントが加算されない** |
-| `vars.MOPPY_CRON_MODE` | （Variable）`click` で cron を credited auto-click モードに切替。未設定 or `extract` で extract-links モード（暫定） |
 
 ### Slack通知の方針
 - 全プロジェクトで **Bot Token方式**（`SLACK_BOT_TOKEN` + `SLACK_CHANNEL_<PROJECT>`）に統一済み。1個のBot Tokenを共有し、チャンネルだけ分ける。

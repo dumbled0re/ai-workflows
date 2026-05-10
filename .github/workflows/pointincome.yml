@@ -2,14 +2,9 @@ name: pointincome
 
 # ポイントインカム click-coin email automation. Daily cron at JST 8:15 AM
 # (15 min offset from moppy.yml so the two sites' traffic is staggered
-# and looks less bot-y to anti-fraud systems). Mode follows the same
-# vars.POINTINCOME_CRON_MODE pattern as Moppy: 'click' enables credited
-# auto-click, anything else (including unset) keeps cron in extract-
-# links mode.
-#
-# Until POINTINCOME_COOKIES is registered the click path will abort
-# fast — by design — so a half-configured deployment doesn't silently
-# generate uncredited HTTP traffic.
+# and looks less bot-y to anti-fraud systems). Cron always runs in
+# click (credited) mode using POINTINCOME_COOKIES; verify_login aborts
+# fast if cookies are missing or stale.
 
 on:
   schedule:

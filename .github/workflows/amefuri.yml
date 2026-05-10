@@ -3,15 +3,9 @@ name: amefuri
 # アメフリ daily-bonus endpoint poll. Daily cron at JST 9:15 AM (offset
 # from moppy 8:00 / pointincome 8:15 / hapitas 8:30 / chobirich 8:45 /
 # gendama 9:00 so per-IP traffic is spread across an hour rather than a
-# minute). Mode follows the same vars.AMEFURI_CRON_MODE pattern: 'click'
-# enables credited auto-click, anything else keeps cron in extract-links
-# mode.
-#
-# Until AMEFURI_COOKIES is registered the click path aborts fast (no
-# uncredited HTTP traffic). The endpoint URL in adapters/amefuri/
-# is a placeholder pending discover; first credited run after cookie
-# registration should be done in extract-links mode and verified
-# against balance delta before flipping to click mode.
+# minute). Cron always runs in click (credited) mode using
+# AMEFURI_COOKIES; verify_login aborts fast if cookies are missing or
+# stale.
 
 on:
   schedule:

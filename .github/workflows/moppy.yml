@@ -5,13 +5,10 @@ name: moppy
 # logged-in session (Cookie persistence in actions/cache), and posts a
 # verified summary to Slack.
 #
-# Mode is controlled by vars.MOPPY_CRON_MODE:
-#   - 'click': credited auto-click using MOPPY_COOKIES Secret. Aborts the
-#     run if MOPPY_COOKIES is not registered (verify_login fails).
-#   - unset / anything else: extract-links mode — posts the full URLs to
-#     Slack so the user clicks them manually. No state mutations.
+# Cron always runs in click (credited) mode using MOPPY_COOKIES; the
+# run aborts fast if cookies are missing or stale (verify_login).
 #
-# workflow_dispatch overrides the cron mode per-run for dry-run / extract /
+# workflow_dispatch overrides the cron path per-run for dry-run / extract /
 # discover / single-URL inspection. discover and inspect_url are read-only
 # recon shortcuts that never touch state or labels.
 
