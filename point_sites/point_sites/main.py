@@ -539,10 +539,21 @@ def cmd_run(
                 page = bc.goto(cfg.adapter.takarakuji_exchange_url)
                 exchanged = False
                 try:
+                    # Let JS finish wiring up the wizard click handlers
+                    # before we start firing clicks; Playwright's
+                    # networkidle stops at "no requests" but jQuery $()
+                    # bindings can run a beat after.
+                    page.wait_for_timeout(2000)
                     for step_idx, (selector, repeat) in enumerate(cfg.adapter.takarakuji_exchange_clicks):
                         for _ in range(repeat):
+                            # Fire via JS click() instead of synthetic
+                            # mouse events: hapitas's wizard binds via
+                            # jQuery .click() handlers, and the element-
+                            # is-not-visible check fights us when the
+                            # panel hasn't slid in yet. dispatch_event
+                            # directly invokes the bound handler.
                             try:
-                                page.click(selector, timeout=5000, force=True)
+                                page.dispatch_event(selector, "click", timeout=5000)
                             except Exception as exc:
                                 logger.warning(
                                     "takarakuji step %d (%s) failed: %s",
@@ -551,7 +562,7 @@ def cmd_run(
                                     exc,
                                 )
                                 raise
-                            page.wait_for_timeout(400)
+                            page.wait_for_timeout(300)
                         # Longer wait between steps to let the panel
                         # animation settle before the next selector
                         # becomes actionable.
