@@ -9,6 +9,7 @@ logic so the threshold math doesn't silently drift.
 from datetime import UTC, datetime
 
 from point_sites.common.outcome_tracker import (
+    CLICK_FAILURE_WINDOW,
     DEGRADATION_RATIO_THRESHOLD,
     DEGRADATION_WINDOW,
     Outcome,
@@ -113,6 +114,71 @@ def test_threshold_boundary(tmp_path) -> None:
     delta_at_threshold = int(10 * DEGRADATION_RATIO_THRESHOLD)
     for _ in range(DEGRADATION_WINDOW):
         tracker.append(_outcome(expected=10, before=100, after=100 + delta_at_threshold))
+    assert tracker.detect_degradation() is None
+
+
+def test_click_failure_alert_triggers_for_balance_blind_sites(tmp_path) -> None:
+    """When balance can't be scraped (pointincome), the click-failure
+    fallback should still fire if every recent click 4xx/5xx'd."""
+    tracker = OutcomeTracker(tmp_path / "outcomes.jsonl")
+    # All HTTP failures, no balance available — credit detector skips,
+    # click-failure detector fires.
+    for _ in range(CLICK_FAILURE_WINDOW):
+        tracker.append(
+            Outcome(
+                timestamp=datetime.now(UTC),
+                mode="click",
+                messages_found=2,
+                click_success=0,
+                click_fail=2,
+                expected_pt=0,
+                balance_before=None,
+                balance_after=None,
+            ),
+        )
+    alert = tracker.detect_degradation()
+    assert alert is not None
+    assert "HTTP 失敗" in alert.suggestion
+    assert alert.runs_inspected == CLICK_FAILURE_WINDOW
+
+
+def test_click_failure_alert_skipped_when_no_clicks(tmp_path) -> None:
+    """Runs with zero click attempts don't count toward the click-failure
+    window — otherwise quiet days would accumulate false signal."""
+    tracker = OutcomeTracker(tmp_path / "outcomes.jsonl")
+    for _ in range(CLICK_FAILURE_WINDOW):
+        tracker.append(
+            Outcome(
+                timestamp=datetime.now(UTC),
+                mode="click",
+                messages_found=0,
+                click_success=0,
+                click_fail=0,
+                expected_pt=0,
+                balance_before=None,
+                balance_after=None,
+            ),
+        )
+    assert tracker.detect_degradation() is None
+
+
+def test_click_failure_alert_skipped_when_any_click_succeeded(tmp_path) -> None:
+    """One successful click in the window means the pipeline is alive."""
+    tracker = OutcomeTracker(tmp_path / "outcomes.jsonl")
+    # Two failed runs, one with a single success — should not fire.
+    for success, fail in [(0, 2), (1, 1), (0, 2)]:
+        tracker.append(
+            Outcome(
+                timestamp=datetime.now(UTC),
+                mode="click",
+                messages_found=success + fail,
+                click_success=success,
+                click_fail=fail,
+                expected_pt=0,
+                balance_before=None,
+                balance_after=None,
+            ),
+        )
     assert tracker.detect_degradation() is None
 
 
