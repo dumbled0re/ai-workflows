@@ -550,13 +550,20 @@ def cmd_run(
                     cookies=_jar_to_cookies(clicker),
                     default_cookie_domain=default_domain,
                 ) as bc:
-                    page = bc.goto(wizard.url)
+                    # Use domcontentloaded instead of the default
+                    # networkidle: ad-heavy mypages (pointtown carries
+                    # Criteo + doubleclick polling iframes that never
+                    # settle) blow past the 30s timeout otherwise. The
+                    # wizard's click targets are server-rendered, so
+                    # the DOM being ready is enough; jQuery handlers
+                    # bind a beat later — covered by the explicit wait
+                    # below.
+                    page = bc.goto(wizard.url, wait_until="domcontentloaded")
                     completed = False
                     try:
                         # Let JS finish wiring up the wizard click handlers
-                        # before we start firing clicks; Playwright's
-                        # networkidle stops at "no requests" but jQuery $()
-                        # bindings can run a beat after.
+                        # before we start firing clicks; jQuery $()
+                        # bindings can run a beat after DOM-ready.
                         page.wait_for_timeout(2000)
                         for step_idx, (selector, repeat) in enumerate(wizard.clicks):
                             for _ in range(repeat):
