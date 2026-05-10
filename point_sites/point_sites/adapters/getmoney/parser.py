@@ -27,12 +27,20 @@ from ...common.models import ClickCandidate
 
 logger = logging.getLogger(__name__)
 
-# TEMPORARY: ultra-wide pattern for first-mail discovery. Once we see
-# what dietnavi click-coin URLs actually look like in the wild, narrow
-# this to the real path (e.g. ``/pc/click/c\?...``) so shopping/login
-# URLs aren't accidentally picked up.
+# Best-guess click-coin URL pattern. The 2 confirmed mails so far
+# are registration mails (仮登録 / 本登録) not click-coin mails, so
+# this remains unverified — refine after the first real click-mail
+# lands. Likely candidates given the dietnavi URL space:
+#   /pc/click/...
+#   /pc/cc/...
+#   /pc/c.php?...
+#   /pc/access.php?...
+# Keep moderately wide for now; the EXCLUSION_URL_RE below filters
+# out obvious non-click paths (login / regist / faq / unsubscribe).
 CLICK_COIN_URL_RE: Final[re.Pattern[str]] = re.compile(
-    r"https://(?:[a-z0-9-]+\.)?(?:dietnavi\.com|getmoney\.jp)/[A-Za-z0-9+/=_\-?&%.#]+"
+    r"https?://(?:[a-z0-9-]+\.)?(?:dietnavi\.com|getmoney\.jp)"
+    r"/(?:pc/)?(?:click|cc|access|c\.php|access\.php|track|jump_click|click_jump)"
+    r"[A-Za-z0-9+/=_\-?&%.]*"
 )
 
 # Standard callout shapes across major Japanese point sites. Refine
@@ -42,10 +50,12 @@ CALLOUT_RE: Final[re.Pattern[str]] = re.compile(
 )
 CALLOUT_WINDOW_CHARS: Final[int] = 200
 
-# URLs to exclude even if they match the click pattern.
+# URLs to exclude even if they match the click pattern. Includes
+# the /pc/regist endpoint observed in the 2026-05-10 仮登録 mail —
+# it's an auth confirmation URL, never a click-coin URL.
 EXCLUSION_URL_RE: Final[re.Pattern[str]] = re.compile(
-    r"https://(?:[a-z0-9-]+\.)?(?:dietnavi\.com|getmoney\.jp)"
-    r"/(?:login|logout|entrance|faq|help|contact|opt|unsubscribe)",
+    r"https?://(?:[a-z0-9-]+\.)?(?:dietnavi\.com|getmoney\.jp)"
+    r"/(?:pc/)?(?:login|logout|entrance|faq|help|contact|opt|unsubscribe|regist|withdraw|policy|terms)",
     re.IGNORECASE,
 )
 
@@ -81,17 +91,6 @@ def parse(body: str, is_html: bool = False) -> tuple[list[ClickCandidate], list[
     text = _to_plaintext(body, is_html=is_html)
     if not text.strip():
         return [], [str(ParseAnomaly(kind="empty_body", detail="no text content"))]
-
-    # TEMP DEBUG: dump first ~500 chars + every URL found in the body
-    # to surface what dietnavi click-mails actually look like. Remove
-    # once the click-coin URL pattern is confirmed.
-    all_urls = re.findall(r"https?://[^\s\"'<>]+", text)
-    logger.warning(
-        "[getmoney debug] body head=%r url_count=%d urls=%s",
-        text[:300].replace("\n", " "),
-        len(all_urls),
-        all_urls[:20],
-    )
 
     candidates: list[ClickCandidate] = []
     seen_urls: set[str] = set()
