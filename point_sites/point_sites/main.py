@@ -540,11 +540,22 @@ def cmd_run(
                 exchanged = False
                 try:
                     page.click(cfg.adapter.takarakuji_exchange_open_selector, timeout=5000)
-                    # The open click reveals the confirm panel via JS
-                    # animation; waiting one tick lets the next selector
-                    # become click-actionable before we go for it.
-                    page.wait_for_timeout(800)
-                    page.click(cfg.adapter.takarakuji_exchange_confirm_selector, timeout=5000)
+                    # The confirm panel slides in via a CSS animation
+                    # that leaves the target anchor in DOM but not
+                    # actionable for a beat. wait_for_selector with
+                    # state=visible polls past the animation, then
+                    # force=True bypasses any lingering pointer-events
+                    # interception from sibling panels.
+                    page.wait_for_selector(
+                        cfg.adapter.takarakuji_exchange_confirm_selector,
+                        state="visible",
+                        timeout=5000,
+                    )
+                    page.click(
+                        cfg.adapter.takarakuji_exchange_confirm_selector,
+                        timeout=5000,
+                        force=True,
+                    )
                     # Settle for the exchange XHR + the success-pane
                     # render so the next page.close doesn't tear down
                     # mid-flight.
