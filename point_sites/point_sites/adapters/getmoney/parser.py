@@ -82,6 +82,17 @@ def parse(body: str, is_html: bool = False) -> tuple[list[ClickCandidate], list[
     if not text.strip():
         return [], [str(ParseAnomaly(kind="empty_body", detail="no text content"))]
 
+    # TEMP DEBUG: dump first ~500 chars + every URL found in the body
+    # to surface what dietnavi click-mails actually look like. Remove
+    # once the click-coin URL pattern is confirmed.
+    all_urls = re.findall(r"https?://[^\s\"'<>]+", text)
+    logger.warning(
+        "[getmoney debug] body head=%r url_count=%d urls=%s",
+        text[:300].replace("\n", " "),
+        len(all_urls),
+        all_urls[:20],
+    )
+
     candidates: list[ClickCandidate] = []
     seen_urls: set[str] = set()
     unconfirmed_urls: list[str] = []
