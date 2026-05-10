@@ -134,7 +134,73 @@ def _verify_login(clicker: Clicker, cfg: Config) -> bool:
     return clicker.verify_login(cfg.adapter.mypage_url, cfg.adapter.login_keyword)
 
 
+def _jar_to_cookies(clicker: Clicker) -> list[dict[str, object]]:
+    """Project the live ``requests.Session`` jar into the persisted shape.
+
+    Same shape as ``cookie_store.save_jar`` writes — name/value/domain/
+    path/secure — so ``BrowserClicker`` can be initialized from a Clicker
+    session without going through disk.
+    """
+    out: list[dict[str, object]] = []
+    for c in clicker.session.cookies:
+        out.append(
+            {
+                "name": c.name,
+                "value": c.value,
+                "domain": c.domain or "",
+                "path": c.path or "/",
+                "secure": bool(c.secure),
+            },
+        )
+    return out
+
+
+def _merge_browser_cookies(clicker: Clicker, browser_cookies: list[dict[str, object]]) -> None:
+    """Merge cookies rotated by a BrowserClicker session back into Clicker.
+
+    Without this the click loop and the persisted jar would lose any
+    Set-Cookie updates the browser saw — and BrowserClicker is the one
+    most likely to trip JS-driven anti-bot rotations. Same .set() pattern
+    Clicker.__init__ uses so the cookie semantics stay identical.
+    """
+    for c in browser_cookies:
+        name = str(c.get("name", ""))
+        if not name:
+            continue
+        clicker.session.cookies.set(
+            name,
+            str(c.get("value", "")),
+            domain=str(c.get("domain", "")),
+            path=str(c.get("path", "/")),
+            secure=bool(c.get("secure", True)),
+        )
+
+
 def _fetch_balance(clicker: Clicker, cfg: Config) -> int | None:
+    if cfg.adapter.balance_uses_browser:
+        # Lazy import keeps Playwright off the import path of adapters
+        # that don't opt in (no chromium download cost on those runs).
+        from urllib.parse import urlparse
+
+        from .common.browser import BrowserClicker
+
+        host = urlparse(cfg.adapter.mypage_url).hostname or ""
+        default_domain = "." + (host.split(".", 1)[-1] if "." in host else host)
+        browser_cookies_in = _jar_to_cookies(clicker)
+        try:
+            with BrowserClicker(
+                cookies=browser_cookies_in,
+                default_cookie_domain=default_domain,
+            ) as bc:
+                balance = bc.fetch_balance(
+                    cfg.adapter.mypage_url,
+                    patterns=cfg.adapter.balance_patterns,
+                )
+                _merge_browser_cookies(clicker, bc.export_cookies())
+        except Exception as exc:
+            logger.warning("browser balance fetch failed: %s", exc)
+            return None
+        return balance
     return fetch_balance(
         clicker.session,
         cfg.adapter.mypage_url,

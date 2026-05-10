@@ -3,19 +3,12 @@
 Status: cookies + auth verified 2026-05-09. Click-coin email pipeline
 ready (waiting for first real mail to validate regex).
 
-**Known limitation — balance scrape unavailable**: pointincome serves a
-"コンテンツブロッカー" warning page (``/information.php?cn=2&sn=1``) to
-non-browser HTTP clients on every authenticated mypage URL we tried
-(``/my/my_page.php``, ``/exchange/pts_exchange_top.php``,
-``sp.pointi.jp/`` and others, 2026-05-09). The session cookies are
-valid (header shows logged-in nav with ログアウト link), but the body
-is the warning page and never the real mypage. Without a way past the
-JS-driven detection, ``fetch_balance`` returns None and the orchestrator's
-degradation alert is inactive for pointincome. The actual click-coin
-URLs in emails route through different server-side paths, so the email
-→ click pipeline can still credit even though balance verification is
-blind. Outcome tracking still records HTTP success/fail (a less
-reliable proxy for credit landing).
+Balance scraping was originally blocked by a "コンテンツブロッカー"
+warning page (``/information.php?cn=2&sn=1``) served to non-browser
+HTTP clients. ``balance_uses_browser=True`` (Phase 2) routes balance
+fetches through Playwright Chromium instead, which renders past the
+JS detection. Click-coin URL clicking still uses the cheaper
+``Clicker`` path — only the balance step pays the browser launch cost.
 
 Required Secrets to enable:
   - ``POINTINCOME_COOKIES`` — JSON array exported from a logged-in
@@ -50,4 +43,5 @@ ADAPTER = Adapter(
         "https://pointi.jp/my/my_page.php",
         "https://pointi.jp/daily.php",
     ),
+    balance_uses_browser=True,
 )

@@ -61,6 +61,14 @@ class Adapter:
     # Read-only discover crawl seeds
     discover_seeds: tuple[str, ...] = field(default_factory=tuple)
 
+    # Use ``BrowserClicker`` (Playwright Chromium) for balance scraping
+    # instead of the default ``balance.fetch_balance`` HTTP path. Set
+    # for sites whose mypage gates non-JS HTTP clients with an anti-bot
+    # interstitial (e.g. pointincome's "コンテンツブロッカー" page).
+    # Click-coin URL clicking continues to use ``Clicker`` regardless;
+    # only the balance verification step is upgraded to a real browser.
+    balance_uses_browser: bool = False
+
     @property
     def env_prefix(self) -> str:
         """For env-var naming: prefix uppercase of ``name``."""
