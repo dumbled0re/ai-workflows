@@ -80,6 +80,17 @@ class Adapter:
     # action shape.
     browser_actions: tuple[BrowserAction, ...] = field(default_factory=tuple)
 
+    # Daily-rotating banner URLs to discover via Playwright then click
+    # via Clicker. Used for sites where the click targets change daily
+    # and aren't surfaced over plain HTTP (e.g. hapitas's 8 top-page
+    # 宝くじ交換券 banners that only render after JS hydration).
+    # ``daily_banner_url`` is the page to discover from; the matching
+    # selector is used as ``page.query_selector_all`` and every href
+    # gathered is sent through ``Clicker.click`` so the existing
+    # tracking + outcome pipeline records each.
+    daily_banner_url: str | None = None
+    daily_banner_selector: str | None = None
+
     @property
     def env_prefix(self) -> str:
         """For env-var naming: prefix uppercase of ``name``."""

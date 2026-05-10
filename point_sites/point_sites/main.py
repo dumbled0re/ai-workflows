@@ -454,6 +454,63 @@ def cmd_run(
     finally:
         source.close()
 
+    # Discover daily-rotating banner URLs (e.g. hapitas top-page
+    # 宝くじ交換券 click_get banners) via Playwright and feed them
+    # through the existing Clicker pipeline so each click is tracked
+    # alongside the email-driven clicks. Skipped on dry/extract runs.
+    if (
+        cfg.adapter.daily_banner_url
+        and cfg.adapter.daily_banner_selector
+        and not dry_run
+        and not extract_links
+        and clicker is not None
+        and clicker.authenticated
+    ):
+        from urllib.parse import urljoin, urlparse
+
+        from .common.browser import BrowserClicker
+
+        host = urlparse(cfg.adapter.mypage_url).hostname or ""
+        default_domain = "." + (host.split(".", 1)[-1] if "." in host else host)
+        try:
+            with BrowserClicker(
+                cookies=_jar_to_cookies(clicker),
+                default_cookie_domain=default_domain,
+            ) as bc:
+                page = bc.goto(cfg.adapter.daily_banner_url)
+                try:
+                    anchors = page.query_selector_all(cfg.adapter.daily_banner_selector)
+                    raw_hrefs = [a.get_attribute("href") for a in anchors]
+                    # The site renders relative hrefs (``/item/redirect-...``);
+                    # urljoin against the inspect URL keeps host-only banners
+                    # attached to the right host.
+                    discovered = [urljoin(cfg.adapter.daily_banner_url, h) for h in raw_hrefs if h]
+                    # De-dupe while preserving discovery order. Hapitas
+                    # renders both the banner image link and a separate
+                    # dialog link to the same target — clicking once is
+                    # all the credit we'll get.
+                    seen: set[str] = set()
+                    unique_hrefs: list[str] = []
+                    for href in discovered:
+                        if href not in seen:
+                            seen.add(href)
+                            unique_hrefs.append(href)
+                finally:
+                    page.close()
+                _merge_browser_cookies(clicker, bc.export_cookies())
+            logger.info("discovered %d unique daily banners", len(unique_hrefs))
+            for href in unique_hrefs:
+                candidate = ClickCandidate(
+                    url=href,  # type: ignore[arg-type]
+                    anchor_text="<daily_banner>",
+                    extraction_reason="daily_banner_discover",
+                )
+                result = clicker.click(candidate)
+                all_results.append(result)
+                clicker.sleep_between()
+        except Exception as exc:
+            logger.warning("daily banner discover/click failed: %s", exc)
+
     # Run any browser-driven daily actions (login bonus visits, gacha
     # spins, banner clicks). One Chromium boot covers all of them so
     # the per-action overhead stays low. Skipped on dry/extract runs

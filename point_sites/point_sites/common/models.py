@@ -18,6 +18,7 @@ ClickStatus = Literal[
 ExtractionReason = Literal[
     "whitelist_url_pattern",
     "whitelist_url_pattern_and_anchor",
+    "daily_banner_discover",
 ]
 
 
