@@ -83,8 +83,39 @@ uv run mypy point_sites          # point_sites のみ
 
 - **memory** (`~/.claude/projects/.../memory/`) → Claude が独断で書いて OK (個人観察、commit されない)
 - **CLAUDE.md** (このファイル + `point_sites/CLAUDE.md` 等) → repo の正規ルール、commit されて他環境にも伝播 → **必ず user に提案して合意してから commit**
+- **`~/.claude/CLAUDE.md` (user-global) は触らない** — Claude が独断で作成 / 編集禁止。「個人ポリシーだから global に置こう」という発想は NG。repo のルールは複数 repo で重複していても各 repo の CLAUDE.md に書く
 
 判断に迷ったら memory 側に書いて、user に「次の機会に CLAUDE.md にも書くか相談したい」と伝える。
+
+## codex とのコラボ (= 不安なときだけ呼ぶ)
+
+codex は **「不安なとき / 相談したいときの seconding 相手」**。**毎回の reflexive な review は不要** — Claude 側の判断を放棄するだけで時間と token のコストに見合わない。
+
+**呼ぶ:** 複数案あって甲乙つけがたいアーキテクチャ判断 / 外部 API・認証フロー・secrets まわりの落とし穴の独立確認 / HTML・フォーム解析など壊れやすい外部依存導入直後 / 「これでいいはずだけど念のため」な non-trivial 変更。
+
+**呼ばない:** lint/format/mypy/test 全 green な小〜中規模 refactor / 既存パターンの延長 (新 adapter 等) / bug fix・typo・docs 更新 / 自分で論理的に納得できる変更。
+
+```bash
+codex exec "<相談内容>"             # 設計相談
+codex review --uncommitted          # コード review (git add 後)
+codex review path/to/file.py        # ファイル単位 review
+```
+
+指摘されたら: 同意 → 直して commit / 不同意 → 理由を user に説明、最終決定は user。
+
+## handoff の自動起動
+
+長時間セッションで context が圧迫してきたら **Claude は許可を求めず handoff skill を即実行する**。
+
+**自動 handoff トリガー (どれか1つで即実行):**
+1. **Context budget 警告** — system reminder で context 残量警告が出た時
+2. **大きな作業の完結** — implementation / debugging / migration が commit + push まで完了したタイミング
+3. **user の区切り発言** — 「疲れた」「一旦切る」「ここまで」「お疲れ」「明日続ける」等
+4. **大きな作業の入口で context 残量が乏しい時** (Claude 自己判断) — 新サイト追加・大規模 refactor・複数 phase 跨ぎ実装で現セッションで完走できないと判断したら、user 発言を待たず先に handoff してから着手
+
+**実行手順:** (1) handoff skill を invoke (許可確認しない) → (2) HANDOFF.md 作成 + memory 更新 → (3) resume prompt を chat に出力 → (4) user に「`/clear` してから resume prompt を貼って」と通知。User の手動操作は最終的に **`/clear` + paste の 1 ステップ**だけ。
+
+詳細は `.claude/skills/handoff/SKILL.md` 参照。
 
 ## 必要な Secrets
 
