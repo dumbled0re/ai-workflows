@@ -17,21 +17,22 @@ stock_analyzer/data/meta.json
 tech_catchup/data/tech_catchup_prompt.txt
 tech_catchup/data/tech_catchup_result.json
 
-# ─── Moppy Clicker ───
-moppy_clicker/.venv/
-moppy_clicker/data/
-moppy_clicker/secrets/
-moppy_clicker/**/token.json
-moppy_clicker/**/credentials.json
-moppy_clicker/.ruff_cache/
-moppy_clicker/.pytest_cache/
+# ─── Point Sites ───
+point_sites/data/
+point_sites/secrets/
+point_sites/**/token.json
+point_sites/**/credentials.json
 
 # ─── Common ───
 __pycache__/
 *.pyc
+*.pyo
 .env
 .venv/
 .claude/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
 
 # Transient handover docs (per-session only, deleted after read)
 HANDOFF.md
