@@ -24,6 +24,7 @@ Bring-up flow: identical to other adapters. See HANDOFF.md "新しい
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
 from ...common.sources import GmailSource
+from ...common.wizard import DailyWizard
 from .parser import parse as parse_email
 
 ADAPTER = Adapter(
@@ -62,11 +63,16 @@ ADAPTER = Adapter(
     # to drain more tickets per run; 次へ advances to the ``_10``
     # confirmation; 交換する fires the AJAX. 30 Up clicks caps at the
     # user's actual ticket balance — extras hit a disabled max.
-    takarakuji_exchange_url="https://hapitas.jp/minitakarakuji/",
-    takarakuji_exchange_clicks=(
-        ("#apart_ctrl", 1),
-        ("#up_takarakuji_exchange_08", 30),
-        ("#takarakuji_exchange_btn_next_08", 1),
-        ("#takarakuji_exchange_btn_exchanges_10", 1),
+    daily_wizards=(
+        DailyWizard(
+            name="hapitas_takarakuji_exchange",
+            url="https://hapitas.jp/minitakarakuji/",
+            clicks=(
+                ("#apart_ctrl", 1),
+                ("#up_takarakuji_exchange_08", 30),
+                ("#takarakuji_exchange_btn_next_08", 1),
+                ("#takarakuji_exchange_btn_exchanges_10", 1),
+            ),
+        ),
     ),
 )

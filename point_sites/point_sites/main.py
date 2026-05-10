@@ -526,15 +526,13 @@ def cmd_run(
         except Exception as exc:
             logger.warning("daily banner discover/click failed: %s", exc)
 
-    # Convert hapitas-style 宝くじ交換券 into lottery numbers — runs
-    # right after the banner click loop so the day's freshly-earned
-    # tickets land in the same drawing window. Multi-step UI; each
-    # configured (selector, repeat_count) advances the wizard one
-    # screen. force=True bypasses the pointer-events interception
-    # from sibling panels during slide-in animations.
+    # Run each configured DailyWizard (e.g. hapitas takarakuji exchange,
+    # pointtown login bonus modal). Each wizard gets its own Chromium
+    # session so a stuck panel in one doesn't poison another. dispatch_event
+    # bypasses pointer-events interception from sibling panels during
+    # the wizard's slide-in animations.
     if (
-        cfg.adapter.takarakuji_exchange_url
-        and cfg.adapter.takarakuji_exchange_clicks
+        cfg.adapter.daily_wizards
         and not dry_run
         and not extract_links
         and clicker is not None
@@ -546,53 +544,58 @@ def cmd_run(
 
         host = urlparse(cfg.adapter.mypage_url).hostname or ""
         default_domain = "." + (host.split(".", 1)[-1] if "." in host else host)
-        try:
-            with BrowserClicker(
-                cookies=_jar_to_cookies(clicker),
-                default_cookie_domain=default_domain,
-            ) as bc:
-                page = bc.goto(cfg.adapter.takarakuji_exchange_url)
-                exchanged = False
-                try:
-                    # Let JS finish wiring up the wizard click handlers
-                    # before we start firing clicks; Playwright's
-                    # networkidle stops at "no requests" but jQuery $()
-                    # bindings can run a beat after.
-                    page.wait_for_timeout(2000)
-                    for step_idx, (selector, repeat) in enumerate(cfg.adapter.takarakuji_exchange_clicks):
-                        for _ in range(repeat):
-                            # Fire via JS click() instead of synthetic
-                            # mouse events: hapitas's wizard binds via
-                            # jQuery .click() handlers, and the element-
-                            # is-not-visible check fights us when the
-                            # panel hasn't slid in yet. dispatch_event
-                            # directly invokes the bound handler.
-                            try:
-                                page.dispatch_event(selector, "click", timeout=5000)
-                            except Exception as exc:
-                                logger.warning(
-                                    "takarakuji step %d (%s) failed: %s",
-                                    step_idx,
-                                    selector,
-                                    exc,
-                                )
-                                raise
-                            page.wait_for_timeout(300)
-                        # Longer wait between steps to let the panel
-                        # animation settle before the next selector
-                        # becomes actionable.
-                        page.wait_for_timeout(800)
-                    # Final settle for the exchange XHR + success pane.
-                    page.wait_for_timeout(2500)
-                    exchanged = True
-                except Exception:
-                    pass
-                finally:
-                    page.close()
-                _merge_browser_cookies(clicker, bc.export_cookies())
-            logger.info("takarakuji exchange %s", "succeeded" if exchanged else "failed")
-        except Exception as exc:
-            logger.warning("takarakuji exchange session failed: %s", exc)
+        for wizard in cfg.adapter.daily_wizards:
+            try:
+                with BrowserClicker(
+                    cookies=_jar_to_cookies(clicker),
+                    default_cookie_domain=default_domain,
+                ) as bc:
+                    page = bc.goto(wizard.url)
+                    completed = False
+                    try:
+                        # Let JS finish wiring up the wizard click handlers
+                        # before we start firing clicks; Playwright's
+                        # networkidle stops at "no requests" but jQuery $()
+                        # bindings can run a beat after.
+                        page.wait_for_timeout(2000)
+                        for step_idx, (selector, repeat) in enumerate(wizard.clicks):
+                            for _ in range(repeat):
+                                # Fire via JS handler instead of synthetic
+                                # mouse events: most wizards bind via
+                                # jQuery .click() handlers and the
+                                # element-is-not-visible check fights us
+                                # when the panel hasn't slid in yet.
+                                try:
+                                    page.dispatch_event(selector, "click", timeout=5000)
+                                except Exception as exc:
+                                    logger.warning(
+                                        "%s wizard step %d (%s) failed: %s",
+                                        wizard.name,
+                                        step_idx,
+                                        selector,
+                                        exc,
+                                    )
+                                    raise
+                                page.wait_for_timeout(300)
+                            # Longer wait between steps to let the panel
+                            # animation settle before the next selector
+                            # becomes actionable.
+                            page.wait_for_timeout(800)
+                        # Final settle for the credit XHR + success pane.
+                        page.wait_for_timeout(2500)
+                        completed = True
+                    except Exception:
+                        pass
+                    finally:
+                        page.close()
+                    _merge_browser_cookies(clicker, bc.export_cookies())
+                logger.info(
+                    "%s wizard %s",
+                    wizard.name,
+                    "succeeded" if completed else "failed",
+                )
+            except Exception as exc:
+                logger.warning("%s wizard session failed: %s", wizard.name, exc)
 
     # Run any browser-driven daily actions (login bonus visits, gacha
     # spins, banner clicks). One Chromium boot covers all of them so

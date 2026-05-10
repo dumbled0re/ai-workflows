@@ -19,6 +19,7 @@ from re import Pattern
 from typing import TYPE_CHECKING
 
 from .browser_action import BrowserAction
+from .wizard import DailyWizard
 
 if TYPE_CHECKING:
     from .sources import ClickUrlSource
@@ -91,13 +92,13 @@ class Adapter:
     daily_banner_url: str | None = None
     daily_banner_selector: str | None = None
 
-    # Daily lottery-ticket exchange (hapitas mini takarakuji style).
-    # Multi-step UI: each tuple in ``takarakuji_exchange_clicks`` is a
-    # (selector, repeat_count) — Playwright clicks the selector N
-    # times with a short wait between, advancing the UI through its
-    # mode → count → confirm → exchange flow. Empty tuple = no exchange.
-    takarakuji_exchange_url: str | None = None
-    takarakuji_exchange_clicks: tuple[tuple[str, int], ...] = ()
+    # Multi-step browser-driven daily wizards (hapitas takarakuji
+    # exchange, pointtown login bonus modal, etc). Each DailyWizard
+    # declares its own URL + click sequence; cmd_run runs all of them
+    # in independent Chromium sessions between the click loop and
+    # balance_after. Fail-soft: a missing button times out and the
+    # wizard logs a warning without aborting the run.
+    daily_wizards: tuple[DailyWizard, ...] = field(default_factory=tuple)
 
     @property
     def env_prefix(self) -> str:

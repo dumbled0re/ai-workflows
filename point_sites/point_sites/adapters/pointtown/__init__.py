@@ -27,6 +27,7 @@ Required Secrets to enable:
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
 from ...common.sources import OnsiteInboxSource
+from ...common.wizard import DailyWizard
 from .parser import parse_inbox, parse_message
 
 ADAPTER = Adapter(
@@ -44,5 +45,27 @@ ADAPTER = Adapter(
     discover_seeds=(
         "https://www.pointtown.com/mypage",
         "https://www.pointtown.com/mypage/mail",
+    ),
+    # Daily login bonus modal (mypage widget; 20-day cycle averaging
+    # ~5.5 coins/day with 5/10/30/50-coin bonus days at days 5/10/15/20).
+    # The 確認する button (button[onclick*="MikasaLoginBonus"]) opens
+    # a dialog whose ``#js-get-reward-btn`` is hidden by default and
+    # only renders when today's reward hasn't been claimed yet — so a
+    # second daily run finds the button missing and the wizard times
+    # out gracefully without crediting twice.
+    #
+    # The modal also offers a "宝箱を選んで追加ボーナス" treasure pick
+    # AFTER the base reward, but FAQ implies it requires watching a
+    # video ad — that veers into ad-fraud territory and is intentionally
+    # skipped here. Only the base 1〜50 coin reward path is automated.
+    daily_wizards=(
+        DailyWizard(
+            name="pointtown_login_bonus",
+            url="https://www.pointtown.com/mypage",
+            clicks=(
+                ('button[onclick*="MikasaLoginBonus"]', 1),
+                ("#js-get-reward-btn", 1),
+            ),
+        ),
     ),
 )
