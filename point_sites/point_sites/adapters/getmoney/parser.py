@@ -161,6 +161,15 @@ def parse_message(body: str, is_html: bool = False) -> tuple[list[ClickCandidate
     crediting behaviour (no public FAQ rule confirms multi-URL handling
     on getmoney; the safe default mirrors pointtown's "one click per
     message" assumption).
+
+    **Callout is required.** GetMoney! delivers two URL kinds into the
+    same inbox: real click-coin URLs (carry a ``クリックで「N」Ptゲット``
+    callout near the anchor) and survey-invitation URLs (no
+    クリック-prefixed callout — credit is contingent on completing the
+    survey, which we cannot and should not automate). Dropping
+    no-callout URLs avoids spending click attempts on survey shells
+    that won't credit and would otherwise drag down the credit-ratio
+    detector with false-positive failures.
     """
     if not body.strip():
         return [], ["empty message body"]
@@ -174,36 +183,41 @@ def parse_message(body: str, is_html: bool = False) -> tuple[list[ClickCandidate
 
     candidates: list[ClickCandidate] = []
     seen_urls: set[str] = set()
+    skipped_no_callout = 0
     distinct_extra = 0
     for match in _CLICK_COIN_URL_RE.finditer(text):
         url = match.group(0)
         if url in seen_urls:
             continue
         seen_urls.add(url)
-        if candidates:
-            distinct_extra += 1
-            continue
+        # Search both ahead of and behind the URL — getmoney click-coin
+        # mails sometimes place ``クリックで1Ptゲット`` above the anchor.
         window_end = min(len(callout_text), match.end() + _CALLOUT_WINDOW_CHARS)
         callout = _CALLOUT_RE.search(callout_text[match.end() : window_end])
-        # Also try a window before the URL — getmoney sometimes places
-        # the "クリックで1Ptゲット" line above the URL anchor rather than
-        # below.
         if callout is None:
             window_start = max(0, match.start() - _CALLOUT_WINDOW_CHARS)
             callout = _CALLOUT_RE.search(callout_text[window_start : match.start()])
-        estimated_points: int | None = None
-        if callout is not None:
-            try:
-                estimated_points = int(callout.group(1))
-            except ValueError:
-                estimated_points = None
+        if callout is None:
+            # Survey-invitation URL or other non-click-coin shell —
+            # clicking would not credit (survey requires completion)
+            # and could spam the survey provider. Drop it so the click
+            # pipeline only runs on real click-coin items.
+            skipped_no_callout += 1
+            continue
+        if candidates:
+            distinct_extra += 1
+            continue
+        try:
+            estimated_points = int(callout.group(1))
+        except ValueError:
+            estimated_points = None
         try:
             candidate = ClickCandidate.model_validate(
                 {
                     "url": url,
-                    "anchor_text": (callout.group(0) if callout else "<onsite_inbox_message>"),
+                    "anchor_text": callout.group(0),
                     "estimated_points": estimated_points,
-                    "extraction_reason": ("whitelist_url_pattern_and_anchor" if callout else "whitelist_url_pattern"),
+                    "extraction_reason": "whitelist_url_pattern_and_anchor",
                 }
             )
         except ValueError as exc:
@@ -212,7 +226,12 @@ def parse_message(body: str, is_html: bool = False) -> tuple[list[ClickCandidate
         candidates.append(candidate)
 
     anomalies: list[str] = []
-    if not candidates and len(text) > 800:
+    # Pure survey-invitation messages (no callout near any URL) are a
+    # legitimate "skip this batch" case — don't anomaly-flag them, just
+    # let the orchestrator mark them no-credit so they don't get
+    # re-processed. Only flag when neither a candidate nor a
+    # skipped-survey URL was found in a non-trivially-sized body.
+    if not candidates and not skipped_no_callout and len(text) > 800:
         anomalies.append("no click-coin URLs matched message regex (HTML may have changed)")
     if distinct_extra:
         anomalies.append(
