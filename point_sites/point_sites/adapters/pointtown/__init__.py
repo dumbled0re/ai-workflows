@@ -24,6 +24,8 @@ Required Secrets to enable:
   - ``SLACK_CHANNEL_POINTTOWN`` — Slack channel ID or ``#name``.
 """
 
+import re
+
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
 from ...common.sources import OnsiteInboxSource
@@ -41,7 +43,18 @@ ADAPTER = Adapter(
         parse_inbox=parse_inbox,
         parse_message=parse_message,
     ),
-    balance_patterns=DEFAULT_BALANCE_PATTERNS,
+    # Click-coin URLs credit コイン (not ポイント — 10 coins auto-convert
+    # to 1 pt). The mypage header shows both labels, but the default
+    # 保有ポイント patterns hit the ポイント count first (always 0 for
+    # short-term click activity) and miss the actual signal we need to
+    # detect crediting. ``c-coin-large-label`` is the coin counter
+    # widget; this site-specific regex takes precedence over the
+    # defaults so degradation alerts fire when click-coin clicks stop
+    # crediting.
+    balance_patterns=(
+        re.compile(r'class="c-coin-large-label"[^>]*>\s*([0-9,]+)'),
+        *DEFAULT_BALANCE_PATTERNS,
+    ),
     discover_seeds=(
         "https://www.pointtown.com/mypage",
         "https://www.pointtown.com/mypage/mail",
