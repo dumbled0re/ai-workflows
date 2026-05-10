@@ -333,7 +333,14 @@ def cmd_run(
         if notifier:
             notifier.send_auth_error(msg)
         return 1
-    if not dry_run and not extract_links and clicker is not None and clicker.authenticated:
+    # Cookie health check runs regardless of mode (click / extract /
+    # dry-run) so silent expiry never goes unreported. Click mode
+    # exits 1 because anonymous-but-marked-clicks would block retries;
+    # extract / dry-run continue (no side effects from a stale-cookie
+    # read), but Slack still gets the auth_error so the operator knows
+    # to rotate the Secret. Adapters without cookies skip verify
+    # entirely.
+    if clicker is not None and clicker.authenticated and not dry_run:
         if not _verify_login(clicker, cfg):
             msg = (
                 f"{cfg.adapter.site_label} login verification failed: cookies are stale or invalid. "
@@ -342,11 +349,16 @@ def cmd_run(
             logger.error(msg)
             if notifier:
                 notifier.send_auth_error(msg)
-            return 1
-        logger.info("%s login verified — clicks will be credited to the account", cfg.adapter.site_label)
-        # Persist immediately after the verify_login GET so the rotated
-        # cookies survive even if a later step crashes.
-        _persist_cookies(clicker, cfg)
+            if not extract_links:
+                return 1
+        else:
+            logger.info(
+                "%s login verified — clicks will be credited to the account",
+                cfg.adapter.site_label,
+            )
+            # Persist immediately after the verify_login GET so the rotated
+            # cookies survive even if a later step crashes.
+            _persist_cookies(clicker, cfg)
 
     # Capture the pre-click balance so the post-run summary can prove
     # whether points actually credited. Only meaningful in real click mode;
