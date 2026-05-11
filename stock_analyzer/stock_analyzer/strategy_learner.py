@@ -123,6 +123,25 @@ def format_strategy_notes_for_prompt(notes_data: dict) -> str:
     return "\n".join(lines)
 
 
+def _signal_efficacy_block(predictions_history: dict) -> str:
+    """Build the signal-efficacy section for the weekly review prompt.
+
+    Pulled out so callers that don't have predictions_history (older
+    fixtures, edge cases) just get an empty string instead of an import
+    cycle through performance_tracker.
+    """
+    try:
+        from stock_analyzer.performance_tracker import (
+            compute_signal_efficacy,
+            format_signal_efficacy,
+        )
+
+        efficacy = compute_signal_efficacy(predictions_history)
+        return format_signal_efficacy(efficacy)
+    except Exception:
+        return ""
+
+
 def build_weekly_review_prompt(predictions_history: dict, strategy_notes: dict) -> str:
     """Build the prompt for Claude's weekly strategy review.
 
@@ -230,6 +249,11 @@ def build_weekly_review_prompt(predictions_history: dict, strategy_notes: dict) 
                 f"信頼度:{p.get('confidence', '?')} "
                 f"[{p['date']}]\n"
             )
+
+    # Signal efficacy — per-screening-signal realised win rate
+    efficacy_block = _signal_efficacy_block(predictions_history)
+    if efficacy_block:
+        prompt += "\n" + efficacy_block + "\n"
 
     # Current strategy notes
     if current_notes:

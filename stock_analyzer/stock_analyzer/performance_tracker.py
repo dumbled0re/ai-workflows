@@ -142,6 +142,7 @@ def save_new_predictions(
     discovery_result: dict,
     current_prices: dict[str, float],
     today: str | None = None,
+    signal_components: dict[str, dict[str, bool]] | None = None,
 ) -> dict:
     """Extract new predictions from Claude's analysis results and add to history.
 
@@ -157,6 +158,7 @@ def save_new_predictions(
     """
     if today is None:
         today = datetime.now().strftime("%Y-%m-%d")
+    sig_lookup = signal_components or {}
 
     new_count = 0
 
@@ -196,6 +198,7 @@ def save_new_predictions(
                 "actual_return_pct": None,
                 "reviewed_date": None,
                 "days_held": None,
+                "signal_components": sig_lookup.get(ticker, {}),
             }
         )
         new_count += 1
@@ -239,6 +242,7 @@ def save_new_predictions(
                 "actual_return_pct": None,
                 "reviewed_date": None,
                 "days_held": None,
+                "signal_components": sig_lookup.get(ticker, {}),
             }
         )
         new_count += 1
@@ -278,6 +282,7 @@ def save_new_predictions(
                 "actual_return_pct": None,
                 "reviewed_date": None,
                 "days_held": None,
+                "signal_components": sig_lookup.get(ticker, {}),
             }
         )
         new_count += 1
@@ -444,6 +449,98 @@ def compute_performance_stats(history: dict) -> dict:
         }
 
     return stats
+
+
+def compute_signal_efficacy(history: dict, min_samples: int = 5) -> dict[str, dict]:
+    """For each screening signal, compute the realised win rate of predictions
+    whose entry was scored with that signal firing.
+
+    Only resolved predictions (status ∈ {"win", "loss"}) that carry a
+    ``signal_components`` payload are counted. Below ``min_samples``
+    resolved trades, a signal is suppressed from the result to avoid
+    noise-driven conclusions. Output shape::
+
+        {
+            "volume_spike": {
+                "with_signal": {"total": 12, "wins": 9, "accuracy_pct": 75.0},
+                "without_signal": {"total": 40, "wins": 18, "accuracy_pct": 45.0},
+                "lift_pct": 30.0,   # wins% with - wins% without
+            },
+            ...
+        }
+
+    The ``lift_pct`` is the most actionable column for tuning weights:
+    positive means "predictions WITH this signal won more often than
+    those without". Strong positive lift → weight up; negative → weight
+    down or drop.
+    """
+    resolved = [
+        p
+        for p in history.get("predictions", [])
+        if p.get("status") in ("win", "loss") and isinstance(p.get("signal_components"), dict)
+    ]
+    if not resolved:
+        return {}
+
+    # Collect every signal we've ever recorded so absence vs presence
+    # can be reported per signal.
+    all_signals: set[str] = set()
+    for p in resolved:
+        for name, fired in p["signal_components"].items():
+            if fired:
+                all_signals.add(name)
+
+    result: dict[str, dict] = {}
+    for signal in sorted(all_signals):
+        with_signal = [p for p in resolved if p["signal_components"].get(signal)]
+        without_signal = [p for p in resolved if not p["signal_components"].get(signal)]
+        if len(with_signal) < min_samples or len(without_signal) < min_samples:
+            continue
+        with_wins = sum(1 for p in with_signal if p["status"] == "win")
+        without_wins = sum(1 for p in without_signal if p["status"] == "win")
+        with_acc = with_wins / len(with_signal) * 100
+        without_acc = without_wins / len(without_signal) * 100
+        result[signal] = {
+            "with_signal": {
+                "total": len(with_signal),
+                "wins": with_wins,
+                "accuracy_pct": round(with_acc, 1),
+            },
+            "without_signal": {
+                "total": len(without_signal),
+                "wins": without_wins,
+                "accuracy_pct": round(without_acc, 1),
+            },
+            "lift_pct": round(with_acc - without_acc, 1),
+        }
+    return result
+
+
+def format_signal_efficacy(efficacy: dict[str, dict]) -> str:
+    """Render signal efficacy as a prompt-injection block.
+
+    Lift_pct > 0 → 「この signal は実勝率を押し上げている」、
+    lift_pct < 0 → 「この signal は実勝率を下げているので外す候補」.
+    The weekly review prompt consumes this to tune screening_weights
+    using data instead of intuition.
+    """
+    if not efficacy:
+        return ""
+    lines = ["=== シグナル別 実勝率 (signal efficacy) ==="]
+    lines.append("各 screening signal について、その signal が fire した予測の勝率と、")
+    lines.append("fire しなかった予測の勝率を比較。lift = with - without (正なら有効、負なら有害)")
+    sorted_signals = sorted(efficacy.items(), key=lambda kv: kv[1]["lift_pct"], reverse=True)
+    for signal, stats in sorted_signals:
+        ws = stats["with_signal"]
+        wo = stats["without_signal"]
+        lift = stats["lift_pct"]
+        icon = "📈" if lift > 5 else ("📉" if lift < -5 else "➖")
+        lines.append(
+            f"{icon} {signal}: with {ws['accuracy_pct']}%({ws['total']}件) "
+            f"vs without {wo['accuracy_pct']}%({wo['total']}件) → lift {lift:+.1f}%"
+        )
+    lines.append("→ lift が大きい signal の重みを screening_weights で増やし、負の signal は重みを下げてください")
+    return "\n".join(lines)
 
 
 def format_performance_feedback(history: dict) -> str:

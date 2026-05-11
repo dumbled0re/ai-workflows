@@ -59,12 +59,16 @@ def screen_stocks(
 
     logger.info("Data fetched: %d successful, %d failed", total_screened, failed_count)
 
-    # Score each stock
-    scored: list[tuple[str, float]] = []
+    # Score each stock. ``components`` records which signals fired so
+    # the per-signal efficacy analyzer can group future outcomes by
+    # active signal and report which ones actually correlate with wins.
+    scored: list[tuple[str, float, dict[str, bool]]] = []
     for ticker, df in data_dict.items():
         try:
-            score = compute_screening_score(df, fundamentals=fundamentals.get(ticker), weights=screening_weights)
-            scored.append((ticker, score))
+            score, components = compute_screening_score(
+                df, fundamentals=fundamentals.get(ticker), weights=screening_weights
+            )
+            scored.append((ticker, score, components))
         except Exception:
             logger.warning("Scoring failed for %s", ticker, exc_info=True)
 
@@ -81,7 +85,7 @@ def screen_stocks(
 
     # Phase 2: Compute full indicators for top candidates
     candidates: list[dict] = []
-    for ticker, score in top_candidates:
+    for ticker, score, components in top_candidates:
         df = data_dict.get(ticker)
         if df is None:
             continue
@@ -94,6 +98,7 @@ def screen_stocks(
                 fundamentals=fundamentals.get(ticker),
             )
             summary["screening_score"] = score
+            summary["signal_components"] = components
             summary["sector"] = info.get("sector", "不明")
             candidates.append(summary)
         except Exception:

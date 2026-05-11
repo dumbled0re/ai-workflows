@@ -348,6 +348,19 @@ def phase_prepare() -> None:
     with open(meta_dir / "portfolio_aux.json", "w", encoding="utf-8") as f:
         json.dump(portfolio_aux, f, ensure_ascii=False)
 
+    # Save signal components per ticker so Phase 3 can attach them to
+    # each saved prediction. Ties the screening signals that fired at
+    # entry to the eventual win/loss outcome — the data input that
+    # ``compute_signal_efficacy`` consumes for per-signal win-rate
+    # reporting in the weekly review prompt.
+    signal_components_by_ticker: dict[str, dict[str, bool]] = {}
+    for c in screened_candidates:
+        comps = c.get("signal_components")
+        if comps:
+            signal_components_by_ticker[c["ticker"]] = dict(comps)
+    with open(meta_dir / "signal_components.json", "w", encoding="utf-8") as f:
+        json.dump(signal_components_by_ticker, f, ensure_ascii=False)
+
     logger.info("Phase 1 complete. Prompt file ready for Claude Code Action.")
 
 
@@ -396,8 +409,25 @@ def phase_notify() -> None:
         except Exception:
             pass
 
+    # Load signal components saved in phase_prepare so each new
+    # prediction can record which screening signals fired at entry.
+    signal_components: dict[str, dict[str, bool]] = {}
+    signal_path = _DATA_DIR / "signal_components.json"
+    if signal_path.exists():
+        try:
+            with open(signal_path, encoding="utf-8") as f:
+                signal_components = json.load(f)
+        except Exception:
+            logger.warning("Failed to load signal_components.json", exc_info=True)
+
     if current_prices:
-        perf_history = save_new_predictions(perf_history, holdings_result, discovery_result, current_prices)
+        perf_history = save_new_predictions(
+            perf_history,
+            holdings_result,
+            discovery_result,
+            current_prices,
+            signal_components=signal_components,
+        )
         save_history(perf_history)
         logger.info("New predictions saved to tracking history")
     else:

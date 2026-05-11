@@ -138,10 +138,20 @@ def compute_indicators(
     return summary
 
 
-def compute_screening_score(df: pd.DataFrame, fundamentals: dict | None = None, weights: dict | None = None) -> float:
-    """Compute a quick screening score for stock discovery.
+def compute_screening_score(
+    df: pd.DataFrame,
+    fundamentals: dict | None = None,
+    weights: dict | None = None,
+) -> tuple[float, dict[str, bool]]:
+    """Compute a quick screening score + per-signal breakdown.
 
-    Uses lightweight technical indicators and optional fundamental data.
+    Returns ``(score, components)`` where ``components`` maps signal name
+    to ``True`` when that signal fired for this stock. The breakdown is
+    forwarded to ``predictions_history`` so the post-hoc signal-efficacy
+    analyzer can group resolved trades by which signals were active and
+    compute per-signal win rate. That feedback (which signal actually
+    correlates with positive outcomes) is what makes the screening
+    weights tunable from data instead of intuition.
     """
     # Default weights (can be tuned by strategy_learner)
     w = {
@@ -161,6 +171,7 @@ def compute_screening_score(df: pd.DataFrame, fundamentals: dict | None = None, 
         w.update(weights)
 
     score = 0.0
+    components: dict[str, bool] = {}
     close = df["Close"].astype(float)
     volume = df["Volume"].astype(float)
 
@@ -169,13 +180,16 @@ def compute_screening_score(df: pd.DataFrame, fundamentals: dict | None = None, 
     if rsi is not None:
         if 30 <= rsi <= 50:
             score += w["rsi_oversold_recovery"]  # Oversold recovery
+            components["rsi_oversold_recovery"] = True
         elif 50 < rsi <= 65:
             score += w["rsi_healthy_momentum"]  # Healthy momentum
+            components["rsi_healthy_momentum"] = True
 
     # Volume spike
     vol_ratio = _safe_volume_ratio(volume)
     if vol_ratio is not None and vol_ratio > 1.5:
         score += w["volume_spike"]
+        components["volume_spike"] = True
 
     # SMA25 breakout in last 3 days
     sma_25 = _safe_sma(close, 25)
@@ -193,6 +207,7 @@ def compute_screening_score(df: pd.DataFrame, fundamentals: dict | None = None, 
         )
         if breakout:
             score += w["sma25_breakout"]
+            components["sma25_breakout"] = True
 
     # MACD histogram turning positive
     _, _, hist = _safe_macd(close)
@@ -204,35 +219,42 @@ def compute_screening_score(df: pd.DataFrame, fundamentals: dict | None = None, 
             curr = hist_series.dropna().iloc[-1]
             if prev < 0 and curr > 0:
                 score += w["macd_crossover"]
+                components["macd_crossover"] = True
 
     # Near Bollinger Band lower (within 5%)
     _, _, _bb_lower, bb_pos = _safe_bollinger(close)
     if bb_pos is not None and bb_pos <= 0.15:
         score += w["bollinger_lower"]
+        components["bollinger_lower"] = True
 
     # Fundamental scoring (when available)
     if fundamentals:
         per = fundamentals.get("trailingPE")
         if per is not None and 0 < per < 15:
             score += w["per_value"]  # Value stock
+            components["per_value"] = True
 
         pbr = fundamentals.get("priceToBook")
         if pbr is not None and 0 < pbr < 1.0:
             score += w["pbr_undervalued"]  # Undervalued
+            components["pbr_undervalued"] = True
 
         roe = fundamentals.get("returnOnEquity")
         if roe is not None and roe > 0.10:
             score += w["roe_profitable"]  # Profitable (raw value is ratio, 0.10 = 10%)
+            components["roe_profitable"] = True
 
         div_yield = fundamentals.get("dividendYield")
         if div_yield is not None and div_yield > 3.0:
             score += w["dividend_yield"]  # Income stock (yfinance returns percentage, 3.0 = 3%)
+            components["dividend_yield"] = True
 
         rev_growth = fundamentals.get("revenueGrowth")
         if rev_growth is not None and rev_growth > 0.05:
             score += w["revenue_growth"]  # Growing (raw value is ratio, 0.05 = 5%)
+            components["revenue_growth"] = True
 
-    return score
+    return score, components
 
 
 # --- Private helpers ---
