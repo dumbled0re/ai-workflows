@@ -11,6 +11,11 @@ stock_analyzer/data/portfolio_aux.json
 stock_analyzer/data/portfolio_findings.json
 stock_analyzer/data/signal_components.json
 stock_analyzer/data/universe_diff.json
+stock_analyzer/data/critic_prompt.txt
+stock_analyzer/data/critique_result.json
+stock_analyzer/data/critic_summary.json
+stock_analyzer/data/holdings_result.pre_critique.json
+stock_analyzer/data/discovery_result.pre_critique.json
 # Persistent files are tracked:
 # stock_analyzer/data/predictions_history.json
 # stock_analyzer/data/strategy_notes.json

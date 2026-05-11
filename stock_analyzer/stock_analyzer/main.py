@@ -418,6 +418,105 @@ def phase_prepare() -> None:
     logger.info("Phase 1 complete. Prompt file ready for Claude Code Action.")
 
 
+def phase_critique() -> None:
+    """Phase 2.5: Build a critic prompt that re-evaluates the first-pass picks.
+
+    Reads the holdings + discovery results that Claude Code Action wrote
+    in Phase 2 and emits ``data/critic_prompt.txt`` for a second AI
+    invocation. Fail-soft on every leg: a missing or malformed input
+    just leaves no prompt file, which makes the downstream
+    ``phase-apply-critique`` step a no-op and the original picks flow
+    unchanged to Slack.
+    """
+    import json
+
+    from stock_analyzer.ai_analyzer import load_analysis_results
+    from stock_analyzer.critic import build_critic_prompt
+
+    holdings_result, discovery_result = load_analysis_results()
+
+    # Reuse the same performance_feedback the first-pass AI saw so the
+    # critic shares one frame of reference for "is this fingerprint
+    # similar to past winners?" — embedded in analysis_input.json so we
+    # don't reload the history file separately.
+    performance_block = ""
+    input_path = _DATA_DIR / "analysis_input.json"
+    if input_path.exists():
+        try:
+            with open(input_path, encoding="utf-8") as f:
+                ai = json.load(f)
+            # Strip out the per-ticker data sections; the critic only
+            # needs the performance / few-shot block from each prompt.
+            # Both prompts share the same performance_feedback text, so
+            # one extraction suffices.
+            holdings_prompt = ai.get("holdings_prompt", "")
+            marker = "=== あなたの過去の予測パフォーマンス ==="
+            if marker in holdings_prompt:
+                start = holdings_prompt.index(marker)
+                end = holdings_prompt.find("=== 保有銘柄 ===", start)
+                if end < 0:
+                    end = len(holdings_prompt)
+                performance_block = holdings_prompt[start:end].strip()
+        except Exception:
+            logger.warning("Failed to extract performance_block for critic", exc_info=True)
+
+    prompt_text = build_critic_prompt(holdings_result, discovery_result, performance_block)
+    out_path = _DATA_DIR / "critic_prompt.txt"
+    out_path.parent.mkdir(exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(prompt_text)
+    logger.info("Critic prompt saved to %s", out_path)
+
+
+def phase_apply_critique() -> None:
+    """Phase 2.7: Apply critic verdicts to holdings_result / discovery_result.
+
+    Reads ``critique_result.json`` produced by the critic AI step,
+    rewrites the two result files in place with downgraded / rejected
+    picks adjusted, and stashes a Slack-ready summary string for
+    ``phase-notify`` to surface alongside the analysis.
+
+    No-op safe: missing critique file, malformed JSON, empty critiques
+    array, or unknown verdicts all leave the original results
+    untouched. The summary is also persisted so phase-notify can pick
+    it up without re-running the critique logic.
+    """
+    import json
+
+    from stock_analyzer.ai_analyzer import load_analysis_results
+    from stock_analyzer.critic import apply_critique, format_summary_for_slack, load_critique_result
+
+    holdings_result, discovery_result = load_analysis_results()
+    critique_result = load_critique_result(_DATA_DIR / "critique_result.json")
+
+    holdings_result, discovery_result, summary = apply_critique(holdings_result, discovery_result, critique_result)
+
+    # Persist updated results so phase-notify reads the critique-adjusted
+    # picks. Original first-pass output is backed up alongside for
+    # post-mortem comparison.
+    holdings_path = _DATA_DIR / "holdings_result.json"
+    discovery_path = _DATA_DIR / "discovery_result.json"
+    if holdings_path.exists():
+        backup = _DATA_DIR / "holdings_result.pre_critique.json"
+        backup.write_text(holdings_path.read_text(encoding="utf-8"), encoding="utf-8")
+    if discovery_path.exists():
+        backup = _DATA_DIR / "discovery_result.pre_critique.json"
+        backup.write_text(discovery_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+    with open(holdings_path, "w", encoding="utf-8") as f:
+        json.dump(holdings_result, f, ensure_ascii=False, indent=2)
+    with open(discovery_path, "w", encoding="utf-8") as f:
+        json.dump(discovery_result, f, ensure_ascii=False, indent=2)
+
+    summary_text = format_summary_for_slack(summary)
+    with open(_DATA_DIR / "critic_summary.json", "w", encoding="utf-8") as f:
+        json.dump({"summary": summary, "text": summary_text}, f, ensure_ascii=False)
+    if summary_text:
+        logger.info("Critic verdicts applied: %s", summary_text)
+    else:
+        logger.info("Critic produced no actionable verdicts (no-op)")
+
+
 def phase_notify() -> None:
     """Phase 3: Read Claude's analysis results, save predictions, send to Slack."""
     import json
@@ -567,6 +666,23 @@ def phase_notify() -> None:
         else:
             portfolio_findings_text = universe_text
 
+    # Critic summary — only present when apply-critique ran in this cron.
+    # Surfaced in the same operational-warnings block so the operator
+    # can see at a glance whether picks were downgraded or rejected.
+    critic_summary_path = _DATA_DIR / "critic_summary.json"
+    if critic_summary_path.exists():
+        try:
+            with open(critic_summary_path, encoding="utf-8") as f:
+                cs = json.load(f)
+            critic_text = (cs.get("text") or "").strip()
+            if critic_text:
+                if portfolio_findings_text:
+                    portfolio_findings_text = (portfolio_findings_text + "\n\n" + critic_text).strip()
+                else:
+                    portfolio_findings_text = critic_text
+        except Exception:
+            logger.exception("Failed to load critic summary; continuing without it")
+
     # Send to Slack
     success = send_analysis_to_slack(
         bot_token=slack_token,
@@ -679,9 +795,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="JP Stock Analyzer")
     parser.add_argument(
         "phase",
-        choices=["prepare", "notify", "review", "apply-review", "notify-save-failure"],
+        choices=[
+            "prepare",
+            "critique",
+            "apply-critique",
+            "notify",
+            "review",
+            "apply-review",
+            "notify-save-failure",
+        ],
         help=(
             "Phase to run: 'prepare' (fetch data & build prompts), "
+            "'critique' (build critic prompt from first-pass results), "
+            "'apply-critique' (apply critic verdicts to results), "
             "'notify' (send results to Slack), "
             "'review' (build weekly review prompt), "
             "'apply-review' (apply review results), "
@@ -692,6 +818,10 @@ def main() -> None:
 
     if args.phase == "prepare":
         phase_prepare()
+    elif args.phase == "critique":
+        phase_critique()
+    elif args.phase == "apply-critique":
+        phase_apply_critique()
     elif args.phase == "notify":
         phase_notify()
     elif args.phase == "review":
