@@ -138,6 +138,19 @@ def phase_prepare() -> None:
     logger.info("Fetching market context...")
     market_context = fetch_market_context()
     market_context_text = format_market_context(market_context)
+
+    # Calendar/seasonality context (earnings concentration windows,
+    # dividend ex-date approach, year-end thinning, GW, summer doldrums).
+    # Append to the same block so the AI sees it inline with the
+    # price-based regime.
+    from stock_analyzer.calendar_context import detect_calendar_signals, format_signals_for_prompt
+
+    calendar_signals = detect_calendar_signals(now_jst.date())
+    if calendar_signals:
+        market_context_text = market_context_text + "\n\n" + format_signals_for_prompt(calendar_signals)
+        logger.info(
+            "Calendar signals: %d active (%s)", len(calendar_signals), ", ".join(s.kind for s in calendar_signals)
+        )
     logger.info("Market context ready")
 
     # Fetch market news
