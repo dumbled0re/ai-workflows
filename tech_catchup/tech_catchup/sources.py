@@ -911,19 +911,30 @@ def fetch_github_trending_buzz(max_items: int = 10) -> list[dict]:
     return fetch_github_trending_ai(max_items=max_items)
 
 
+_RSSHUB_MIRRORS = [
+    "https://rsshub.app",
+    "https://rsshub.atgw.io",
+    "https://rss.shab.fun",
+    "https://rsshub.rssforever.com",
+    "https://rsshub.feeded.xyz",
+]
+
+
 def fetch_x_ai_buzz(max_items: int = 10) -> list[dict]:
     """Best-effort X / Twitter signal via RSSHub public mirrors.
 
-    X has no free programmatic access tier, so we rely on RSSHub's
-    bridge for a handful of high-signal AI accounts. RSSHub mirrors
-    are flaky and rate-limited; each request silently fails to an
-    empty result on timeout or non-200, and the caller treats absence
-    of data as "no Twitter buzz this run". This is acceptable: HN
-    and GitHub Trending cover most of the real buzz independently.
+    X has no free programmatic access tier; we try a small set of
+    public RSSHub mirrors in order and take the first one that
+    responds. Every mirror is flaky in its own way (rate-limited,
+    cookie-locked, occasionally down) so the fallback chain is what
+    keeps this source useful — when *all* mirrors fail we log once
+    and return [], and the caller treats absence as "no Twitter
+    buzz this run". HN / Reddit / GitHub Trending cover most of the
+    real buzz independently.
 
     Accounts chosen for high signal per post (rather than volume) —
-    Anthropic / OpenAI / Google official + a few engineering voices
-    who consistently surface AI tool news first.
+    Anthropic / OpenAI / Google official + engineering voices who
+    consistently surface AI tool news first.
     """
     accounts = [
         "AnthropicAI",
@@ -934,17 +945,37 @@ def fetch_x_ai_buzz(max_items: int = 10) -> list[dict]:
         "swyx",
         "alexalbert__",  # Anthropic developer relations
     ]
+
+    # Pick a working RSSHub mirror with one probe request. Anything
+    # else is wasted retries; if the chosen mirror later fails on a
+    # specific account we just skip that account.
+    working_mirror = None
+    for mirror in _RSSHUB_MIRRORS:
+        try:
+            probe = requests.get(
+                f"{mirror}/twitter/user/{accounts[0]}",
+                headers=_HEADERS,
+                timeout=6,
+            )
+            if probe.status_code == 200 and "<item" in probe.text:
+                working_mirror = mirror
+                break
+        except Exception:
+            continue
+    if not working_mirror:
+        logger.info("fetch_x_ai_buzz: 0 items — no RSSHub mirror responded with feed data")
+        return []
+
     out: list[dict] = []
-    # Trim per-account requests aggressively — even 1 successful
-    # account is useful, and a slow RSSHub mirror shouldn't block
-    # the rest of the gather pipeline.
-    per_request_timeout = 5
+    per_request_timeout = 6
+    # Walk remaining accounts on the chosen mirror. Don't re-probe;
+    # whatever fails fails.
     for account in accounts:
         if len(out) >= max_items:
             break
         try:
             resp = requests.get(
-                f"https://rsshub.app/twitter/user/{account}",
+                f"{working_mirror}/twitter/user/{account}",
                 headers=_HEADERS,
                 timeout=per_request_timeout,
             )
@@ -973,14 +1004,106 @@ def fetch_x_ai_buzz(max_items: int = 10) -> list[dict]:
                 if len(out) >= max_items:
                     break
         except Exception:
-            # RSSHub down / rate-limited / network hiccup — silently
-            # skip this account. Don't log per-account because the
-            # mirror dies daily and the noise drowns the run log.
             continue
     if out:
-        logger.info("fetch_x_ai_buzz: %d items via RSSHub", len(out))
+        logger.info("fetch_x_ai_buzz: %d items via %s", len(out), working_mirror)
     else:
-        logger.info("fetch_x_ai_buzz: 0 items (RSSHub unavailable or no AI-tagged posts)")
+        logger.info("fetch_x_ai_buzz: 0 items (mirror responded to probe but no AI-tagged posts)")
+    return out
+
+
+def fetch_reddit_ai_buzz(
+    max_items: int = 12,
+    per_sub_cap: int = 3,
+    min_score: int = 100,
+    min_comments: int = 30,
+) -> list[dict]:
+    """High-karma AI community discussions from Reddit JSON API.
+
+    Six subreddits where Claude / Codex / Gemini conversations actually
+    happen, hit via Reddit's free JSON top-of-day endpoint. Per-sub
+    cap forces diversity: without it, r/ClaudeAI alone tends to
+    dominate the buzz section with memes and personal anecdotes (it's
+    the most active sub by volume), drowning out actual technical
+    discussion in r/LocalLLaMA / r/MachineLearning / r/Bard.
+
+    Endpoint choice: ``top.json?t=day`` instead of ``hot.json``. Hot
+    blends recency into the score; top-of-day surfaces only the
+    posts the community actually upvoted hard in the last 24 hours,
+    which trims meme posts that get there on novelty alone.
+
+    Filters:
+    - score >= ``min_score`` OR num_comments >= ``min_comments``
+    - title passes ``_is_ai_related`` (defensive — sub is AI-themed)
+    - skip stickied / NSFW posts
+    - per-sub cap ensures source diversity
+    """
+    subs = [
+        "ClaudeAI",
+        "OpenAI",
+        "LocalLLaMA",
+        "MachineLearning",
+        "Bard",  # Gemini discussions live here
+        "singularity",
+    ]
+    out: list[dict] = []
+    headers = {
+        **_HEADERS,
+        # Reddit blocks generic UA strings. A descriptive one stays
+        # under the radar and is honest.
+        "User-Agent": "ai-workflows/0.1 (tech_catchup digest, github.com/dumbled0re/ai-workflows)",
+    }
+    for sub in subs:
+        if len(out) >= max_items:
+            break
+        try:
+            resp = requests.get(
+                f"https://www.reddit.com/r/{sub}/top.json",
+                headers=headers,
+                params={"limit": 15, "t": "day"},
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                logger.debug("reddit %s returned %d", sub, resp.status_code)
+                continue
+            data = resp.json()
+            sub_taken = 0
+            for child in data.get("data", {}).get("children", []):
+                if sub_taken >= per_sub_cap:
+                    break
+                if len(out) >= max_items:
+                    break
+                post = child.get("data", {})
+                if post.get("stickied") or post.get("over_18"):
+                    continue
+                score = int(post.get("score", 0))
+                comments = int(post.get("num_comments", 0))
+                if score < min_score and comments < min_comments:
+                    continue
+                title = post.get("title", "")
+                if not _is_ai_related(title):
+                    continue
+                permalink = post.get("permalink", "")
+                out.append(
+                    {
+                        "title": title,
+                        "url": f"https://www.reddit.com{permalink}" if permalink else (post.get("url") or ""),
+                        "score": score,
+                        "comments": comments,
+                        "source": f"r/{sub}",
+                    }
+                )
+                sub_taken += 1
+        except Exception as e:
+            logger.debug("reddit fetch failed for r/%s: %s", sub, e)
+            continue
+    logger.info(
+        "fetch_reddit_ai_buzz: %d items (per-sub cap=%d, min_score=%d) across %d subs",
+        len(out),
+        per_sub_cap,
+        min_score,
+        len(subs),
+    )
     return out
 
 
@@ -988,10 +1111,12 @@ def format_buzz_layer(
     hn: list[dict],
     trending: list[dict],
     x_buzz: list[dict],
+    reddit: list[dict] | None = None,
 ) -> str:
-    """Render the AI-buzz layer (HN high-score + Trending + X) as a
+    """Render the AI-buzz layer (HN + Trending + X + Reddit) as a
     prompt block distinct from the focused tool updates."""
-    if not hn and not trending and not x_buzz:
+    reddit = reddit or []
+    if not hn and not trending and not x_buzz and not reddit:
         return ""
     parts: list[str] = []
     if hn:
@@ -999,6 +1124,14 @@ def format_buzz_layer(
         for item in hn:
             parts.append(
                 f"- [{item.get('score', 0)}pts, {item.get('comments', 0)}comments] {item.get('title', '')}\n"
+                f"  URL: {item.get('url', '')}"
+            )
+    if reddit:
+        parts.append("\n=== Reddit (AI subreddit ホット) ===")
+        for item in reddit:
+            parts.append(
+                f"- [{item.get('source', '')}, {item.get('score', 0)}pts, "
+                f"{item.get('comments', 0)}comments] {item.get('title', '')}\n"
                 f"  URL: {item.get('url', '')}"
             )
     if trending:

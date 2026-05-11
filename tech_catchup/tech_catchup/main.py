@@ -35,6 +35,7 @@ def phase_gather() -> None:
         fetch_focused_tool_updates,
         fetch_github_trending_buzz,
         fetch_hn_ai_buzz,
+        fetch_reddit_ai_buzz,
         fetch_x_ai_buzz,
         format_buzz_layer,
         format_focused_updates,
@@ -57,6 +58,7 @@ def phase_gather() -> None:
     #    are "what's hot now" signals that change throughout the day).
     updates = fetch_focused_tool_updates(lookback_hours=lookback_hours)
     hn_buzz = fetch_hn_ai_buzz(min_score=50, min_comments=30, max_items=10)
+    reddit_buzz = fetch_reddit_ai_buzz(max_items=12)
     trending = fetch_github_trending_buzz(max_items=10)
     x_buzz = fetch_x_ai_buzz(max_items=8)
 
@@ -69,17 +71,17 @@ def phase_gather() -> None:
     if sentinel_path.exists():
         sentinel_path.unlink()
 
-    has_any = bool(updates) or bool(hn_buzz) or bool(trending) or bool(x_buzz)
+    has_any = bool(updates) or bool(hn_buzz) or bool(reddit_buzz) or bool(trending) or bool(x_buzz)
     if not has_any:
         logger.info(
-            "No focused updates / HN buzz / trending / X buzz in last %dh — skipping AI + Slack steps",
+            "No focused updates / HN buzz / Reddit / trending / X buzz in last %dh — skipping AI + Slack steps",
             lookback_hours,
         )
         sentinel_path.write_text("no_updates", encoding="utf-8")
         sys.exit(0)
 
     focused_text = format_focused_updates(updates)
-    buzz_text = format_buzz_layer(hn_buzz, trending, x_buzz)
+    buzz_text = format_buzz_layer(hn_buzz, trending, x_buzz, reddit=reddit_buzz)
     sources_text = "\n\n".join(s for s in (focused_text, buzz_text) if s)
 
     from datetime import datetime, timedelta, timezone
@@ -98,7 +100,7 @@ def phase_gather() -> None:
 
 データソースは 2 層構成:
 - **focused_updates**: 上記 3 ツールの release / commit / blog (window 内の差分のみ)
-- **buzz_layer**: HN 高エンゲージメント (>=50pts or >=30comments) + GitHub Trending + X (Twitter)
+- **buzz_layer**: HN 高エンゲージメント / Reddit AI subreddits / GitHub Trending / X (Twitter, best-effort)
   → 「window 関係なく今バズってる AI ネタ」を catch するための直交層
 
 {sources_text}
@@ -128,7 +130,7 @@ def phase_gather() -> None:
   "buzz": [
     {{
       "title": "話題のタイトル",
-      "source": "HN / GitHub Trending / X / 統合",
+      "source": "HN / Reddit (r/XXX) / GitHub Trending / X / 統合",
       "importance": "HIGH / MEDIUM / LOW",
       "summary": "なぜ話題か + どんな内容か (2-3 文、日本語)",
       "url": "元のURL"
@@ -307,7 +309,9 @@ def _build_slack_blocks(result: dict) -> list[dict]:
                     "text": (
                         ":robot_face: Powered by Claude AI | "
                         "Sources: GitHub Releases/Commits (Claude Code, Codex, Gemini CLI), "
-                        "Anthropic/OpenAI/Google blogs, Hacker News, GitHub Trending, X via RSSHub"
+                        "Anthropic/OpenAI/Google blogs, Hacker News, "
+                        "Reddit (ClaudeAI/OpenAI/LocalLLaMA/MachineLearning/Bard/singularity), "
+                        "GitHub Trending, X via RSSHub (best-effort)"
                     ),
                 }
             ],
