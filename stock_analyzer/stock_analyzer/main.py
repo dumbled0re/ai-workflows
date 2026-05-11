@@ -240,6 +240,18 @@ def phase_prepare() -> None:
             s["margin_signal"] = margin.get("signal", "")
             s["margin_trend"] = margin.get("margin_trend", "")
 
+    # Margin-based signal tags. margin_data is fetched only for the
+    # top-20 screened candidates + holdings, so this runs *after*
+    # screening rather than feeding into the screening score itself.
+    # The tags still flow through to predictions_history via
+    # signal_components, which lets the weekly signal-efficacy report
+    # surface "did margin_low_pressure / margin_overhang correlate
+    # with wins?" without us having to wire margin into the pre-screen.
+    from stock_analyzer.signal_tags import annotate_margin_signals
+
+    for s in holdings_summaries + screened_candidates:
+        annotate_margin_signals(s)
+
     # Per-ticker earnings-imminence: calendar_context covers the season
     # window (true for thousands of stocks for 5 weeks); this narrows
     # it down to the specific tickers reporting within the next 3

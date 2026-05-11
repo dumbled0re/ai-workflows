@@ -196,3 +196,100 @@ def test_relative_strength_signal_disabled_without_benchmark() -> None:
     stock_closes = [100.0 + i * 0.5 for i in range(25)]
     _, components = compute_screening_score(_df(stock_closes))
     assert "relative_strength" not in components
+
+
+# ---------- sector-rotation signal -----------------------------------------
+
+
+def test_sector_rotation_fires_when_caller_marks_in_leading_sector() -> None:
+    """The signal is gated purely on the ``sector_in_leading`` parameter;
+    the score function trusts the caller's sector-aggregation result."""
+    df = _df([100.0] * 30)
+    score, components = compute_screening_score(df, sector_in_leading=True)
+    assert components.get("sector_rotation") is True
+    assert score >= 15
+
+
+def test_sector_rotation_silent_by_default() -> None:
+    """Backward compat: default ``sector_in_leading=False`` means no key
+    appears — same shape as before this signal landed."""
+    df = _df([100.0] * 30)
+    _, components = compute_screening_score(df)
+    assert "sector_rotation" not in components
+
+
+# ---------- leading-sectors aggregation ------------------------------------
+
+
+def test_compute_leading_sectors_returns_sector_beating_benchmark_by_edge() -> None:
+    """Two sectors: tech up 10% over 20 days, autos up 1%. Benchmark
+    flat → tech beats by 10pp (>=3pp edge), autos by 1pp (silent)."""
+    from stock_analyzer.stock_screener import _compute_leading_sectors
+
+    def up_series(start: float, end: float, n: int = 25) -> pd.Series:
+        step = (end - start) / (n - 1)
+        return pd.Series([start + i * step for i in range(n)])
+
+    data = {
+        "T1.T": _df([100.0 + i * 0.5 for i in range(25)]),  # +12%
+        "T2.T": _df([100.0 + i * 0.4 for i in range(25)]),  # +10%
+        "T3.T": _df([100.0 + i * 0.5 for i in range(25)]),  # +12%
+        "A1.T": _df([100.0 + i * 0.04 for i in range(25)]),  # +1%
+        "A2.T": _df([100.0 + i * 0.04 for i in range(25)]),  # +1%
+        "A3.T": _df([100.0 + i * 0.04 for i in range(25)]),  # +1%
+    }
+    info = {
+        "T1.T": {"sector": "情報通信"},
+        "T2.T": {"sector": "情報通信"},
+        "T3.T": {"sector": "情報通信"},
+        "A1.T": {"sector": "自動車"},
+        "A2.T": {"sector": "自動車"},
+        "A3.T": {"sector": "自動車"},
+    }
+    bench = up_series(1000.0, 1000.0)  # flat
+
+    leading = _compute_leading_sectors(data, info, reference_close=bench, edge_pp=3.0, min_tickers=3)
+    assert "情報通信" in leading
+    assert "自動車" not in leading
+
+
+def test_compute_leading_sectors_skips_below_min_tickers() -> None:
+    """A 1-ticker sector is statistical noise — must not enter the
+    leading set even if that one ticker is up enormously."""
+    from stock_analyzer.stock_screener import _compute_leading_sectors
+
+    data = {"T1.T": _df([100.0 + i * 2.0 for i in range(25)])}  # +50%
+    info = {"T1.T": {"sector": "情報通信"}}
+    bench = pd.Series([1000.0] * 25)
+    leading = _compute_leading_sectors(data, info, reference_close=bench, min_tickers=3)
+    assert leading == set()
+
+
+def test_compute_leading_sectors_returns_empty_without_benchmark() -> None:
+    """No benchmark → cannot define 'leading'. Must return an empty set,
+    not raise."""
+    from stock_analyzer.stock_screener import _compute_leading_sectors
+
+    data = {"T1.T": _df([100.0 + i for i in range(25)])}
+    info = {"T1.T": {"sector": "情報通信"}}
+    assert _compute_leading_sectors(data, info, reference_close=None) == set()
+
+
+def test_compute_leading_sectors_ignores_unknown_sector_tickers() -> None:
+    """Tickers with sector='不明' (universe merging fallback) must not
+    pollute a real sector's average."""
+    from stock_analyzer.stock_screener import _compute_leading_sectors
+
+    data = {
+        "T1.T": _df([100.0 + i * 0.5 for i in range(25)]),
+        "X.T": _df([100.0] * 25),  # flat, but '不明'
+    }
+    info = {
+        "T1.T": {"sector": "情報通信"},
+        "X.T": {"sector": "不明"},
+    }
+    bench = pd.Series([1000.0] * 25)
+    leading = _compute_leading_sectors(data, info, reference_close=bench, min_tickers=1, edge_pp=3.0)
+    # T1 alone is enough at min_tickers=1; the 不明 ticker stays out.
+    assert "情報通信" in leading
+    assert "不明" not in leading

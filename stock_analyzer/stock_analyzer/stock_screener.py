@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
+
+import pandas as pd
 
 from stock_analyzer.config_loader import Settings
 from stock_analyzer.data_fetcher import fetch_batch
@@ -9,6 +12,74 @@ from stock_analyzer.nikkei225_components import NIKKEI_225_TICKERS
 from stock_analyzer.technical_indicators import compute_indicators, compute_screening_score
 
 logger = logging.getLogger(__name__)
+
+
+def _pct_change_20d(close: pd.Series, window: int = 20) -> float | None:
+    """20-day percent change for a close series, ``None`` when too short.
+
+    Mirrors ``technical_indicators._pct_change`` but lives here so this
+    module doesn't reach into the indicators package for one utility.
+    """
+    if len(close) <= window:
+        return None
+    try:
+        old = float(close.iloc[-window - 1])
+        if old == 0:
+            return None
+        return (float(close.iloc[-1]) - old) / old * 100
+    except Exception:
+        return None
+
+
+def _compute_leading_sectors(
+    data_dict: dict[str, pd.DataFrame],
+    ticker_info: dict[str, dict[str, Any]],
+    reference_close: pd.Series | None,
+    window: int = 20,
+    edge_pp: float = 3.0,
+    min_tickers: int = 3,
+) -> set[str]:
+    """Identify sectors whose average member return beats the benchmark.
+
+    For each sector with at least ``min_tickers`` price series of
+    sufficient length, compute the mean 20-day return across members.
+    Sectors whose mean return exceeds the benchmark's 20-day return by
+    ``edge_pp`` percentage points enter the leading set; a stock in
+    one of those sectors then receives the ``sector_rotation`` signal
+    in screening.
+
+    Returns an empty set when the benchmark is unavailable — a tailwind
+    we cannot define cleanly is better not asserted than guessed at.
+    """
+    if reference_close is None:
+        return set()
+    ref_pct = _pct_change_20d(reference_close, window)
+    if ref_pct is None:
+        return set()
+
+    sector_returns: dict[str, list[float]] = {}
+    for ticker, df in data_dict.items():
+        info = ticker_info.get(ticker) or {}
+        sector = info.get("sector")
+        if not sector or sector == "不明":
+            continue
+        try:
+            close = df["Close"].astype(float)
+        except Exception:
+            continue
+        pct = _pct_change_20d(close, window)
+        if pct is None:
+            continue
+        sector_returns.setdefault(sector, []).append(pct)
+
+    leading: set[str] = set()
+    for sector, rets in sector_returns.items():
+        if len(rets) < min_tickers:
+            continue
+        mean_ret = sum(rets) / len(rets)
+        if (mean_ret - ref_pct) >= edge_pp:
+            leading.add(sector)
+    return leading
 
 
 def _build_merged_universe() -> tuple[list[str], dict[str, dict]]:
@@ -74,17 +145,28 @@ def screen_stocks(
     else:
         logger.warning("N225 fetch failed; relative_strength signal disabled")
 
+    # Sector momentum: pre-compute the set of leading sectors once per
+    # run by aggregating member 20-day returns and comparing to the
+    # benchmark. Stocks in those sectors get a tailwind tag in
+    # ``signal_components`` and a score boost via ``sector_in_leading``.
+    leading_sectors = _compute_leading_sectors(
+        data_dict, ticker_info, reference_close=reference_close, window=20, edge_pp=3.0, min_tickers=3
+    )
+    logger.info("Leading sectors (vs benchmark + 3pp): %s", sorted(leading_sectors) or "(none)")
+
     # Score each stock. ``components`` records which signals fired so
     # the per-signal efficacy analyzer can group future outcomes by
     # active signal and report which ones actually correlate with wins.
     scored: list[tuple[str, float, dict[str, bool]]] = []
     for ticker, df in data_dict.items():
         try:
+            sector = (ticker_info.get(ticker) or {}).get("sector")
             score, components = compute_screening_score(
                 df,
                 fundamentals=fundamentals.get(ticker),
                 weights=screening_weights,
                 reference_close=reference_close,
+                sector_in_leading=bool(sector and sector in leading_sectors),
             )
             scored.append((ticker, score, components))
         except Exception:

@@ -143,6 +143,7 @@ def compute_screening_score(
     fundamentals: dict | None = None,
     weights: dict | None = None,
     reference_close: pd.Series | None = None,
+    sector_in_leading: bool = False,
 ) -> tuple[float, dict[str, bool]]:
     """Compute a quick screening score + per-signal breakdown.
 
@@ -173,6 +174,7 @@ def compute_screening_score(
         "dividend_yield": 5,
         "revenue_growth": 5,
         "relative_strength": 15,
+        "sector_rotation": 15,
     }
     if weights:
         w.update(weights)
@@ -270,6 +272,16 @@ def compute_screening_score(
     if reference_close is not None and _relative_strength_outperforms(close, reference_close, window=20, edge_pp=5.0):
         score += w["relative_strength"]
         components["relative_strength"] = True
+
+    # Sector rotation: this ticker belongs to a sector that, on average,
+    # is outperforming the broad market right now. Sector-level momentum
+    # tends to mean-revert slowly, so a stock in a leading sector has a
+    # tailwind that is independent of its own price action. Computed by
+    # the caller (stock_screener) and passed in pre-resolved so we can
+    # stay df-only here.
+    if sector_in_leading:
+        score += w["sector_rotation"]
+        components["sector_rotation"] = True
 
     return score, components
 
