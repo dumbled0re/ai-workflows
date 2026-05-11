@@ -147,3 +147,52 @@ def test_compute_indicators_handles_short_history() -> None:
     assert summary["current_price"] == 104.0
     # SMA_75 should be None (only 5 bars)
     assert summary["sma_75"] is None
+
+
+# ---------- relative-strength signal ---------------------------------------
+
+
+def test_relative_strength_fires_when_stock_outperforms_benchmark() -> None:
+    """A stock up 10% over 20 days against a flat N225 should fire RS."""
+    # 25 bars so the 20-day pct_change is well-defined. Start at 100,
+    # end at 110 → +10%. Benchmark stays flat.
+    stock_closes = [100.0 + i * 0.5 for i in range(25)]
+    bench = pd.Series([1000.0] * 25)
+    score, components = compute_screening_score(_df(stock_closes), reference_close=bench)
+    assert components.get("relative_strength") is True
+    # Score should include the weight (default 15).
+    assert score >= 15
+
+
+def test_relative_strength_silent_when_benchmark_keeps_pace() -> None:
+    """If the benchmark moves with the stock, RS must NOT fire — same
+    return = zero relative edge."""
+    stock_closes = [100.0 + i * 0.5 for i in range(25)]
+    bench = pd.Series([1000.0 + i * 5.0 for i in range(25)])  # also ~+10%
+    _, components = compute_screening_score(_df(stock_closes), reference_close=bench)
+    assert components.get("relative_strength") is not True
+
+
+def test_relative_strength_silent_when_stock_underperforms() -> None:
+    """Stock flat vs benchmark up — RS must not fire on a laggard."""
+    stock_closes = [100.0] * 25
+    bench = pd.Series([1000.0 + i * 5.0 for i in range(25)])
+    _, components = compute_screening_score(_df(stock_closes), reference_close=bench)
+    assert components.get("relative_strength") is not True
+
+
+def test_relative_strength_skipped_when_history_too_short() -> None:
+    """A 10-bar history can't support a 20-day RS calc — fail to None,
+    not crash."""
+    stock_closes = [100.0 + i for i in range(10)]
+    bench = pd.Series([1000.0] * 10)
+    _, components = compute_screening_score(_df(stock_closes), reference_close=bench)
+    assert components.get("relative_strength") is not True
+
+
+def test_relative_strength_signal_disabled_without_benchmark() -> None:
+    """Backward compat: callers passing no reference_close must not see
+    a spurious False key — the signal is simply absent."""
+    stock_closes = [100.0 + i * 0.5 for i in range(25)]
+    _, components = compute_screening_score(_df(stock_closes))
+    assert "relative_strength" not in components

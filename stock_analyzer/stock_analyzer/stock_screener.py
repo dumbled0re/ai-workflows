@@ -59,6 +59,21 @@ def screen_stocks(
 
     logger.info("Data fetched: %d successful, %d failed", total_screened, failed_count)
 
+    # Benchmark series for the relative-strength signal. Fetched once
+    # and reused across every scoring call so RS evaluation costs ~0
+    # extra. A fetch failure just disables the signal — the rest of
+    # the screening proceeds and the signal_components dict simply
+    # won't contain ``relative_strength`` for any candidate.
+    n225_data, _failed_n225, _ = fetch_batch(["^N225"], period="3mo", fetch_fundamentals=False)
+    reference_close = None
+    if "^N225" in n225_data:
+        try:
+            reference_close = n225_data["^N225"]["Close"].astype(float)
+        except Exception:
+            logger.warning("N225 close extraction failed; relative_strength signal disabled", exc_info=True)
+    else:
+        logger.warning("N225 fetch failed; relative_strength signal disabled")
+
     # Score each stock. ``components`` records which signals fired so
     # the per-signal efficacy analyzer can group future outcomes by
     # active signal and report which ones actually correlate with wins.
@@ -66,7 +81,10 @@ def screen_stocks(
     for ticker, df in data_dict.items():
         try:
             score, components = compute_screening_score(
-                df, fundamentals=fundamentals.get(ticker), weights=screening_weights
+                df,
+                fundamentals=fundamentals.get(ticker),
+                weights=screening_weights,
+                reference_close=reference_close,
             )
             scored.append((ticker, score, components))
         except Exception:

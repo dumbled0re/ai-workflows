@@ -142,6 +142,7 @@ def compute_screening_score(
     df: pd.DataFrame,
     fundamentals: dict | None = None,
     weights: dict | None = None,
+    reference_close: pd.Series | None = None,
 ) -> tuple[float, dict[str, bool]]:
     """Compute a quick screening score + per-signal breakdown.
 
@@ -152,6 +153,11 @@ def compute_screening_score(
     compute per-signal win rate. That feedback (which signal actually
     correlates with positive outcomes) is what makes the screening
     weights tunable from data instead of intuition.
+
+    ``reference_close`` is an optional benchmark price series (typically
+    N225) used by the relative-strength signal. None disables that
+    signal — callers without a benchmark just don't get the RS fingerprint
+    on their candidates, and signal_efficacy reports treat it as absent.
     """
     # Default weights (can be tuned by strategy_learner)
     w = {
@@ -166,6 +172,7 @@ def compute_screening_score(
         "roe_profitable": 10,
         "dividend_yield": 5,
         "revenue_growth": 5,
+        "relative_strength": 15,
     }
     if weights:
         w.update(weights)
@@ -254,7 +261,36 @@ def compute_screening_score(
             score += w["revenue_growth"]  # Growing (raw value is ratio, 0.05 = 5%)
             components["revenue_growth"] = True
 
+    # Relative strength vs benchmark (N225). Classic JP-equity anomaly:
+    # stocks that outperformed the broad index over a 20-day window
+    # have higher forward returns. Fires when the stock's 20d return
+    # exceeds the benchmark's by >=5 percentage points — large enough
+    # to clear noise on individual issues, narrow enough to fire on
+    # genuine leaders rather than just the strongest 1% of the universe.
+    if reference_close is not None and _relative_strength_outperforms(close, reference_close, window=20, edge_pp=5.0):
+        score += w["relative_strength"]
+        components["relative_strength"] = True
+
     return score, components
+
+
+def _relative_strength_outperforms(
+    stock_close: pd.Series,
+    reference_close: pd.Series,
+    window: int = 20,
+    edge_pp: float = 5.0,
+) -> bool:
+    """True when the stock's window-return beats the benchmark by ``edge_pp``+ pp.
+
+    Both series are required to have at least ``window+1`` observations
+    so the percent-change is well-defined. NaN-tolerant via the
+    ``_pct_change`` helper, which already short-circuits short series.
+    """
+    if len(stock_close) <= window or len(reference_close) <= window:
+        return False
+    stock_pct = _pct_change(stock_close, window)
+    ref_pct = _pct_change(reference_close, window)
+    return (stock_pct - ref_pct) >= edge_pp
 
 
 # --- Private helpers ---
