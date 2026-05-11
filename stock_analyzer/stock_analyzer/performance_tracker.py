@@ -543,6 +543,129 @@ def format_signal_efficacy(efficacy: dict[str, dict]) -> str:
     return "\n".join(lines)
 
 
+def extract_few_shot_examples(
+    history: dict,
+    n_wins: int = 3,
+    n_losses: int = 3,
+    min_directional_return: float = 5.0,
+) -> dict[str, list[dict]]:
+    """Pick the most informative resolved trades for prompt embedding.
+
+    Returns ``{"wins": [...], "losses": [...]}`` ranked by the magnitude
+    of directional return so DOWN-wins (raw negative return, positive
+    directional return) are included alongside UP-wins. The previous
+    in-line "成功パターン" block sorted on raw ``actual_return_pct``
+    which silently dropped every DOWN-win — direction-aware ranking
+    fixes that.
+
+    ``min_directional_return`` filters out marginal outcomes (±3% to
+    ±5%) that resolved as wins/losses on the technicality of the
+    review window. Examples with weak magnitude don't teach the AI
+    much — we want to surface trades where the win/loss reason is
+    likely to be in the data the AI saw at entry.
+
+    Each example carries the signal fingerprint that fired at entry
+    (``signal_components`` keys whose value was truthy), the
+    directional return for compactness, and identifying metadata so
+    the AI can pattern-match a current candidate against it.
+    """
+    resolved = [p for p in history.get("predictions", []) if p.get("status") in ("win", "loss")]
+    if not resolved:
+        return {"wins": [], "losses": []}
+
+    def example_payload(p: dict) -> dict:
+        sig = p.get("signal_components") or {}
+        fired = sorted(name for name, on in sig.items() if on)
+        return {
+            "ticker": p.get("ticker", ""),
+            "name": p.get("name", ""),
+            "direction": p.get("prediction", ""),
+            "confidence": p.get("confidence", ""),
+            "date": p.get("date", ""),
+            "reviewed_date": p.get("reviewed_date", ""),
+            "entry_price": p.get("entry_price"),
+            "actual_return_pct": p.get("actual_return_pct"),
+            "directional_return_pct": _directional_return(p),
+            "days_held": p.get("days_held"),
+            "source": p.get("source", ""),
+            "fired_signals": fired,
+        }
+
+    wins_pool = []
+    losses_pool = []
+    for p in resolved:
+        dr = _directional_return(p)
+        if dr is None:
+            continue
+        if abs(dr) < min_directional_return:
+            continue
+        payload = example_payload(p)
+        if p["status"] == "win":
+            wins_pool.append(payload)
+        else:
+            losses_pool.append(payload)
+
+    # Wins: directional return descending (best first). Losses: ascending
+    # (worst, i.e. most-negative directional, first — these resolve to
+    # large adverse moves against the predicted direction).
+    wins = sorted(wins_pool, key=lambda x: x["directional_return_pct"] or 0, reverse=True)[:n_wins]
+    losses = sorted(losses_pool, key=lambda x: x["directional_return_pct"] or 0)[:n_losses]
+    return {"wins": wins, "losses": losses}
+
+
+def format_few_shot_for_prompt(examples: dict[str, list[dict]]) -> str:
+    """Render extracted examples as a prompt-injection block.
+
+    The structure is deliberately parallel for wins and losses so the
+    AI can do a side-by-side comparison. Each line includes the firing
+    signal fingerprint, which is the most actionable feature: a
+    current candidate firing the same signals as a past loss should
+    raise confidence-downgrade caution.
+    """
+    wins = examples.get("wins") or []
+    losses = examples.get("losses") or []
+    if not wins and not losses:
+        return ""
+
+    lines: list[str] = []
+    if wins:
+        lines.append("\n成功パターン（同じ条件の picks は信頼度を上げて良い）:")
+        for ex in wins:
+            lines.append(_format_one_example(ex, is_win=True))
+    if losses:
+        lines.append("\n失敗パターン（同じ条件の picks は entry 回避 or 信頼度を下げる）:")
+        for ex in losses:
+            lines.append(_format_one_example(ex, is_win=False))
+    lines.append(
+        "\n本日の各 pick について、上記のどの成功/失敗パターンに最も似ているか暗黙に判定し、"
+        "似ているパターンの結果に応じて信頼度を調整してください。signal の組合せが同じなら結果も近づく傾向があります。"
+    )
+    return "\n".join(lines)
+
+
+def _format_one_example(ex: dict, is_win: bool) -> str:
+    """Single line in the few-shot block. Kept here so wins/losses stay parallel."""
+    dr = ex.get("directional_return_pct")
+    raw = ex.get("actual_return_pct")
+    days = ex.get("days_held")
+    direction = ex.get("direction", "")
+    confidence = ex.get("confidence", "?")
+    fired = ex.get("fired_signals") or []
+    sig_text = ", ".join(fired) if fired else "(シグナル記録なし)"
+    days_text = f"{days}日保有" if days else ""
+    # Show raw return too — when direction is DOWN, "+10% directional"
+    # corresponds to "-10% actual price move", and the AI needs to see
+    # both numbers to map the lesson back onto a UP/DOWN candidate.
+    raw_text = f"raw {raw:+.1f}%" if isinstance(raw, (int, float)) else ""
+    dr_text = f"方向調整 {dr:+.1f}%" if isinstance(dr, (int, float)) else ""
+    arrow = "✅" if is_win else "❌"
+    return (
+        f"  {arrow} {ex.get('name', '')} ({ex.get('ticker', '')}) "
+        f"{direction}/{confidence} {dr_text} ({raw_text} {days_text}) "
+        f"[{ex.get('date', '')}] signals=[{sig_text}]"
+    )
+
+
 def format_performance_feedback(history: dict) -> str:
     """Format performance data into text for Claude's prompt.
 
@@ -550,7 +673,6 @@ def format_performance_feedback(history: dict) -> str:
     and adjusts its analysis accordingly.
     """
     stats = history.get("performance_stats", {})
-    predictions = history.get("predictions", [])
 
     if not stats or stats.get("total_predictions", 0) == 0:
         return ""
@@ -663,37 +785,17 @@ def format_performance_feedback(history: dict) -> str:
         elif recent_acc < overall_acc - 5:
             lines.append(f"直近トレンド: 悪化中（直近{recent_acc}% vs 通算{overall_acc}%）")
 
-    # Recent losses (for learning)
-    recent_losses = sorted(
-        [p for p in predictions if p["status"] == "loss"],
-        key=lambda p: p.get("reviewed_date", ""),
-        reverse=True,
-    )[:3]
-    if recent_losses:
-        lines.append("\n直近の失敗（反省材料）:")
-        for p in recent_losses:
-            lines.append(
-                f"  - {p.get('name', '')} ({p['ticker']}): "
-                f"{p['prediction']}予測→実際{p.get('actual_return_pct', 0):+.1f}% "
-                f"[{p['date']}] 信頼度:{p.get('confidence', '?')}"
-            )
-
-    # Recent wins (what worked)
-    recent_wins = sorted(
-        [p for p in predictions if p["status"] == "win"],
-        key=lambda p: p.get("actual_return_pct", 0),
-        reverse=True,
-    )[:3]
-    if recent_wins:
-        lines.append("\n成功パターン（継続すべき判断）:")
-        for p in recent_wins:
-            lines.append(
-                f"  - {p.get('name', '')} ({p['ticker']}): "
-                f"{p['prediction']}予測→実際{p.get('actual_return_pct', 0):+.1f}% "
-                f"[{p['date']}] 信頼度:{p.get('confidence', '?')}"
-            )
-
-    lines.append("\n上記の反省と成功パターンを踏まえ、同じ失敗を繰り返さず、成功パターンを強化する分析をしてください。")
+    # Direction-aware few-shot examples with signal fingerprints. The
+    # previous in-line "成功パターン" sorted on raw return descending,
+    # which silently dropped every DOWN-win (raw negative); ranking
+    # by ``directional_return_pct`` magnitude fixes that. Including
+    # the firing-signal list per example lets the AI pattern-match
+    # current candidates ("this pick fires the same signals as a
+    # past loser → downgrade confidence") instead of just seeing a
+    # ticker / return / date triple.
+    few_shot_block = format_few_shot_for_prompt(extract_few_shot_examples(history))
+    if few_shot_block:
+        lines.append(few_shot_block)
 
     return "\n".join(lines)
 
