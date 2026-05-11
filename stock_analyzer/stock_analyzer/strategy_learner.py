@@ -255,6 +255,22 @@ def build_weekly_review_prompt(predictions_history: dict, strategy_notes: dict) 
     if efficacy_block:
         prompt += "\n" + efficacy_block + "\n"
 
+    # Counterfactual backtest — re-run resolved history under canned
+    # filters (HIGH-only, by direction, by source) to surface "what
+    # filter would have most-improved Sharpe" as actionable evidence.
+    try:
+        from stock_analyzer.backtest import (
+            format_counterfactuals_for_prompt,
+            standard_counterfactuals,
+        )
+
+        sims = standard_counterfactuals(predictions_history)
+        bt_block = format_counterfactuals_for_prompt(sims)
+        if bt_block:
+            prompt += "\n" + bt_block + "\n"
+    except Exception:
+        pass
+
     # Current strategy notes
     if current_notes:
         prompt += "\n=== 現在の戦略メモ ===\n"
