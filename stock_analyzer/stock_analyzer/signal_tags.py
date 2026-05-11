@@ -27,6 +27,40 @@ _LOW_PRESSURE_THRESHOLD = 1.5
 _OVERHANG_THRESHOLD = 5.0
 
 
+_EARNINGS_GROWTH_THRESHOLD = 10.0  # percent YoY
+_EARNINGS_DECLINE_THRESHOLD = -5.0  # percent YoY
+
+
+def annotate_earnings_momentum(summary: dict) -> None:
+    """Mutate ``summary['signal_components']`` with YoY momentum tags.
+
+    Two mutually exclusive tags can fire from the quarterly YoY data:
+    - ``earnings_yoy_growth``: revenue or net income up ≥ 10% YoY
+      (a meaningful tailwind for fundamentals-driven swings)
+    - ``earnings_yoy_decline``: revenue or net income down ≥ 5% YoY
+      (deteriorating fundamentals, common precursor to guidance cuts)
+
+    The tags are post-screening (added in main.py after fetch_earnings_
+    momentum_batch attaches the data) so they affect predictions_history
+    fingerprints and signal_efficacy without changing the pre-screen
+    score. Tickers without the YoY data are silently skipped.
+    """
+    rev_yoy = summary.get("revenue_yoy_pct")
+    ni_yoy = summary.get("net_income_yoy_pct")
+    candidates = [v for v in (rev_yoy, ni_yoy) if isinstance(v, (int, float))]
+    if not candidates:
+        return
+    components = summary.setdefault("signal_components", {})
+    # Best-case wins: a stock whose revenue OR net income is growing
+    # is "growing", even if the other is flat. Symmetric for decline.
+    best = max(candidates)
+    worst = min(candidates)
+    if best >= _EARNINGS_GROWTH_THRESHOLD:
+        components["earnings_yoy_growth"] = True
+    elif worst <= _EARNINGS_DECLINE_THRESHOLD:
+        components["earnings_yoy_decline"] = True
+
+
 def annotate_margin_signals(summary: dict) -> None:
     """Mutate ``summary['signal_components']`` with margin-based tags.
 

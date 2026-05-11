@@ -33,6 +33,17 @@ _FUNDAMENTAL_KEYS = [
     "fiftyTwoWeekLow",
     "sector",
     "industry",
+    # Analyst consensus (free — already part of tk.info, no extra HTTP).
+    # targetMeanPrice gives consensus price target; recommendationMean
+    # maps Buy=1 / Hold=3 / Sell=5 (lower = more bullish). Both feed
+    # screening signals (target_upside / consensus_buy) and the prompt.
+    "targetMeanPrice",
+    "targetMedianPrice",
+    "targetHighPrice",
+    "targetLowPrice",
+    "numberOfAnalystOpinions",
+    "recommendationMean",
+    "recommendationKey",
 ]
 
 
@@ -141,3 +152,75 @@ def _extract_fundamentals(tk: yf.Ticker, ticker: str) -> dict | None:
     except Exception as e:
         logger.debug("Failed to fetch fundamentals for %s: %s", ticker, e)
         return None
+
+
+def fetch_earnings_momentum(ticker: str) -> dict | None:
+    """Fetch quarterly income statement and compute latest-Q YoY growth.
+
+    Returns ``{"revenue_yoy_pct": ..., "net_income_yoy_pct": ...,
+    "latest_quarter": "YYYY-MM"}`` when the data is parseable, else None.
+
+    Two HTTP calls per ticker, so this is run only on top-N screened
+    candidates + holdings — not the full universe. The signal answers
+    "are last quarter's fundamentals improving or deteriorating
+    year-over-year?", which is the core "業績進捗" check serious JP-
+    equity traders run before adding a position.
+    """
+    try:
+        tk = yf.Ticker(ticker)
+        qs = tk.quarterly_income_stmt
+        if qs is None or len(qs.columns) < 5:
+            return None
+        # Columns are quarterly period-end dates, descending. To get
+        # YoY we compare column[0] (latest Q) with column[4] (4
+        # quarters ago = same Q last year).
+        latest_col = qs.columns[0]
+        yoy_col = qs.columns[4]
+        result: dict[str, object] = {"latest_quarter": latest_col.strftime("%Y-%m")}
+        for src_row, dst_key in (
+            ("Total Revenue", "revenue_yoy_pct"),
+            ("Operating Revenue", "revenue_yoy_pct"),  # fallback alias
+            ("Net Income", "net_income_yoy_pct"),
+            ("Net Income Common Stockholders", "net_income_yoy_pct"),
+        ):
+            if dst_key in result:
+                continue  # already filled by an earlier alias
+            if src_row not in qs.index:
+                continue
+            row = qs.loc[src_row]
+            latest = row.get(latest_col)
+            yoy_base = row.get(yoy_col)
+            if latest is None or yoy_base is None:
+                continue
+            try:
+                lv = float(latest)
+                bv = float(yoy_base)
+            except (TypeError, ValueError):
+                continue
+            if bv == 0 or pd.isna(lv) or pd.isna(bv):
+                continue
+            result[dst_key] = round((lv - bv) / abs(bv) * 100, 2)
+        if "revenue_yoy_pct" not in result and "net_income_yoy_pct" not in result:
+            return None
+        return result
+    except Exception as e:
+        logger.debug("earnings_momentum fetch failed for %s: %s", ticker, e)
+        return None
+
+
+def fetch_earnings_momentum_batch(tickers: list[str]) -> dict[str, dict]:
+    """Run ``fetch_earnings_momentum`` over a list, rate-limited.
+
+    Failure on any single ticker just excludes it from the result —
+    upstream callers attach the data when present and the AI prompt /
+    screening simply skips the YoY signals for absent tickers.
+    """
+    out: dict[str, dict] = {}
+    for i, ticker in enumerate(tickers):
+        if i > 0:
+            time.sleep(random.uniform(_SLEEP_MIN, _SLEEP_MAX))
+        result = fetch_earnings_momentum(ticker)
+        if result is not None:
+            out[ticker] = result
+    logger.info("earnings_momentum fetched: %d/%d tickers", len(out), len(tickers))
+    return out

@@ -135,6 +135,33 @@ def compute_indicators(
         if industry is not None:
             summary["industry"] = industry
 
+        # Analyst consensus pass-through. Both the price-target upside
+        # (vs current_price) and the rating are surfaced into the
+        # summary so ``ai_analyzer._format_stock_data`` can render them
+        # in the per-ticker prompt block, mirroring what serious JP-
+        # equity research desks watch as a leading indicator.
+        import contextlib
+
+        target_mean = fundamentals.get("targetMeanPrice")
+        n_analysts = fundamentals.get("numberOfAnalystOpinions")
+        rec_mean = fundamentals.get("recommendationMean")
+        rec_key = fundamentals.get("recommendationKey")
+        if target_mean is not None:
+            summary["analyst_target_mean"] = _round_or_none(float(target_mean), 0)
+            if summary.get("current_price"):
+                with contextlib.suppress(TypeError, ValueError, ZeroDivisionError):
+                    summary["analyst_target_upside_pct"] = round(
+                        (float(target_mean) - summary["current_price"]) / summary["current_price"] * 100, 1
+                    )
+        if n_analysts is not None:
+            with contextlib.suppress(TypeError, ValueError):
+                summary["analyst_count"] = int(n_analysts)
+        if rec_mean is not None:
+            with contextlib.suppress(TypeError, ValueError):
+                summary["analyst_rating_mean"] = round(float(rec_mean), 2)
+        if rec_key is not None:
+            summary["analyst_rating_key"] = str(rec_key)
+
     return summary
 
 
@@ -175,6 +202,8 @@ def compute_screening_score(
         "revenue_growth": 5,
         "relative_strength": 15,
         "sector_rotation": 15,
+        "analyst_target_upside": 15,
+        "analyst_consensus_buy": 10,
     }
     if weights:
         w.update(weights)
@@ -262,6 +291,34 @@ def compute_screening_score(
         if rev_growth is not None and rev_growth > 0.05:
             score += w["revenue_growth"]  # Growing (raw value is ratio, 0.05 = 5%)
             components["revenue_growth"] = True
+
+        # Analyst consensus price target — upside of >=15% to the mean
+        # target marks the stock as significantly cheap vs the
+        # institutional view. Both fields come from tk.info so this is
+        # free (already-fetched, no extra HTTP).
+        target_mean = fundamentals.get("targetMeanPrice")
+        current_close = float(close.iloc[-1]) if len(close) > 0 else None
+        if target_mean is not None and current_close is not None and current_close > 0:
+            try:
+                upside = (float(target_mean) - current_close) / current_close * 100
+                if upside >= 15.0:
+                    score += w["analyst_target_upside"]
+                    components["analyst_target_upside"] = True
+            except (TypeError, ValueError):
+                pass
+
+        # Consensus rating <= 2.5 = aggregate "Buy" or better
+        # (Strong Buy=1, Buy=2, Hold=3, Sell=4, Strong Sell=5). Needs
+        # at least 3 analysts to be a meaningful aggregate.
+        rec_mean = fundamentals.get("recommendationMean")
+        n_analysts = fundamentals.get("numberOfAnalystOpinions")
+        if rec_mean is not None and n_analysts is not None:
+            try:
+                if float(rec_mean) <= 2.5 and int(n_analysts) >= 3:
+                    score += w["analyst_consensus_buy"]
+                    components["analyst_consensus_buy"] = True
+            except (TypeError, ValueError):
+                pass
 
     # Relative strength vs benchmark (N225). Classic JP-equity anomaly:
     # stocks that outperformed the broad index over a 20-day window

@@ -364,6 +364,45 @@ def _format_stock_data(summaries: list[dict]) -> str:
 
             suffix = format_inline_for_summary(s.get("days_until_earnings"))
             lines.append(f"次回決算発表日: {s['next_earnings_date']}{suffix}")
+
+        # Analyst consensus block — mirrors what JP-equity research
+        # desks read first when sizing a position. Show target upside
+        # only when computable, plus the buy/hold/sell rating with
+        # sample size for context.
+        analyst_parts: list[str] = []
+        if s.get("analyst_target_mean") is not None:
+            up = s.get("analyst_target_upside_pct")
+            up_text = f" ({up:+.1f}% upside)" if isinstance(up, (int, float)) else ""
+            analyst_parts.append(f"平均目標 {s['analyst_target_mean']:.0f}円{up_text}")
+        if s.get("analyst_rating_key"):
+            n = s.get("analyst_count")
+            mean = s.get("analyst_rating_mean")
+            extra = ""
+            if mean is not None:
+                extra += f" (mean {mean:.2f}"
+                if n is not None:
+                    extra += f", {n}名"
+                extra += ")"
+            elif n is not None:
+                extra = f" ({n}名)"
+            analyst_parts.append(f"consensus {s['analyst_rating_key']}{extra}")
+        if analyst_parts:
+            lines.append("アナリスト: " + " / ".join(analyst_parts))
+
+        # Earnings momentum (YoY) — populated by data_fetcher.fetch_
+        # earnings_momentum for top candidates + holdings only. Absent
+        # for the rest of the universe to save HTTP.
+        em_parts: list[str] = []
+        rev_yoy = s.get("revenue_yoy_pct")
+        ni_yoy = s.get("net_income_yoy_pct")
+        if isinstance(rev_yoy, (int, float)):
+            em_parts.append(f"売上 YoY {rev_yoy:+.1f}%")
+        if isinstance(ni_yoy, (int, float)):
+            em_parts.append(f"純利益 YoY {ni_yoy:+.1f}%")
+        if em_parts:
+            q = s.get("latest_quarter")
+            q_suffix = f" [{q}決算]" if q else ""
+            lines.append("業績進捗: " + " / ".join(em_parts) + q_suffix)
         if s.get("industry"):
             lines.append(f"業種: {s['industry']}")
 

@@ -275,6 +275,63 @@ def test_compute_leading_sectors_returns_empty_without_benchmark() -> None:
     assert _compute_leading_sectors(data, info, reference_close=None) == set()
 
 
+# ---------- analyst-consensus signals --------------------------------------
+
+
+def test_analyst_target_upside_fires_at_or_above_15pct() -> None:
+    """Mean target 1300 / current 1000 → +30% upside, well above the
+    15% threshold. Both the score and the components fingerprint must
+    reflect the firing signal."""
+    df = _df([100.0] * 30 + [1000.0])  # final close is 1000
+    fund = {"targetMeanPrice": 1300.0}
+    score, comps = compute_screening_score(df, fundamentals=fund)
+    assert comps.get("analyst_target_upside") is True
+    assert score >= 15
+
+
+def test_analyst_target_upside_silent_below_threshold() -> None:
+    """Mean target only 10% above current → under the 15% threshold,
+    no fire. The signal is gating, not graded."""
+    df = _df([100.0] * 30 + [1000.0])
+    fund = {"targetMeanPrice": 1100.0}
+    _, comps = compute_screening_score(df, fundamentals=fund)
+    assert "analyst_target_upside" not in comps
+
+
+def test_analyst_consensus_buy_fires_when_rating_strong_and_sample_ok() -> None:
+    """Rating 2.0 (= aggregate Buy) with 5 analysts → bullish enough."""
+    df = _df([100.0] * 30)
+    fund = {"recommendationMean": 2.0, "numberOfAnalystOpinions": 5}
+    _, comps = compute_screening_score(df, fundamentals=fund)
+    assert comps.get("analyst_consensus_buy") is True
+
+
+def test_analyst_consensus_buy_requires_min_analysts() -> None:
+    """2 analysts is too thin for a meaningful aggregate — must not fire
+    even on a Strong Buy mean. The signal is meant to surface
+    institutional consensus, not the view of a couple of shops."""
+    df = _df([100.0] * 30)
+    fund = {"recommendationMean": 1.5, "numberOfAnalystOpinions": 2}
+    _, comps = compute_screening_score(df, fundamentals=fund)
+    assert "analyst_consensus_buy" not in comps
+
+
+def test_analyst_consensus_buy_silent_on_hold_or_worse() -> None:
+    """Rating 3.0 (Hold) → no signal even with many analysts."""
+    df = _df([100.0] * 30)
+    fund = {"recommendationMean": 3.0, "numberOfAnalystOpinions": 10}
+    _, comps = compute_screening_score(df, fundamentals=fund)
+    assert "analyst_consensus_buy" not in comps
+
+
+def test_analyst_signals_absent_without_fundamentals() -> None:
+    """Backward compat: no fundamentals → both analyst keys absent."""
+    df = _df([100.0] * 30)
+    _, comps = compute_screening_score(df)
+    assert "analyst_target_upside" not in comps
+    assert "analyst_consensus_buy" not in comps
+
+
 def test_compute_leading_sectors_ignores_unknown_sector_tickers() -> None:
     """Tickers with sector='不明' (universe merging fallback) must not
     pollute a real sector's average."""

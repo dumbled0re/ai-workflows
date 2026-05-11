@@ -247,10 +247,29 @@ def phase_prepare() -> None:
     # signal_components, which lets the weekly signal-efficacy report
     # surface "did margin_low_pressure / margin_overhang correlate
     # with wins?" without us having to wire margin into the pre-screen.
-    from stock_analyzer.signal_tags import annotate_margin_signals
+    from stock_analyzer.signal_tags import annotate_earnings_momentum, annotate_margin_signals
 
     for s in holdings_summaries + screened_candidates:
         annotate_margin_signals(s)
+
+    # Earnings momentum (quarterly YoY): one extra HTTP per ticker so we
+    # only run on top-20 screened + all holdings. The YoY revenue / net
+    # income comparison answers "are the fundamentals improving?",
+    # which is a leading indicator the technical signals can't see.
+    from stock_analyzer.data_fetcher import fetch_earnings_momentum_batch
+
+    em_targets = [c["ticker"] for c in screened_candidates[:20]] + [h.ticker for h in (config.holdings or [])]
+    em_data = fetch_earnings_momentum_batch(list({t for t in em_targets if t}))
+    for s in holdings_summaries + screened_candidates:
+        em = em_data.get(s["ticker"])
+        if em:
+            if em.get("revenue_yoy_pct") is not None:
+                s["revenue_yoy_pct"] = em["revenue_yoy_pct"]
+            if em.get("net_income_yoy_pct") is not None:
+                s["net_income_yoy_pct"] = em["net_income_yoy_pct"]
+            if em.get("latest_quarter"):
+                s["latest_quarter"] = em["latest_quarter"]
+        annotate_earnings_momentum(s)
 
     # Per-ticker earnings-imminence: calendar_context covers the season
     # window (true for thousands of stocks for 5 weeks); this narrows
