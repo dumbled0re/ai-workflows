@@ -73,6 +73,57 @@ _ANALYST_DRIFT_UPGRADE_THRESHOLD = 5.0  # percentage points
 _ANALYST_DRIFT_DOWNGRADE_THRESHOLD = -5.0
 
 
+_FWD_ESTIMATE_RAISE_THRESHOLD = 5.0  # percent — quarter-on-quarter growth
+_FWD_ESTIMATE_CUT_THRESHOLD = -5.0
+
+
+def annotate_forward_estimates(summary: dict) -> None:
+    """Mutate ``signal_components`` with forward-estimate tags.
+
+    Looks at current-quarter and next-quarter consensus growth. When
+    *both* are >= +5% the company has aggregated positive forward
+    expectations (= analysts are quietly raising) which historically
+    precedes the strongest forward returns. When either is <= -5%,
+    fire the cut tag for symmetry.
+    """
+    cq = summary.get("current_q_growth_pct")
+    nq = summary.get("next_q_growth_pct")
+    if not isinstance(cq, (int, float)) and not isinstance(nq, (int, float)):
+        return
+    components = summary.setdefault("signal_components", {})
+    cq_ok = isinstance(cq, (int, float)) and cq >= _FWD_ESTIMATE_RAISE_THRESHOLD
+    nq_ok = isinstance(nq, (int, float)) and nq >= _FWD_ESTIMATE_RAISE_THRESHOLD
+    cq_bad = isinstance(cq, (int, float)) and cq <= _FWD_ESTIMATE_CUT_THRESHOLD
+    nq_bad = isinstance(nq, (int, float)) and nq <= _FWD_ESTIMATE_CUT_THRESHOLD
+    if cq_ok and nq_ok:
+        components["forward_estimate_raise"] = True
+    elif cq_bad or nq_bad:
+        components["forward_estimate_cut"] = True
+
+
+def annotate_liquidity(summary: dict, max_spread_pct: float = 1.0) -> None:
+    """Add a low-liquidity flag when bid-ask spread is too wide.
+
+    Wide-spread stocks have high implicit transaction cost and are
+    poor swing candidates regardless of the technical setup. The
+    flag goes into ``signal_components`` so the AI can downgrade or
+    drop the pick and signal_efficacy can verify the heuristic.
+    """
+    bid = summary.get("bid")
+    ask = summary.get("ask")
+    price = summary.get("current_price")
+    if not isinstance(bid, (int, float)) or not isinstance(ask, (int, float)):
+        return
+    if not isinstance(price, (int, float)) or price <= 0:
+        return
+    if bid <= 0 or ask <= bid:
+        return
+    spread_pct = (ask - bid) / price * 100
+    if spread_pct > max_spread_pct:
+        components = summary.setdefault("signal_components", {})
+        components["wide_spread_liquidity"] = True
+
+
 def annotate_analyst_drift(summary: dict) -> None:
     """Mutate ``summary['signal_components']`` with analyst-consensus drift tags.
 

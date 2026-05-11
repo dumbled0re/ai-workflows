@@ -203,6 +203,65 @@ def test_portfolio_risk_flags_inverted_setup_explicitly() -> None:
 # ---------- critic prompt enrichment --------------------------------------
 
 
+def test_portfolio_risk_flags_inverted_stop_loss_on_up() -> None:
+    """UP prediction with stop ABOVE entry → the stop won't trigger
+    on adverse move, so it isn't really a stop. portfolio_risk's
+    check_stop_loss_consistency catches this even though R/R returns
+    None (inverted stop silently passes the R/R check)."""
+    from stock_analyzer.portfolio_risk import check_stop_loss_consistency
+
+    recs = [
+        {
+            "ticker": "BAD.T",
+            "prediction": "UP",
+            "entry_price": "1000",
+            "stop_loss": "1100",  # stop ABOVE entry on a long = inverted
+            "target_price": "1300",
+        },
+        {
+            "ticker": "OK.T",
+            "prediction": "UP",
+            "entry_price": "1000",
+            "stop_loss": "900",  # correct: stop below entry
+            "target_price": "1300",
+        },
+    ]
+    findings = check_stop_loss_consistency(recs)
+    affected = [t for f in findings for t in f.affected_tickers]
+    assert "BAD.T" in affected
+    assert "OK.T" not in affected
+
+
+def test_portfolio_risk_flags_inverted_stop_loss_on_down() -> None:
+    """DOWN prediction with stop BELOW entry = same malformation
+    mirrored. The check must work symmetrically for short setups."""
+    from stock_analyzer.portfolio_risk import check_stop_loss_consistency
+
+    recs = [
+        {
+            "ticker": "BAD.T",
+            "prediction": "DOWN",
+            "entry_price": "1000",
+            "stop_loss": "900",  # stop BELOW entry on a short = inverted
+            "target_price": "700",
+        },
+    ]
+    findings = check_stop_loss_consistency(recs)
+    assert len(findings) == 1
+    assert findings[0].affected_tickers == ("BAD.T",)
+
+
+def test_portfolio_risk_stop_loss_check_silent_on_unparseable() -> None:
+    """If either entry or stop fails to parse, can't judge consistency
+    → skip silently rather than spam warnings."""
+    from stock_analyzer.portfolio_risk import check_stop_loss_consistency
+
+    recs = [
+        {"ticker": "X.T", "prediction": "UP", "entry_price": "TBD", "stop_loss": "TBD"},
+    ]
+    assert check_stop_loss_consistency(recs) == []
+
+
 def test_critic_prompt_annotates_each_pick_with_ratio() -> None:
     """The critic builder must call annotate_pick on every pick in the
     three categories so the rubric uses precomputed numbers. Pin

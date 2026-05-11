@@ -4,6 +4,8 @@ from stock_analyzer.signal_tags import (
     annotate_analyst_drift,
     annotate_earnings_momentum,
     annotate_earnings_surprise,
+    annotate_forward_estimates,
+    annotate_liquidity,
     annotate_margin_signals,
 )
 
@@ -204,3 +206,73 @@ def test_analyst_drift_no_data_leaves_summary_untouched() -> None:
     s: dict = {"ticker": "X.T"}
     annotate_analyst_drift(s)
     assert "signal_components" not in s
+
+
+# ---------- forward estimate revisions ------------------------------------
+
+
+def test_forward_raise_fires_when_both_q_growth_positive() -> None:
+    """Current-Q and next-Q both >= +5% → aggregated 'raising' tag,
+    the strongest forward setup per the sell-side estimate panel."""
+    s: dict = {"current_q_growth_pct": 8.0, "next_q_growth_pct": 6.0}
+    annotate_forward_estimates(s)
+    assert s["signal_components"] == {"forward_estimate_raise": True}
+
+
+def test_forward_cut_fires_when_any_q_growth_negative() -> None:
+    """Either side <= -5% is enough — one deteriorating engine
+    cancels the raise even if the other is fine."""
+    s: dict = {"current_q_growth_pct": 3.0, "next_q_growth_pct": -8.0}
+    annotate_forward_estimates(s)
+    assert s["signal_components"] == {"forward_estimate_cut": True}
+
+
+def test_forward_estimate_mixed_no_tag() -> None:
+    """Mixed but not extreme (e.g. +3% / -2%) → no tag. We don't want
+    to fire on neutral consensus changes."""
+    s: dict = {"current_q_growth_pct": 3.0, "next_q_growth_pct": -2.0}
+    annotate_forward_estimates(s)
+    assert s.get("signal_components", {}) == {}
+
+
+def test_forward_estimate_no_data_skips() -> None:
+    s: dict = {"ticker": "X.T"}
+    annotate_forward_estimates(s)
+    assert "signal_components" not in s
+
+
+# ---------- liquidity (bid/ask spread) ------------------------------------
+
+
+def test_wide_spread_fires_liquidity_warning() -> None:
+    """Spread of 2% on a 1000-yen stock = 20yen spread → flagged.
+    Threshold is 1% by default."""
+    s: dict = {"bid": 990.0, "ask": 1010.0, "current_price": 1000.0}
+    annotate_liquidity(s)
+    assert s["signal_components"] == {"wide_spread_liquidity": True}
+
+
+def test_tight_spread_silent() -> None:
+    """Spread 0.2% on 1000 yen → no fire."""
+    s: dict = {"bid": 999.0, "ask": 1001.0, "current_price": 1000.0}
+    annotate_liquidity(s)
+    assert s.get("signal_components", {}) == {}
+
+
+def test_liquidity_skipped_without_bid_ask() -> None:
+    """Without bid/ask data we cannot judge — silent skip, no
+    signal_components dict created."""
+    s: dict = {"current_price": 1000.0}
+    annotate_liquidity(s)
+    assert "signal_components" not in s
+
+
+def test_liquidity_skipped_on_zero_or_inverted_quotes() -> None:
+    """Malformed quote (ask <= bid, or zero) → silent skip, never crash."""
+    s: dict = {"bid": 0.0, "ask": 1010.0, "current_price": 1000.0}
+    annotate_liquidity(s)
+    assert "signal_components" not in s
+
+    s2: dict = {"bid": 1010.0, "ask": 990.0, "current_price": 1000.0}
+    annotate_liquidity(s2)
+    assert "signal_components" not in s2

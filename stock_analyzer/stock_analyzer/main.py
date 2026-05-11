@@ -251,11 +251,14 @@ def phase_prepare() -> None:
         annotate_analyst_drift,
         annotate_earnings_momentum,
         annotate_earnings_surprise,
+        annotate_forward_estimates,
+        annotate_liquidity,
         annotate_margin_signals,
     )
 
     for s in holdings_summaries + screened_candidates:
         annotate_margin_signals(s)
+        annotate_liquidity(s)
 
     # Earnings momentum (quarterly YoY) + surprise (PEAD) + analyst
     # consensus drift. All three are one extra HTTP per ticker so we
@@ -268,6 +271,7 @@ def phase_prepare() -> None:
         fetch_analyst_drift_batch,
         fetch_earnings_momentum_batch,
         fetch_earnings_surprise_batch,
+        fetch_forward_estimate_batch,
     )
 
     em_targets = [c["ticker"] for c in screened_candidates[:20]] + [h.ticker for h in (config.holdings or [])]
@@ -275,6 +279,7 @@ def phase_prepare() -> None:
     em_data = fetch_earnings_momentum_batch(em_target_set)
     surprise_data = fetch_earnings_surprise_batch(em_target_set)
     drift_data = fetch_analyst_drift_batch(em_target_set)
+    forward_data = fetch_forward_estimate_batch(em_target_set)
     for s in holdings_summaries + screened_candidates:
         em = em_data.get(s["ticker"])
         if em:
@@ -298,9 +303,15 @@ def phase_prepare() -> None:
                 s["analyst_drift_pp"] = ad["drift_pp"]
             if ad.get("bullish_pct_current") is not None:
                 s["analyst_bullish_pct"] = ad["bullish_pct_current"]
+        fe = forward_data.get(s["ticker"])
+        if fe:
+            for k in ("current_q_growth_pct", "next_q_growth_pct", "current_y_growth_pct", "next_y_growth_pct"):
+                if fe.get(k) is not None:
+                    s[k] = fe[k]
         annotate_earnings_momentum(s)
         annotate_earnings_surprise(s)
         annotate_analyst_drift(s)
+        annotate_forward_estimates(s)
 
     # Per-ticker earnings-imminence: calendar_context covers the season
     # window (true for thousands of stocks for 5 weeks); this narrows

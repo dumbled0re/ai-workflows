@@ -162,6 +162,20 @@ def compute_indicators(
         if rec_key is not None:
             summary["analyst_rating_key"] = str(rec_key)
 
+        # Bid / ask pass-through for the liquidity filter. signal_tags.
+        # annotate_liquidity reads these alongside current_price to
+        # compute the spread %. averageDailyVolume10Day is exposed for
+        # the prompt so the AI can sanity-check liquidity for a swing.
+        for src_key, dst_key in (
+            ("bid", "bid"),
+            ("ask", "ask"),
+            ("averageDailyVolume10Day", "avg_volume_10d"),
+        ):
+            v = fundamentals.get(src_key)
+            if v is not None:
+                with contextlib.suppress(TypeError, ValueError):
+                    summary[dst_key] = float(v)
+
     return summary
 
 
@@ -205,6 +219,8 @@ def compute_screening_score(
         "analyst_target_upside": 15,
         "analyst_consensus_buy": 10,
         "low_peg_ratio": 15,
+        "near_52w_high": 15,
+        "volume_trend_up": 10,
     }
     if weights:
         w.update(weights)
@@ -350,6 +366,34 @@ def compute_screening_score(
     if reference_close is not None and _relative_strength_outperforms(close, reference_close, window=20, edge_pp=5.0):
         score += w["relative_strength"]
         components["relative_strength"] = True
+
+    # 52-week-high proximity: George & Hwang (2004) documented that
+    # stocks within ~5% of their 52-week high outperform laggards
+    # over the following weeks. Uses the 252-trading-day rolling max
+    # so we don't depend on fundamentals having fiftyTwoWeekHigh.
+    if len(close) >= 60:
+        try:
+            window_high = float(close.tail(252).max())
+            cur = float(close.iloc[-1])
+            if window_high > 0 and (window_high - cur) / window_high <= 0.05:
+                score += w["near_52w_high"]
+                components["near_52w_high"] = True
+        except (TypeError, ValueError):
+            pass
+
+    # Volume trend up: 5-day average volume is at least 25% above the
+    # 20-day average. Captures the multi-session institutional build-
+    # up that single-day volume_spike misses (single spike on news
+    # often reverses; sustained elevation tends to mark accumulation).
+    if len(volume) >= 20:
+        try:
+            avg_5 = float(volume.tail(5).mean())
+            avg_20 = float(volume.tail(20).mean())
+            if avg_20 > 0 and avg_5 / avg_20 >= 1.25:
+                score += w["volume_trend_up"]
+                components["volume_trend_up"] = True
+        except (TypeError, ValueError, ZeroDivisionError):
+            pass
 
     # Sector rotation: this ticker belongs to a sector that, on average,
     # is outperforming the broad market right now. Sector-level momentum

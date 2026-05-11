@@ -429,6 +429,34 @@ def _format_stock_data(summaries: list[dict]) -> str:
             bullish = s.get("analyst_bullish_pct")
             cur_text = f" (現 bullish {bullish:.0f}%)" if isinstance(bullish, (int, float)) else ""
             lines.append(f"アナリスト意見ドリフト: 直近3ヶ月で {drift:+.1f}pp{cur_text}")
+
+        # Forward earnings/revenue growth from sell-side consensus
+        # estimates. Both current-Q and next-Q growth being positive
+        # signals aggregated "raising" — the strongest forward setup.
+        fwd_parts: list[str] = []
+        for src_key, label in (
+            ("current_q_growth_pct", "今Q"),
+            ("next_q_growth_pct", "来Q"),
+            ("current_y_growth_pct", "今期"),
+            ("next_y_growth_pct", "来期"),
+        ):
+            v = s.get(src_key)
+            if isinstance(v, (int, float)):
+                fwd_parts.append(f"{label} {v:+.1f}%")
+        if fwd_parts:
+            lines.append("予想成長率 (アナリスト): " + " / ".join(fwd_parts))
+
+        # Liquidity warning — wide bid/ask spread tags the pick as a
+        # low-liquidity swing candidate. The AI sees the absolute
+        # average volume too so it can sanity-check independently.
+        bid = s.get("bid")
+        ask = s.get("ask")
+        if isinstance(bid, (int, float)) and isinstance(ask, (int, float)) and bid > 0 and ask > bid:
+            cur = s.get("current_price")
+            if isinstance(cur, (int, float)) and cur > 0:
+                spread_pct = (ask - bid) / cur * 100
+                if spread_pct > 0.5:
+                    lines.append(f"流動性: bid {bid:.0f} / ask {ask:.0f} (スプレッド {spread_pct:.2f}%)")
         if s.get("industry"):
             lines.append(f"業種: {s['industry']}")
 

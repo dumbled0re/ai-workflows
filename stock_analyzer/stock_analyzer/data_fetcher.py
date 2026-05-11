@@ -44,6 +44,11 @@ _FUNDAMENTAL_KEYS = [
     "numberOfAnalystOpinions",
     "recommendationMean",
     "recommendationKey",
+    # Bid-ask spread for liquidity filter — wide-spread stocks are
+    # poor swing-trade candidates regardless of technical setup.
+    "bid",
+    "ask",
+    "averageDailyVolume10Day",
 ]
 
 
@@ -206,6 +211,55 @@ def fetch_earnings_momentum(ticker: str) -> dict | None:
     except Exception as e:
         logger.debug("earnings_momentum fetch failed for %s: %s", ticker, e)
         return None
+
+
+def fetch_forward_estimate(ticker: str) -> dict | None:
+    """Fetch forward earnings/revenue growth estimates.
+
+    Returns ``{"current_q_growth_pct", "next_q_growth_pct",
+    "current_y_growth_pct", "next_y_growth_pct"}`` (each in percent
+    points). The forward earnings/revenue growth panel is sell-side's
+    consolidated view of "where is this company going" — distinct
+    from trailing growth metrics already in tk.info.
+
+    Stocks where analysts are quietly *raising* forward estimates
+    (positive growth across 0q / +1q / 0y / +1y) are the ones with
+    the strongest forward returns in academic backtests.
+    """
+    try:
+        tk = yf.Ticker(ticker)
+        est = tk.earnings_estimate
+        if est is None or len(est) == 0 or "growth" not in est.columns:
+            return None
+        out: dict[str, float] = {}
+        period_map = {
+            "0q": "current_q_growth_pct",
+            "+1q": "next_q_growth_pct",
+            "0y": "current_y_growth_pct",
+            "+1y": "next_y_growth_pct",
+        }
+        for period, dst_key in period_map.items():
+            if period in est.index:
+                g = est.loc[period, "growth"]
+                if g is not None and not pd.isna(g):
+                    out[dst_key] = round(float(g) * 100, 2)
+        return out if out else None
+    except Exception as e:
+        logger.debug("forward_estimate fetch failed for %s: %s", ticker, e)
+        return None
+
+
+def fetch_forward_estimate_batch(tickers: list[str]) -> dict[str, dict]:
+    """Run ``fetch_forward_estimate`` over a list, rate-limited."""
+    out: dict[str, dict] = {}
+    for i, ticker in enumerate(tickers):
+        if i > 0:
+            time.sleep(random.uniform(_SLEEP_MIN, _SLEEP_MAX))
+        result = fetch_forward_estimate(ticker)
+        if result is not None:
+            out[ticker] = result
+    logger.info("forward_estimate fetched: %d/%d tickers", len(out), len(tickers))
+    return out
 
 
 def fetch_analyst_drift(ticker: str) -> dict | None:

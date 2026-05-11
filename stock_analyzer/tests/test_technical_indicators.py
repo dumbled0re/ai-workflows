@@ -359,6 +359,52 @@ def test_peg_silent_on_negative_growth() -> None:
     assert "low_peg_ratio" not in comps
 
 
+def test_near_52w_high_fires_within_5pct() -> None:
+    """Close at 100, 252d high at 102 → within 2% of high → fire.
+    George & Hwang (2004) 52WH effect. Need >=60 bars for the
+    rolling-max signal to engage."""
+    # 65-bar series: build up to a 102 peak then back near it.
+    closes = [50.0 + i * 0.5 for i in range(30)] + [102.0] + [99.0] * 33 + [100.0]
+    df = _df(closes)
+    _, comps = compute_screening_score(df)
+    assert comps.get("near_52w_high") is True
+
+
+def test_near_52w_high_silent_when_far_below() -> None:
+    """Close at 80 with rolling high of 120 → 33% below → no fire."""
+    closes = [80.0] * 30 + [120.0] * 5 + [80.0] * 30
+    df = _df(closes)
+    _, comps = compute_screening_score(df)
+    assert "near_52w_high" not in comps
+
+
+def test_near_52w_high_silent_on_short_history() -> None:
+    """A 40-bar history is too short for a 52WH signal — must abstain
+    rather than fire on a meaningless 'rolling max'."""
+    df = _df([100.0] * 40)
+    _, comps = compute_screening_score(df)
+    assert "near_52w_high" not in comps
+
+
+def test_volume_trend_up_fires_on_sustained_elevation() -> None:
+    """Last 5 sessions averaging 25%+ above the 20-day average →
+    institutional accumulation pattern. volume_spike was a single-day
+    measure; this catches the multi-session build-up."""
+    # 20 bars of low volume, then 5 bars of elevated volume → 5-day
+    # avg significantly above the 20-day rolling average.
+    volumes = [1_000_000.0] * 15 + [2_000_000.0] * 5
+    df = _df([100.0] * 20, volumes=volumes)
+    _, comps = compute_screening_score(df)
+    assert comps.get("volume_trend_up") is True
+
+
+def test_volume_trend_silent_when_flat() -> None:
+    """Steady volume → no fire even if absolute level is high."""
+    df = _df([100.0] * 30, volumes=[2_000_000.0] * 30)
+    _, comps = compute_screening_score(df)
+    assert "volume_trend_up" not in comps
+
+
 def test_compute_leading_sectors_ignores_unknown_sector_tickers() -> None:
     """Tickers with sector='不明' (universe merging fallback) must not
     pollute a real sector's average."""

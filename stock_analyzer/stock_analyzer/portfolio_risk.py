@@ -226,6 +226,53 @@ def check_risk_reward(
     return findings
 
 
+def check_stop_loss_consistency(
+    recommendations: list[dict],
+) -> list[RiskFinding]:
+    """Flag picks where stop_loss is on the wrong side of entry for the
+    predicted direction.
+
+    A long pick (UP) needs stop < entry; a short pick (DOWN) needs
+    stop > entry. Anything else is a structurally malformed setup —
+    the AI is contradicting its own direction call. The R/R check
+    catches the inverted-target case (target on wrong side) but not
+    the inverted-stop case, since inverted stop returns None from
+    compute_risk_reward and silently passes through.
+
+    This is the explicit safety net for the second malformation mode.
+    Picks where either field can't be parsed skip silently.
+    """
+    from stock_analyzer.risk_reward import parse_price_string
+
+    findings: list[RiskFinding] = []
+    for r in recommendations:
+        ticker = r.get("ticker")
+        if not ticker:
+            continue
+        direction = (r.get("prediction") or "").upper()
+        if direction not in {"UP", "DOWN"}:
+            continue
+        entry = parse_price_string(r.get("entry_price"))
+        stop = parse_price_string(r.get("stop_loss"))
+        if entry is None or stop is None:
+            continue
+        bad = (direction == "UP" and stop >= entry) or (direction == "DOWN" and stop <= entry)
+        if bad:
+            hint = "UP なら stop < entry" if direction == "UP" else "DOWN なら stop > entry"
+            findings.append(
+                RiskFinding(
+                    severity="warning",
+                    kind="stop_loss_inconsistent",
+                    message=(
+                        f"{ticker} {direction}予測なのに stop_loss が entry の同方向or上下逆 "
+                        f"(entry {entry} / stop {stop}): 損切りが効かない設定です。{hint} に修正してください"
+                    ),
+                    affected_tickers=(str(ticker),),
+                )
+            )
+    return findings
+
+
 def check_all(
     recommendations: list[dict],
     ticker_info: dict[str, dict] | None = None,
@@ -239,6 +286,7 @@ def check_all(
     if price_data is not None:
         findings.extend(check_pairwise_correlation(recommendations, price_data))
     findings.extend(check_risk_reward(recommendations))
+    findings.extend(check_stop_loss_consistency(recommendations))
     # Stable order: warnings before info, then by kind for determinism
     severity_rank = {"warning": 0, "info": 1}
     findings.sort(key=lambda f: (severity_rank.get(f.severity, 2), f.kind))
