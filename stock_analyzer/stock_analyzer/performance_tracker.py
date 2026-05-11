@@ -10,8 +10,22 @@ logger = logging.getLogger(__name__)
 
 _DATA_DIR = Path(__file__).parent.parent / "data"
 _HISTORY_FILE = str(_DATA_DIR / "predictions_history.json")
-_REVIEW_WINDOW_DAYS = 14  # Evaluate predictions after 2 weeks
 _MIN_REVIEW_DAYS = 5  # Start checking after 5 trading days
+
+# Source-aware review windows. The original 14-day blanket window
+# resolved long_term picks (3-12 month thesis) as wins/losses far too
+# early — a 6-month value play tagged as "loss" at day 14 because it
+# hadn't moved +/-3% yet pollutes every downstream metric (expectancy,
+# calibration, signal_efficacy, drift). Holding short-term horizons
+# at 14d preserves the original behaviour for swings; long_term gets
+# the 90 days it actually needs before a verdict is meaningful.
+_REVIEW_WINDOW_DAYS_BY_SOURCE = {
+    "holdings": 14,
+    "short_term": 14,
+    "discovery": 14,  # legacy schema before holdings/short/long split
+    "long_term": 90,
+}
+_DEFAULT_REVIEW_WINDOW_DAYS = 14
 # Minimum resolved trades before reporting a sub-bucket (HIGH/MEDIUM, by
 # source, by confidence × direction). Below this, accuracy_pct is too
 # noisy to drive Claude's self-improvement decisions.
@@ -106,6 +120,8 @@ def review_predictions(
         pred["reviewed_date"] = today
         pred["days_held"] = days_elapsed
 
+        review_window = _REVIEW_WINDOW_DAYS_BY_SOURCE.get(pred.get("source", ""), _DEFAULT_REVIEW_WINDOW_DAYS)
+
         # Determine outcome
         prediction_direction = pred.get("prediction", "UP")
         if prediction_direction == "UP":
@@ -113,7 +129,7 @@ def review_predictions(
                 pred["status"] = "win"
             elif return_pct <= -3.0:
                 pred["status"] = "loss"
-            elif days_elapsed >= _REVIEW_WINDOW_DAYS:
+            elif days_elapsed >= review_window:
                 # Expired: marginal result
                 pred["status"] = "win" if return_pct > 0 else "loss"
             # else: still pending, wait longer
@@ -122,7 +138,7 @@ def review_predictions(
                 pred["status"] = "win"
             elif return_pct >= 3.0:
                 pred["status"] = "loss"
-            elif days_elapsed >= _REVIEW_WINDOW_DAYS:
+            elif days_elapsed >= review_window:
                 pred["status"] = "win" if return_pct < 0 else "loss"
 
         if pred["status"] != "pending":

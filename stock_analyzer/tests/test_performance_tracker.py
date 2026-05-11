@@ -17,6 +17,7 @@ from stock_analyzer.performance_tracker import (
     extract_few_shot_examples,
     format_few_shot_for_prompt,
     format_performance_feedback,
+    review_predictions,
 )
 
 
@@ -337,6 +338,82 @@ def test_format_few_shot_renders_wins_and_losses_with_signals() -> None:
     # The pattern-matching directive is what makes few-shot more than
     # decoration — pin it so a future edit doesn't quietly strip it.
     assert "似ているか" in out
+
+
+# ---------- source-aware review window ------------------------------------
+
+
+def _pending_pred(source: str, prediction: str, entry_price: float, date: str) -> dict:
+    """Build a pending prediction shaped like real save_new_predictions output."""
+    return {
+        "id": f"{date}_X_{source}",
+        "date": date,
+        "ticker": "X.T",
+        "name": "X Corp",
+        "prediction": prediction,
+        "confidence": "MEDIUM",
+        "entry_price": entry_price,
+        "source": source,
+        "status": "pending",
+        "actual_price": None,
+        "actual_return_pct": None,
+        "reviewed_date": None,
+        "days_held": None,
+    }
+
+
+def test_short_term_pick_expires_at_14_days() -> None:
+    """A swing pick (short_term / holdings) hitting the 14-day window
+    without a 3% move resolves as marginal win/loss — preserves the
+    pre-source-aware behaviour for the 1-4 week horizon."""
+    p = _pending_pred("short_term", "UP", 1000.0, "2026-01-01")
+    history = {"predictions": [p]}
+    # 14 days later, price barely moved (+1%) — under the 3% threshold
+    # but past the window, so it expires as marginal win.
+    review_predictions(history, current_prices={"X.T": 1010.0}, today="2026-01-15")
+    assert p["status"] == "win"
+    assert p["days_held"] == 14
+
+
+def test_long_term_pick_still_pending_at_14_days() -> None:
+    """A long_term pick at 14 days with a small move must stay pending —
+    the 3-12 month thesis hasn't had time to play out. Resolving here
+    is the bug this source-aware window fixes."""
+    p = _pending_pred("long_term", "UP", 1000.0, "2026-01-01")
+    history = {"predictions": [p]}
+    review_predictions(history, current_prices={"X.T": 1010.0}, today="2026-01-15")
+    assert p["status"] == "pending"
+
+
+def test_long_term_pick_resolves_at_90_days() -> None:
+    """The new long_term window kicks in at 90 days — past that, a
+    marginal move expires the prediction so it eventually leaves
+    pending limbo and gets counted in metrics."""
+    p = _pending_pred("long_term", "UP", 1000.0, "2026-01-01")
+    history = {"predictions": [p]}
+    # 95 days later, price up 1% — under threshold but past 90-day window.
+    review_predictions(history, current_prices={"X.T": 1010.0}, today="2026-04-06")
+    assert p["status"] == "win"
+
+
+def test_long_term_strong_move_resolves_immediately() -> None:
+    """Even on long_term, a clear +3% / -3% move triggers resolution
+    without waiting for the window. The window is only for marginal
+    cases."""
+    p = _pending_pred("long_term", "UP", 1000.0, "2026-01-01")
+    history = {"predictions": [p]}
+    # 10 days later, +5% move — past _MIN_REVIEW_DAYS, above 3%.
+    review_predictions(history, current_prices={"X.T": 1050.0}, today="2026-01-11")
+    assert p["status"] == "win"
+
+
+def test_unknown_source_falls_back_to_default_window() -> None:
+    """A prediction with a source we haven't catalogued uses the 14-day
+    default — defensive against future schema additions."""
+    p = _pending_pred("some_new_category", "UP", 1000.0, "2026-01-01")
+    history = {"predictions": [p]}
+    review_predictions(history, current_prices={"X.T": 1010.0}, today="2026-01-15")
+    assert p["status"] == "win"
 
 
 # ---------- drawdown stop --------------------------------------------------
