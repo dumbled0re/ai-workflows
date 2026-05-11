@@ -293,6 +293,38 @@ def phase_prepare() -> None:
             ", ".join(f"{w.ticker}@{w.trading_days_until}d" for w in imminent),
         )
 
+    # Urgent disclosures: scan classified per-stock news for TDnet-style
+    # urgent categories (TOB / 業績修正 / 自己株取得 / 大量保有 / M&A /
+    # 増資 etc.) and surface them as a top-of-prompt warning. The per-
+    # ticker prompt rows already render the classified headlines inline,
+    # but a consolidated block makes sure the AI considers them
+    # explicitly before drafting picks even when scanning a long list.
+    from stock_analyzer.news_classifier import classify_news_list, extract_urgent
+
+    urgent_lines: list[str] = []
+    all_news_pool: list[dict] = []
+    for ticker, items in holdings_news.items() if config.holdings else []:  # type: ignore[possibly-undefined]
+        classify_news_list(items)
+        for it in extract_urgent(items):
+            it["__ticker"] = ticker
+            all_news_pool.append(it)
+    for ticker, items in candidate_news.items():
+        classify_news_list(items)
+        for it in extract_urgent(items):
+            it["__ticker"] = ticker
+            all_news_pool.append(it)
+    if all_news_pool:
+        urgent_lines.append("=== 緊急開示 (TDnet 相当) ===")
+        for n in all_news_pool[:15]:  # cap at 15 to avoid prompt bloat
+            direction = n.get("direction_hint") or ""
+            dir_tag = f" ({direction})" if direction else ""
+            urgent_lines.append(f"🔴 [{n.get('category')}{dir_tag}] {n.get('__ticker')} — {n.get('title', '')}")
+        urgent_lines.append(
+            "上記の緊急開示は当該銘柄の株価に直接影響します。entry / 信頼度 / direction の判断時に必ず反映してください"
+        )
+        market_context_text = market_context_text + "\n\n" + "\n".join(urgent_lines)
+        logger.info("Urgent disclosures: %d items injected into prompt", len(all_news_pool))
+
     # Review past predictions against current prices
     holdings_data_dict = {}
     if config.holdings:

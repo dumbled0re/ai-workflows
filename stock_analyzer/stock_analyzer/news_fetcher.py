@@ -121,13 +121,23 @@ def format_market_news(news: list[dict]) -> str:
 def format_stock_news(stock_news: dict[str, list[dict]]) -> dict[str, str]:
     """Format per-stock news into text snippets.
 
-    Returns dict mapping ticker to formatted news string.
+    Each headline is classified by ``news_classifier`` against the
+    canonical TDnet-style urgent categories (TOB / 業績修正 / 自己
+    株取得 / 大量保有 / M&A / 増資 / 配当 etc.). Urgent items are
+    rendered with a category prefix so the AI sees them as material
+    even when buried in a list of background headlines, mirroring the
+    way a serious JP-equity research desk would highlight a TDnet
+    notice over a generic news ticker headline.
     """
+    from stock_analyzer.news_classifier import classify_news_list, format_for_prompt
+
     result: dict[str, str] = {}
     for ticker, items in stock_news.items():
         if items:
-            headlines = " / ".join(item["title"] for item in items)
-            result[ticker] = headlines
+            classified = classify_news_list(items)
+            text = format_for_prompt(classified)
+            if text:
+                result[ticker] = text
     return result
 
 
