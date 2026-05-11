@@ -204,6 +204,7 @@ def compute_screening_score(
         "sector_rotation": 15,
         "analyst_target_upside": 15,
         "analyst_consensus_buy": 10,
+        "low_peg_ratio": 15,
     }
     if weights:
         w.update(weights)
@@ -317,6 +318,26 @@ def compute_screening_score(
                 if float(rec_mean) <= 2.5 and int(n_analysts) >= 3:
                     score += w["analyst_consensus_buy"]
                     components["analyst_consensus_buy"] = True
+            except (TypeError, ValueError):
+                pass
+
+        # PEG ratio (Lynch's "growth at reasonable price"): forward
+        # P/E divided by earnings growth. <1.0 is the classic value-
+        # growth sweet spot; the stock is cheap relative to its
+        # expected earnings expansion. Requires both forwardPE and
+        # earningsGrowth — many small-caps have neither, so the
+        # signal is sparse but high-quality when it fires.
+        fwd_pe = fundamentals.get("forwardPE")
+        eg = fundamentals.get("earningsGrowth")
+        if fwd_pe is not None and eg is not None:
+            try:
+                pe = float(fwd_pe)
+                growth_pct = float(eg) * 100  # yfinance returns ratio
+                if pe > 0 and growth_pct > 0:
+                    peg = pe / growth_pct
+                    if 0 < peg < 1.0:
+                        score += w["low_peg_ratio"]
+                        components["low_peg_ratio"] = True
             except (TypeError, ValueError):
                 pass
 

@@ -332,6 +332,33 @@ def test_analyst_signals_absent_without_fundamentals() -> None:
     assert "analyst_consensus_buy" not in comps
 
 
+def test_low_peg_ratio_fires_when_growth_outpaces_pe() -> None:
+    """Forward P/E 12 + earnings growth 20% → PEG 0.6 → fire. Classic
+    Lynch GARP setup that serious value-growth investors hunt for."""
+    df = _df([100.0] * 30)
+    fund = {"forwardPE": 12.0, "earningsGrowth": 0.20}
+    _, comps = compute_screening_score(df, fundamentals=fund)
+    assert comps.get("low_peg_ratio") is True
+
+
+def test_peg_silent_at_or_above_one() -> None:
+    """P/E 25 with 20% growth → PEG 1.25, no fire. Boundary at 1.0
+    is strict (<), pinning the gating semantics."""
+    df = _df([100.0] * 30)
+    fund = {"forwardPE": 25.0, "earningsGrowth": 0.20}
+    _, comps = compute_screening_score(df, fundamentals=fund)
+    assert "low_peg_ratio" not in comps
+
+
+def test_peg_silent_on_negative_growth() -> None:
+    """A shrinking company shouldn't fire a GARP signal even if its
+    P/E is low — negative earningsGrowth disqualifies."""
+    df = _df([100.0] * 30)
+    fund = {"forwardPE": 8.0, "earningsGrowth": -0.10}
+    _, comps = compute_screening_score(df, fundamentals=fund)
+    assert "low_peg_ratio" not in comps
+
+
 def test_compute_leading_sectors_ignores_unknown_sector_tickers() -> None:
     """Tickers with sector='不明' (universe merging fallback) must not
     pollute a real sector's average."""
