@@ -418,6 +418,17 @@ def _format_stock_data(summaries: list[dict]) -> str:
             elif isinstance(cm, int) and cm >= 2:
                 streak_text = f" / {cm}Q連続 miss"
             lines.append(f"決算サプライズ: 最新 {sp:+.1f}% vs アナリスト予想{streak_text}")
+
+        # Analyst consensus drift: shifting opinions over the trailing
+        # 3 months are a well-documented leading indicator independent
+        # of the rating's absolute level. Surface drift_pp with the
+        # current bullish-share so the AI can reason about both
+        # magnitude and direction.
+        drift = s.get("analyst_drift_pp")
+        if isinstance(drift, (int, float)):
+            bullish = s.get("analyst_bullish_pct")
+            cur_text = f" (現 bullish {bullish:.0f}%)" if isinstance(bullish, (int, float)) else ""
+            lines.append(f"アナリスト意見ドリフト: 直近3ヶ月で {drift:+.1f}pp{cur_text}")
         if s.get("industry"):
             lines.append(f"業種: {s['industry']}")
 

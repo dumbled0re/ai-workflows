@@ -208,6 +208,79 @@ def fetch_earnings_momentum(ticker: str) -> dict | None:
         return None
 
 
+def fetch_analyst_drift(ticker: str) -> dict | None:
+    """Fetch the 4-period analyst-recommendation history and compute drift.
+
+    Returns ``{"bullish_pct_current", "bullish_pct_3m_ago", "drift_pp",
+    "total_analysts_current"}`` when parseable, else None.
+
+    Analyst consensus drift (= QoQ change in the share of buy / strong
+    buy ratings) is a well-known leading indicator: stocks whose
+    sell-side coverage is *improving* tend to outperform, independent
+    of the level. The static ``recommendationMean`` from tk.info only
+    captures the level; this extra fetch is what catches the
+    momentum of opinion.
+
+    yfinance's ``recommendations`` DataFrame has period (0m / -1m /
+    -2m / -3m) with strongBuy / buy / hold / sell / strongSell
+    counts. We compute the bullish share (strongBuy + buy / total)
+    for the latest and the 3m-ago row and take the difference.
+    """
+    try:
+        tk = yf.Ticker(ticker)
+        rec = tk.recommendations
+        if rec is None or len(rec) == 0 or "period" not in rec.columns:
+            return None
+        # Index by period for safe lookup; periods present vary.
+        by_period = {str(r.period): r for r in rec.itertuples(index=False)}
+        cur = by_period.get("0m")
+        old = by_period.get("-3m")
+        if cur is None or old is None:
+            return None
+
+        def bullish_share(row: object) -> float | None:
+            try:
+                sb = int(getattr(row, "strongBuy", 0))
+                b = int(getattr(row, "buy", 0))
+                h = int(getattr(row, "hold", 0))
+                s = int(getattr(row, "sell", 0))
+                ss = int(getattr(row, "strongSell", 0))
+            except (TypeError, ValueError):
+                return None
+            total = sb + b + h + s + ss
+            if total == 0:
+                return None
+            return (sb + b) / total * 100
+
+        cur_share = bullish_share(cur)
+        old_share = bullish_share(old)
+        if cur_share is None or old_share is None:
+            return None
+        total_now = sum(int(getattr(cur, f, 0)) for f in ("strongBuy", "buy", "hold", "sell", "strongSell"))
+        return {
+            "bullish_pct_current": round(cur_share, 1),
+            "bullish_pct_3m_ago": round(old_share, 1),
+            "drift_pp": round(cur_share - old_share, 1),
+            "total_analysts_current": total_now,
+        }
+    except Exception as e:
+        logger.debug("analyst_drift fetch failed for %s: %s", ticker, e)
+        return None
+
+
+def fetch_analyst_drift_batch(tickers: list[str]) -> dict[str, dict]:
+    """Run ``fetch_analyst_drift`` over a list, rate-limited."""
+    out: dict[str, dict] = {}
+    for i, ticker in enumerate(tickers):
+        if i > 0:
+            time.sleep(random.uniform(_SLEEP_MIN, _SLEEP_MAX))
+        result = fetch_analyst_drift(ticker)
+        if result is not None:
+            out[ticker] = result
+    logger.info("analyst_drift fetched: %d/%d tickers", len(out), len(tickers))
+    return out
+
+
 def fetch_earnings_surprise(ticker: str) -> dict | None:
     """Fetch the last 4 quarters of EPS surprise vs analyst estimate.
 

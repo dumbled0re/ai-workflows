@@ -248,6 +248,7 @@ def phase_prepare() -> None:
     # surface "did margin_low_pressure / margin_overhang correlate
     # with wins?" without us having to wire margin into the pre-screen.
     from stock_analyzer.signal_tags import (
+        annotate_analyst_drift,
         annotate_earnings_momentum,
         annotate_earnings_surprise,
         annotate_margin_signals,
@@ -256,12 +257,15 @@ def phase_prepare() -> None:
     for s in holdings_summaries + screened_candidates:
         annotate_margin_signals(s)
 
-    # Earnings momentum (quarterly YoY) + surprise (PEAD). Both are one
-    # extra HTTP per ticker so we only run on top-20 screened + all
-    # holdings. YoY answers "are fundamentals improving?", surprise
-    # answers "is the company beating expectations?" — distinct and
-    # complementary leading indicators.
+    # Earnings momentum (quarterly YoY) + surprise (PEAD) + analyst
+    # consensus drift. All three are one extra HTTP per ticker so we
+    # only run on top-20 screened + all holdings. YoY answers "are
+    # fundamentals improving?", surprise answers "is the company
+    # beating expectations?", analyst drift answers "is the sell-side
+    # net-upgrading or downgrading the name?" — three distinct
+    # leading indicators that round out the screening signal set.
     from stock_analyzer.data_fetcher import (
+        fetch_analyst_drift_batch,
         fetch_earnings_momentum_batch,
         fetch_earnings_surprise_batch,
     )
@@ -270,6 +274,7 @@ def phase_prepare() -> None:
     em_target_set = list({t for t in em_targets if t})
     em_data = fetch_earnings_momentum_batch(em_target_set)
     surprise_data = fetch_earnings_surprise_batch(em_target_set)
+    drift_data = fetch_analyst_drift_batch(em_target_set)
     for s in holdings_summaries + screened_candidates:
         em = em_data.get(s["ticker"])
         if em:
@@ -287,8 +292,15 @@ def phase_prepare() -> None:
                 s["consecutive_beats"] = sp["consecutive_beats"]
             if sp.get("consecutive_misses") is not None:
                 s["consecutive_misses"] = sp["consecutive_misses"]
+        ad = drift_data.get(s["ticker"])
+        if ad:
+            if ad.get("drift_pp") is not None:
+                s["analyst_drift_pp"] = ad["drift_pp"]
+            if ad.get("bullish_pct_current") is not None:
+                s["analyst_bullish_pct"] = ad["bullish_pct_current"]
         annotate_earnings_momentum(s)
         annotate_earnings_surprise(s)
+        annotate_analyst_drift(s)
 
     # Per-ticker earnings-imminence: calendar_context covers the season
     # window (true for thousands of stocks for 5 weeks); this narrows

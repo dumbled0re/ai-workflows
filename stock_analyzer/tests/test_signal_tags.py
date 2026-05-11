@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from stock_analyzer.signal_tags import (
+    annotate_analyst_drift,
     annotate_earnings_momentum,
     annotate_earnings_surprise,
     annotate_margin_signals,
@@ -164,4 +165,42 @@ def test_no_surprise_data_leaves_summary_untouched() -> None:
     DataFrame) skip silently — no spurious empty signal_components."""
     s: dict = {"ticker": "X.T"}
     annotate_earnings_surprise(s)
+    assert "signal_components" not in s
+
+
+# ---------- analyst consensus drift tags ----------------------------------
+
+
+def test_analyst_upgrade_drift_fires_at_or_above_5pp() -> None:
+    """+7pp drift in bullish share over 3 months → upgrade signal.
+    The threshold is meaningful at scale: with 10+ analysts, +5pp
+    corresponds to ~one shop changing rating, which is the
+    granularity that genuinely shifts published consensus."""
+    s: dict = {"analyst_drift_pp": 7.0}
+    annotate_analyst_drift(s)
+    assert s["signal_components"] == {"analyst_upgrade_drift": True}
+
+
+def test_analyst_downgrade_drift_fires_at_or_below_minus_5pp() -> None:
+    """-6pp drift → downgrade signal. Symmetric to the upgrade case
+    so signal_efficacy can compare both sides on equal footing."""
+    s: dict = {"analyst_drift_pp": -6.0}
+    annotate_analyst_drift(s)
+    assert s["signal_components"] == {"analyst_downgrade_drift": True}
+
+
+def test_analyst_drift_middle_band_emits_nothing() -> None:
+    """A 3pp drift is in the noise band — sub-threshold changes happen
+    every quarter without representing genuine consensus shifts."""
+    s: dict = {"analyst_drift_pp": 3.0}
+    annotate_analyst_drift(s)
+    assert s.get("signal_components", {}) == {}
+
+
+def test_analyst_drift_no_data_leaves_summary_untouched() -> None:
+    """Tickers where yfinance only had one snapshot period (no -3m row)
+    skip silently — no signal_components dict created if there's
+    nothing to compare."""
+    s: dict = {"ticker": "X.T"}
+    annotate_analyst_drift(s)
     assert "signal_components" not in s

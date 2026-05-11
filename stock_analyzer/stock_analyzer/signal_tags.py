@@ -69,6 +69,35 @@ def annotate_earnings_surprise(summary: dict) -> None:
         components["earnings_miss"] = True
 
 
+_ANALYST_DRIFT_UPGRADE_THRESHOLD = 5.0  # percentage points
+_ANALYST_DRIFT_DOWNGRADE_THRESHOLD = -5.0
+
+
+def annotate_analyst_drift(summary: dict) -> None:
+    """Mutate ``summary['signal_components']`` with analyst-consensus drift tags.
+
+    Consensus drift = bullish_share(current) - bullish_share(3m ago), in
+    percentage points. A 5pp+ upward drift across the 4 monthly snapshots
+    means coverage shops are net-upgrading — which itself is a well-
+    documented leading indicator independent of the absolute rating.
+
+    Two mutually exclusive tags:
+    - ``analyst_upgrade_drift`` when drift_pp >= +5
+    - ``analyst_downgrade_drift`` when drift_pp <= -5
+
+    Tickers without drift data (only 1 period available, or all-zero
+    analyst counts) skip silently.
+    """
+    drift = summary.get("analyst_drift_pp")
+    if not isinstance(drift, (int, float)):
+        return
+    components = summary.setdefault("signal_components", {})
+    if drift >= _ANALYST_DRIFT_UPGRADE_THRESHOLD:
+        components["analyst_upgrade_drift"] = True
+    elif drift <= _ANALYST_DRIFT_DOWNGRADE_THRESHOLD:
+        components["analyst_downgrade_drift"] = True
+
+
 def annotate_earnings_momentum(summary: dict) -> None:
     """Mutate ``summary['signal_components']`` with YoY momentum tags.
 
