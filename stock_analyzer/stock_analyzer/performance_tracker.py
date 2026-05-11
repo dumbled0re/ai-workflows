@@ -429,6 +429,16 @@ def compute_performance_stats(history: dict) -> dict:
         recent_wins = sum(1 for p in recent if p["status"] == "win")
         stats["recent_accuracy_pct"] = round(recent_wins / len(recent) * 100, 1)
 
+    # Strategy drift: compare expectancy on the last 14 resolved trades
+    # against the older baseline. A negative delta means today's
+    # selection logic / prompt has decayed relative to whatever it
+    # was doing earlier — the most actionable early-warning signal we
+    # can compute from in-band data. Requires enough samples on both
+    # sides so a stray run doesn't trigger the alarm.
+    drift = _compute_drift_indicator(resolved, recent_n=14, min_recent=5, min_baseline=10)
+    if drift is not None:
+        stats["drift_indicator"] = drift
+
     # Best and worst predictions — keep using raw return for the
     # ticker-level highlight so the date+name pair is interpretable
     # without explaining direction adjustment.
@@ -541,6 +551,56 @@ def format_signal_efficacy(efficacy: dict[str, dict]) -> str:
         )
     lines.append("→ lift が大きい signal の重みを screening_weights で増やし、負の signal は重みを下げてください")
     return "\n".join(lines)
+
+
+def _compute_drift_indicator(
+    resolved: list[dict],
+    recent_n: int = 14,
+    min_recent: int = 5,
+    min_baseline: int = 10,
+    drift_threshold_pp: float = 2.0,
+) -> dict | None:
+    """Compare per-trade expectancy on the latest ``recent_n`` resolved
+    trades against the older baseline.
+
+    Returns ``None`` when either side has fewer than its minimum sample
+    count — drift conclusions on tiny windows are noise. Otherwise
+    returns ``{"recent_expectancy_pct", "baseline_expectancy_pct",
+    "delta_pp", "is_drift", "recent_n", "baseline_n"}`` and the
+    ``format_performance_feedback`` prompt block emits a ⚠ when
+    ``is_drift`` is True (= recent expectancy is more than
+    ``drift_threshold_pp`` percentage points below baseline).
+
+    The motivation: any prompt / scoring change that *seems* fine on
+    the unit tests but quietly biases picks toward marginal setups
+    will show up here within a couple of weeks of cron runs. Without
+    this signal the cron stays green and the operator only notices
+    weeks later when accuracy reports look bad in aggregate.
+    """
+    chrono = sorted(
+        (p for p in resolved if p.get("reviewed_date") and _directional_return(p) is not None),
+        key=lambda p: p["reviewed_date"],
+    )
+    if len(chrono) < min_recent + min_baseline:
+        return None
+    recent = chrono[-recent_n:]
+    baseline = chrono[: max(0, len(chrono) - recent_n)]
+    if len(recent) < min_recent or len(baseline) < min_baseline:
+        return None
+    recent_returns = [_directional_return(p) for p in recent]
+    baseline_returns = [_directional_return(p) for p in baseline]
+    # Mypy-friendly: every entry passed the None filter above.
+    recent_exp = sum(r for r in recent_returns if r is not None) / len(recent)
+    baseline_exp = sum(r for r in baseline_returns if r is not None) / len(baseline)
+    delta_pp = recent_exp - baseline_exp
+    return {
+        "recent_expectancy_pct": round(recent_exp, 2),
+        "baseline_expectancy_pct": round(baseline_exp, 2),
+        "delta_pp": round(delta_pp, 2),
+        "is_drift": delta_pp < -drift_threshold_pp,
+        "recent_n": len(recent),
+        "baseline_n": len(baseline),
+    }
 
 
 def extract_few_shot_examples(
@@ -784,6 +844,25 @@ def format_performance_feedback(history: dict) -> str:
             lines.append(f"直近トレンド: 改善中（直近{recent_acc}% vs 通算{overall_acc}%）")
         elif recent_acc < overall_acc - 5:
             lines.append(f"直近トレンド: 悪化中（直近{recent_acc}% vs 通算{overall_acc}%）")
+
+    # Strategy-drift early warning. Expectancy (not accuracy) is the
+    # right metric here: a strategy can stay 55% accurate but bleed
+    # money if win-size shrinks while loss-size grows. ⚠ fires on a
+    # 2 percentage-point drop vs older baseline — small enough to
+    # catch quietly but large enough to be statistically meaningful
+    # on ~14 vs ~10+ samples.
+    drift = stats.get("drift_indicator")
+    if drift is not None:
+        lines.append(
+            f"戦略ドリフト: 直近{drift['recent_n']}件期待値 {drift['recent_expectancy_pct']:+.2f}%/件 "
+            f"vs ベースライン{drift['baseline_n']}件 {drift['baseline_expectancy_pct']:+.2f}%/件 "
+            f"({drift['delta_pp']:+.2f}pp)"
+        )
+        if drift.get("is_drift"):
+            lines.append(
+                "  ⚠ 直近の期待値がベースラインから 2pp 以上低下。最近の判断バイアスが効いている可能性。"
+                "今回は新規 HIGH の付与をさらに厳格にし、迷ったら MEDIUM に下げてください"
+            )
 
     # Direction-aware few-shot examples with signal fingerprints. The
     # previous in-line "成功パターン" sorted on raw return descending,

@@ -339,6 +339,95 @@ def test_format_few_shot_renders_wins_and_losses_with_signals() -> None:
     assert "似ているか" in out
 
 
+# ---------- drift indicator ------------------------------------------------
+
+
+def _resolved_with_dates(returns_with_dates: list[tuple[float, str]]) -> list[dict]:
+    """Build a resolved-trade list where each entry has a directional
+    return and a reviewed_date for chronological ordering."""
+    preds = []
+    for i, (ret, rev_date) in enumerate(returns_with_dates):
+        prediction = "UP" if ret >= 0 else "DOWN"
+        status = "win" if ret > 0 else "loss"
+        raw = ret if prediction == "UP" else -ret
+        p = _pred(status, prediction, raw, date="2026-01-01", reviewed_date=rev_date)
+        p["ticker"] = f"T{i}.T"
+        preds.append(p)
+    return preds
+
+
+def test_drift_fires_when_recent_expectancy_drops_versus_baseline() -> None:
+    """Baseline averages +3%/trade, recent 14 average -2%/trade → 5pp
+    drop should set is_drift=True."""
+    # 20 baseline entries (earlier dates) all at +3% directional, then
+    # 14 recent entries (later dates) all at -2%.
+    baseline = [(3.0, f"2026-01-{i:02d}") for i in range(1, 21)]
+    recent = [(-2.0, f"2026-02-{i:02d}") for i in range(1, 15)]
+    history = {"predictions": _resolved_with_dates(baseline + recent)}
+    stats = compute_performance_stats(history)
+    drift = stats["drift_indicator"]
+    assert drift["recent_n"] == 14
+    assert drift["baseline_n"] == 20
+    assert drift["recent_expectancy_pct"] == -2.0
+    assert drift["baseline_expectancy_pct"] == 3.0
+    assert drift["delta_pp"] == -5.0
+    assert drift["is_drift"] is True
+
+
+def test_drift_quiet_when_recent_matches_baseline() -> None:
+    """Identical recent/baseline expectancies → is_drift=False even
+    though the indicator is reported (operator can see stability)."""
+    baseline = [(2.0, f"2026-01-{i:02d}") for i in range(1, 21)]
+    recent = [(2.0, f"2026-02-{i:02d}") for i in range(1, 15)]
+    history = {"predictions": _resolved_with_dates(baseline + recent)}
+    stats = compute_performance_stats(history)
+    drift = stats["drift_indicator"]
+    assert drift["is_drift"] is False
+    assert drift["delta_pp"] == 0.0
+
+
+def test_drift_indicator_absent_with_insufficient_samples() -> None:
+    """Below the min-recent / min-baseline thresholds the indicator is
+    suppressed entirely — a noisy 2-vs-3 comparison would be worse
+    than no signal."""
+    history = {"predictions": _resolved_with_dates([(3.0, "2026-01-01"), (-2.0, "2026-02-01")])}
+    stats = compute_performance_stats(history)
+    assert "drift_indicator" not in stats
+
+
+def test_drift_indicator_skips_entries_without_reviewed_date() -> None:
+    """Entries missing reviewed_date can't be chrono-ordered — they
+    must be silently excluded, not crash. Common for the most-recently
+    captured predictions still in pending status that somehow got
+    flagged win/loss elsewhere."""
+    rows = _resolved_with_dates([(3.0, f"2026-01-{i:02d}") for i in range(1, 21)])
+    rows += _resolved_with_dates([(-2.0, f"2026-02-{i:02d}") for i in range(1, 15)])
+    # Inject a no-reviewed_date stray that would otherwise corrupt ordering.
+    stray = _pred("win", "UP", 50.0, date="2026-01-01", reviewed_date="")
+    rows.insert(5, stray)
+    history = {"predictions": rows}
+    stats = compute_performance_stats(history)
+    drift = stats["drift_indicator"]
+    # Stray excluded, so baseline still has 20 entries (not 21).
+    assert drift["baseline_n"] == 20
+
+
+def test_format_feedback_emits_drift_warning_block() -> None:
+    """When drift is positive, the feedback block must include the ⚠
+    line so the AI cannot miss the calibration directive."""
+    baseline = [(3.0, f"2026-01-{i:02d}") for i in range(1, 21)]
+    recent = [(-3.0, f"2026-02-{i:02d}") for i in range(1, 15)]
+    history = {"predictions": _resolved_with_dates(baseline + recent)}
+    history["performance_stats"] = compute_performance_stats(history)
+    feedback = format_performance_feedback(history)
+    assert "戦略ドリフト" in feedback
+    assert "2pp 以上低下" in feedback
+    # Stable expectancy numbers should land in the rendered text so
+    # the operator can read both sides at a glance.
+    assert "-3.00%/件" in feedback
+    assert "+3.00%/件" in feedback
+
+
 def test_format_performance_feedback_includes_few_shot_block() -> None:
     """Integration: the feedback prompt embeds the few-shot section
     instead of the old direction-blind '直近の失敗 / 成功パターン' code."""
