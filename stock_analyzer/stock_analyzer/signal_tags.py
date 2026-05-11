@@ -29,6 +29,44 @@ _OVERHANG_THRESHOLD = 5.0
 
 _EARNINGS_GROWTH_THRESHOLD = 10.0  # percent YoY
 _EARNINGS_DECLINE_THRESHOLD = -5.0  # percent YoY
+_SURPRISE_BEAT_THRESHOLD = 5.0  # percent above estimate
+_SURPRISE_MISS_THRESHOLD = -5.0  # percent below estimate
+
+
+def annotate_earnings_surprise(summary: dict) -> None:
+    """Mutate ``summary['signal_components']`` with PEAD-derived tags.
+
+    Post-Earnings-Announcement-Drift is among the most-documented
+    predictive signals in academic finance: a stock beating estimates
+    by >= 5% tends to drift up for weeks afterwards, scaling with the
+    surprise magnitude, and the effect compounds when beats are
+    consecutive (a sign the company is structurally outperforming
+    expectations rather than a one-off).
+
+    Three mutually exclusive tags can fire:
+    - ``earnings_beat``: latest quarter surprise >= +5%
+    - ``earnings_consistent_beat``: 3+ consecutive beats (stronger)
+    - ``earnings_miss``: latest quarter surprise <= -5%
+
+    Same post-screening pattern as ``annotate_earnings_momentum``:
+    affects predictions_history fingerprints (and signal_efficacy
+    reports) but not the pre-screen score. Tickers without surprise
+    data skip silently.
+    """
+    surprise = summary.get("latest_surprise_pct")
+    if not isinstance(surprise, (int, float)):
+        return
+    components = summary.setdefault("signal_components", {})
+    consecutive = summary.get("consecutive_beats") or 0
+    if surprise >= _SURPRISE_BEAT_THRESHOLD:
+        # Promote to consistent_beat when the streak is long — that's
+        # the stronger sub-signal a serious analyst would weight more.
+        if isinstance(consecutive, int) and consecutive >= 3:
+            components["earnings_consistent_beat"] = True
+        else:
+            components["earnings_beat"] = True
+    elif surprise <= _SURPRISE_MISS_THRESHOLD:
+        components["earnings_miss"] = True
 
 
 def annotate_earnings_momentum(summary: dict) -> None:

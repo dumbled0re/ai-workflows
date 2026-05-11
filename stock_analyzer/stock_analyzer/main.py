@@ -247,19 +247,29 @@ def phase_prepare() -> None:
     # signal_components, which lets the weekly signal-efficacy report
     # surface "did margin_low_pressure / margin_overhang correlate
     # with wins?" without us having to wire margin into the pre-screen.
-    from stock_analyzer.signal_tags import annotate_earnings_momentum, annotate_margin_signals
+    from stock_analyzer.signal_tags import (
+        annotate_earnings_momentum,
+        annotate_earnings_surprise,
+        annotate_margin_signals,
+    )
 
     for s in holdings_summaries + screened_candidates:
         annotate_margin_signals(s)
 
-    # Earnings momentum (quarterly YoY): one extra HTTP per ticker so we
-    # only run on top-20 screened + all holdings. The YoY revenue / net
-    # income comparison answers "are the fundamentals improving?",
-    # which is a leading indicator the technical signals can't see.
-    from stock_analyzer.data_fetcher import fetch_earnings_momentum_batch
+    # Earnings momentum (quarterly YoY) + surprise (PEAD). Both are one
+    # extra HTTP per ticker so we only run on top-20 screened + all
+    # holdings. YoY answers "are fundamentals improving?", surprise
+    # answers "is the company beating expectations?" — distinct and
+    # complementary leading indicators.
+    from stock_analyzer.data_fetcher import (
+        fetch_earnings_momentum_batch,
+        fetch_earnings_surprise_batch,
+    )
 
     em_targets = [c["ticker"] for c in screened_candidates[:20]] + [h.ticker for h in (config.holdings or [])]
-    em_data = fetch_earnings_momentum_batch(list({t for t in em_targets if t}))
+    em_target_set = list({t for t in em_targets if t})
+    em_data = fetch_earnings_momentum_batch(em_target_set)
+    surprise_data = fetch_earnings_surprise_batch(em_target_set)
     for s in holdings_summaries + screened_candidates:
         em = em_data.get(s["ticker"])
         if em:
@@ -269,7 +279,16 @@ def phase_prepare() -> None:
                 s["net_income_yoy_pct"] = em["net_income_yoy_pct"]
             if em.get("latest_quarter"):
                 s["latest_quarter"] = em["latest_quarter"]
+        sp = surprise_data.get(s["ticker"])
+        if sp:
+            if sp.get("latest_surprise_pct") is not None:
+                s["latest_surprise_pct"] = sp["latest_surprise_pct"]
+            if sp.get("consecutive_beats") is not None:
+                s["consecutive_beats"] = sp["consecutive_beats"]
+            if sp.get("consecutive_misses") is not None:
+                s["consecutive_misses"] = sp["consecutive_misses"]
         annotate_earnings_momentum(s)
+        annotate_earnings_surprise(s)
 
     # Per-ticker earnings-imminence: calendar_context covers the season
     # window (true for thousands of stocks for 5 weeks); this narrows

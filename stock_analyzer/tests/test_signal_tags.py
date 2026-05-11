@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from stock_analyzer.signal_tags import annotate_earnings_momentum, annotate_margin_signals
+from stock_analyzer.signal_tags import (
+    annotate_earnings_momentum,
+    annotate_earnings_surprise,
+    annotate_margin_signals,
+)
 
 
 def test_low_pressure_fires_below_threshold() -> None:
@@ -114,3 +118,50 @@ def test_partial_yoy_data_still_evaluates() -> None:
     s: dict = {"revenue_yoy_pct": 15.0}
     annotate_earnings_momentum(s)
     assert s["signal_components"] == {"earnings_yoy_growth": True}
+
+
+# ---------- PEAD surprise tags --------------------------------------------
+
+
+def test_earnings_beat_fires_on_single_quarter_beat() -> None:
+    """A +10% surprise on its own (no streak yet) maps to earnings_beat
+    — the basic PEAD signal."""
+    s: dict = {"latest_surprise_pct": 10.0, "consecutive_beats": 1}
+    annotate_earnings_surprise(s)
+    assert s["signal_components"] == {"earnings_beat": True}
+
+
+def test_consistent_beat_supersedes_basic_beat_on_long_streak() -> None:
+    """3+ consecutive beats elevates the tag to earnings_consistent_beat
+    so the weekly signal-efficacy report can separate streak-driven
+    wins from single-beat noise."""
+    s: dict = {"latest_surprise_pct": 15.0, "consecutive_beats": 4}
+    annotate_earnings_surprise(s)
+    assert s["signal_components"] == {"earnings_consistent_beat": True}
+    # Two-quarter streak still rates as just 'beat' (not yet a structural pattern).
+    s2: dict = {"latest_surprise_pct": 8.0, "consecutive_beats": 2}
+    annotate_earnings_surprise(s2)
+    assert s2["signal_components"] == {"earnings_beat": True}
+
+
+def test_earnings_miss_fires_on_negative_surprise() -> None:
+    """A -10% surprise → earnings_miss. consecutive_misses is read but
+    no streak escalation needed: a miss is bearish on its own."""
+    s: dict = {"latest_surprise_pct": -10.0, "consecutive_misses": 2}
+    annotate_earnings_surprise(s)
+    assert s["signal_components"] == {"earnings_miss": True}
+
+
+def test_surprise_middle_band_emits_nothing() -> None:
+    """The -5%..+5% band is noise; no tag fires either way."""
+    s: dict = {"latest_surprise_pct": 2.0, "consecutive_beats": 5}
+    annotate_earnings_surprise(s)
+    assert s.get("signal_components", {}) == {}
+
+
+def test_no_surprise_data_leaves_summary_untouched() -> None:
+    """Tickers without surprise data (yfinance returned None or sparse
+    DataFrame) skip silently — no spurious empty signal_components."""
+    s: dict = {"ticker": "X.T"}
+    annotate_earnings_surprise(s)
+    assert "signal_components" not in s

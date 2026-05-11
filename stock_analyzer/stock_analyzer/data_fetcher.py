@@ -208,6 +208,79 @@ def fetch_earnings_momentum(ticker: str) -> dict | None:
         return None
 
 
+def fetch_earnings_surprise(ticker: str) -> dict | None:
+    """Fetch the last 4 quarters of EPS surprise vs analyst estimate.
+
+    Returns ``{"latest_surprise_pct", "consecutive_beats", "consecutive_misses",
+    "quarters": [...]}`` when parseable, else None.
+
+    Earnings surprise is one of the most-documented predictive signals
+    in academic finance (PEAD — Post-Earnings-Announcement Drift): a
+    stock that beats expectations tends to drift up for weeks
+    afterwards, and the magnitude of the surprise correlates with the
+    drift's magnitude. Single-quarter beats are signal; 3-4 consecutive
+    beats are very strong signal (= the company is structurally out-
+    executing expectations).
+
+    The data is in yfinance's ``earnings_history`` DataFrame, which is
+    one extra HTTP per ticker, so callers should restrict to top-N
+    candidates + holdings.
+    """
+    try:
+        tk = yf.Ticker(ticker)
+        eh = tk.earnings_history
+        if eh is None or len(eh) == 0:
+            return None
+        if "surprisePercent" not in eh.columns:
+            return None
+        # earnings_history is indexed by quarter (ascending), most
+        # recent at the bottom. Reverse so [0] = latest.
+        rows = list(eh.itertuples())[::-1]
+        surprises: list[float] = []
+        for r in rows[:4]:
+            sp = getattr(r, "surprisePercent", None)
+            if sp is None or pd.isna(sp):
+                continue
+            surprises.append(float(sp) * 100)  # yfinance returns ratio, not %
+        if not surprises:
+            return None
+        # Count run of consecutive beats / misses from latest backward.
+        latest_sign = 1 if surprises[0] >= 0 else -1
+        run = 0
+        for s in surprises:
+            if (s >= 0) == (latest_sign >= 0):
+                run += 1
+            else:
+                break
+        return {
+            "latest_surprise_pct": round(surprises[0], 2),
+            "consecutive_beats": run if latest_sign > 0 else 0,
+            "consecutive_misses": run if latest_sign < 0 else 0,
+            "quarters_evaluated": len(surprises),
+        }
+    except Exception as e:
+        logger.debug("earnings_surprise fetch failed for %s: %s", ticker, e)
+        return None
+
+
+def fetch_earnings_surprise_batch(tickers: list[str]) -> dict[str, dict]:
+    """Run ``fetch_earnings_surprise`` over a list, rate-limited.
+
+    Same fail-soft pattern as ``fetch_earnings_momentum_batch``: any
+    single ticker failure is logged silently and excluded from the
+    result.
+    """
+    out: dict[str, dict] = {}
+    for i, ticker in enumerate(tickers):
+        if i > 0:
+            time.sleep(random.uniform(_SLEEP_MIN, _SLEEP_MAX))
+        result = fetch_earnings_surprise(ticker)
+        if result is not None:
+            out[ticker] = result
+    logger.info("earnings_surprise fetched: %d/%d tickers", len(out), len(tickers))
+    return out
+
+
 def fetch_earnings_momentum_batch(tickers: list[str]) -> dict[str, dict]:
     """Run ``fetch_earnings_momentum`` over a list, rate-limited.
 

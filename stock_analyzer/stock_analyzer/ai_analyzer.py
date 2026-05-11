@@ -403,6 +403,21 @@ def _format_stock_data(summaries: list[dict]) -> str:
             q = s.get("latest_quarter")
             q_suffix = f" [{q}決算]" if q else ""
             lines.append("業績進捗: " + " / ".join(em_parts) + q_suffix)
+
+        # Earnings surprise (PEAD): explicit beat / miss with streak.
+        # Among the strongest single-signal predictors in academic
+        # finance — surface prominently rather than burying in the
+        # signal_components fingerprint.
+        sp = s.get("latest_surprise_pct")
+        if isinstance(sp, (int, float)):
+            cb = s.get("consecutive_beats") or 0
+            cm = s.get("consecutive_misses") or 0
+            streak_text = ""
+            if isinstance(cb, int) and cb >= 2:
+                streak_text = f" / {cb}Q連続 beat"
+            elif isinstance(cm, int) and cm >= 2:
+                streak_text = f" / {cm}Q連続 miss"
+            lines.append(f"決算サプライズ: 最新 {sp:+.1f}% vs アナリスト予想{streak_text}")
         if s.get("industry"):
             lines.append(f"業種: {s['industry']}")
 
