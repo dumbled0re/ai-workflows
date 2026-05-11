@@ -361,6 +361,38 @@ def phase_prepare() -> None:
     with open(meta_dir / "signal_components.json", "w", encoding="utf-8") as f:
         json.dump(signal_components_by_ticker, f, ensure_ascii=False)
 
+    # Universe staleness check — runs at most once per day (weekly
+    # would be fine, but the daily cost is negligible). Failures are
+    # silent: a missing live source just means "no opinion", we don't
+    # want a fetch outage on Wikipedia to spam Slack.
+    try:
+        from stock_analyzer.universe_refresh import diff_against_static
+
+        universe_diff = diff_against_static()
+        with open(meta_dir / "universe_diff.json", "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "added": list(universe_diff.added),
+                    "removed": list(universe_diff.removed),
+                    "static_count": universe_diff.static_count,
+                    "live_count": universe_diff.live_count,
+                    "source": universe_diff.source,
+                    "is_stale": universe_diff.is_stale,
+                },
+                f,
+                ensure_ascii=False,
+            )
+        if universe_diff.is_stale:
+            logger.warning(
+                "Universe staleness detected: static=%d live=%d (+%d/-%d)",
+                universe_diff.static_count,
+                universe_diff.live_count,
+                len(universe_diff.added),
+                len(universe_diff.removed),
+            )
+    except Exception:
+        logger.exception("Universe staleness check failed; continuing without it")
+
     logger.info("Phase 1 complete. Prompt file ready for Claude Code Action.")
 
 
@@ -482,6 +514,36 @@ def phase_notify() -> None:
                 logger.warning("Portfolio risk findings: %d (see Slack)", len(findings))
         except Exception:
             logger.exception("Portfolio risk check failed; continuing without it")
+
+    # Universe staleness — surface in Slack only when actually stale,
+    # so a clean run stays uncluttered. Reads the universe_diff.json
+    # cached by Phase 1.
+    universe_text = ""
+    universe_diff_path = _DATA_DIR / "universe_diff.json"
+    if universe_diff_path.exists():
+        try:
+            from stock_analyzer.universe_refresh import UniverseDiff, format_diff_for_slack
+
+            with open(universe_diff_path, encoding="utf-8") as f:
+                ud = json.load(f)
+            universe_text = format_diff_for_slack(
+                UniverseDiff(
+                    added=tuple(ud.get("added") or []),
+                    removed=tuple(ud.get("removed") or []),
+                    static_count=int(ud.get("static_count", 0)),
+                    live_count=int(ud.get("live_count", 0)),
+                    source=str(ud.get("source", "")),
+                )
+            )
+        except Exception:
+            logger.exception("Universe staleness rendering failed; continuing without it")
+    # Merge into the portfolio findings block so Slack gets one block
+    # for "operational warnings". Empty text adds nothing.
+    if universe_text:
+        if portfolio_findings_text:
+            portfolio_findings_text = (portfolio_findings_text + "\n\n" + universe_text).strip()
+        else:
+            portfolio_findings_text = universe_text
 
     # Send to Slack
     success = send_analysis_to_slack(
