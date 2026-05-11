@@ -357,7 +357,13 @@ def _format_stock_data(summaries: list[dict]) -> str:
             lines.append(f"財務: {' | '.join(fund_parts3)}")
 
         if s.get("next_earnings_date"):
-            lines.append(f"次回決算発表日: {s['next_earnings_date']}")
+            # Suffix is appended by ``earnings_calendar.annotate_summary``
+            # via ``days_until_earnings`` when the date is within the
+            # imminent threshold; empty otherwise.
+            from stock_analyzer.earnings_calendar import format_inline_for_summary
+
+            suffix = format_inline_for_summary(s.get("days_until_earnings"))
+            lines.append(f"次回決算発表日: {s['next_earnings_date']}{suffix}")
         if s.get("industry"):
             lines.append(f"業種: {s['industry']}")
 

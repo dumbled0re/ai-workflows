@@ -240,6 +240,28 @@ def phase_prepare() -> None:
             s["margin_signal"] = margin.get("signal", "")
             s["margin_trend"] = margin.get("margin_trend", "")
 
+    # Per-ticker earnings-imminence: calendar_context covers the season
+    # window (true for thousands of stocks for 5 weeks); this narrows
+    # it down to the specific tickers reporting within the next 3
+    # trading days, where gap risk is concrete and entry should be
+    # avoided. Annotates each summary in place so the inline prompt
+    # row can mark the date with a ⚠, and produces a top-of-prompt
+    # block listing every imminent ticker so the AI cannot miss them.
+    from stock_analyzer.earnings_calendar import (
+        collect_imminent,
+        format_warnings_for_prompt,
+    )
+
+    imminent = collect_imminent(holdings_summaries + screened_candidates, now_jst.date())
+    earnings_warnings_text = format_warnings_for_prompt(imminent)
+    if imminent:
+        market_context_text = market_context_text + "\n\n" + earnings_warnings_text
+        logger.info(
+            "Earnings imminent: %d ticker(s) within 3 trading days (%s)",
+            len(imminent),
+            ", ".join(f"{w.ticker}@{w.trading_days_until}d" for w in imminent),
+        )
+
     # Review past predictions against current prices
     holdings_data_dict = {}
     if config.holdings:
