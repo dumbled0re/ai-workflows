@@ -7,6 +7,8 @@ stock_analyzer/data/review_result.json
 stock_analyzer/data/review_prompt.txt
 stock_analyzer/data/current_prices.json
 stock_analyzer/data/meta.json
+stock_analyzer/data/portfolio_aux.json
+stock_analyzer/data/portfolio_findings.json
 # Persistent files are tracked:
 # stock_analyzer/data/predictions_history.json
 # stock_analyzer/data/strategy_notes.json

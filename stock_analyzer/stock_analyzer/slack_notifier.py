@@ -23,6 +23,7 @@ def send_analysis_to_slack(
     discovery_results: dict,
     timing: str,
     data_quality: dict | None = None,
+    portfolio_risk_text: str | None = None,
 ) -> bool:
     """Format and send the analysis report to Slack.
 
@@ -33,6 +34,11 @@ def send_analysis_to_slack(
         discovery_results: Claude discovery result
         timing: "morning" or "evening"
         data_quality: Optional dict with success/failure counts
+        portfolio_risk_text: Optional Slack-ready text from portfolio_risk
+            findings (sector concentration / correlation / total-count
+            violations against the live recommendations). When non-empty
+            it is appended as its own section so the operator sees it
+            adjacent to the picks.
 
     Returns:
         True if sent successfully
@@ -41,6 +47,13 @@ def send_analysis_to_slack(
         return _send_error(bot_token, channel, holdings_analysis.get("message", "不明なエラー"))
 
     blocks = _build_blocks(holdings_analysis, discovery_results, timing, data_quality)
+    if portfolio_risk_text:
+        blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": portfolio_risk_text},
+            }
+        )
     return _send_blocks(bot_token, channel, blocks)
 
 

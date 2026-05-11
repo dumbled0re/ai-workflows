@@ -147,7 +147,29 @@ def build_weekly_review_prompt(predictions_history: dict, strategy_notes: dict) 
 通算: {stats.get("wins", 0)}勝 {stats.get("losses", 0)}敗 (勝率{stats.get("accuracy_pct", "N/A")}%)
 """
 
-    # Confidence breakdown
+    # Risk-adjusted P&L — accuracy alone is insufficient. A 60%
+    # win-rate with -3% avg-win and +5% avg-loss is still net negative.
+    risk_lines = []
+    exp = stats.get("expectancy_per_trade_pct")
+    if exp is not None:
+        risk_lines.append(f"  期待値: {exp:+.2f}%/件 (= 平均的に 1 トレードでどれだけ得るか)")
+    pf = stats.get("profit_factor")
+    if pf is not None:
+        risk_lines.append(f"  プロフィットファクター: {pf:.2f} (= 累積勝ち / 累積負け、1.0 超で P&L プラス)")
+    sharpe = stats.get("sharpe_like_per_trade")
+    if sharpe is not None:
+        risk_lines.append(f"  Sharpe-like (per trade): {sharpe:+.2f}")
+    max_dd = stats.get("max_drawdown_pct")
+    if max_dd is not None:
+        risk_lines.append(f"  最大ドローダウン: {max_dd:.1f}% (= 累積 P&L の最悪 peak→trough)")
+    avg_w = stats.get("avg_return_wins")
+    avg_l = stats.get("avg_return_losses")
+    if avg_w is not None and avg_l is not None:
+        risk_lines.append(f"  方向調整 avg-return: 的中 {avg_w:+.1f}% / 外れ {avg_l:+.1f}% (direction-aware)")
+    if risk_lines:
+        prompt += "リスク調整 P&L:\n" + "\n".join(risk_lines) + "\n"
+
+    # Confidence breakdown + calibration inversion warning
     by_conf = stats.get("by_confidence", {})
     if by_conf:
         prompt += "信頼度別:\n"
@@ -155,6 +177,37 @@ def build_weekly_review_prompt(predictions_history: dict, strategy_notes: dict) 
             c = by_conf.get(conf)
             if c:
                 prompt += f"  {conf}: {c['accuracy_pct']}% ({c['wins']}/{c['total']}件)\n"
+        high = by_conf.get("HIGH", {})
+        medium = by_conf.get("MEDIUM", {})
+        if (
+            high.get("accuracy_pct") is not None
+            and medium.get("accuracy_pct") is not None
+            and high.get("total", 0) >= 5
+            and medium.get("total", 0) >= 5
+            and high["accuracy_pct"] < medium["accuracy_pct"]
+        ):
+            prompt += (
+                f"⚠️ キャリブレーション逆転: "
+                f"HIGH({high['accuracy_pct']}%) < MEDIUM({medium['accuracy_pct']}%) → "
+                "HIGH の判定基準を厳格化する `confidence_calibration` の "
+                "更新を必ず行ってください\n"
+            )
+
+    # Confidence × direction breakdown (cross-tab)
+    by_cd = stats.get("by_confidence_direction", {})
+    if by_cd:
+        prompt += "信頼度 × 方向 (N>=5 のバケットのみ):\n"
+        for key, val in sorted(by_cd.items()):
+            prompt += f"  {key}: {val['accuracy_pct']}% ({val['wins']}/{val['total']}件)\n"
+
+    # Source breakdown
+    src_lines = []
+    for src in ("holdings", "short_term", "long_term", "discovery"):
+        v = stats.get(f"{src}_accuracy_pct")
+        if v is not None:
+            src_lines.append(f"  {src}: {v}%")
+    if src_lines:
+        prompt += "ソース別的中率:\n" + "\n".join(src_lines) + "\n"
 
     # Recent wins
     if wins:
@@ -228,6 +281,14 @@ def build_weekly_review_prompt(predictions_history: dict, strategy_notes: dict) 
 - 既存の戦略メモで結果と矛盾するものは deprecated_notes に含めてください
 - screening_weight_adjustments は成功パターンに対応する項目の重みを上げ、失敗パターンの重みを下げてください
 - 根拠が十分でない教訓は confidence を LOW にしてください
+- **勝率より「期待値 (expectancy) × プロフィットファクター」を優先**して戦略を評価してください
+- **キャリブレーション逆転が出ている場合は最優先で対応**:
+  `confidence_calibration` の HIGH 判定基準を厳格化する文言を必ず更新してください
+- **信頼度×方向のクロス集計**で偏りが見えた場合 (例: HIGH-DOWN が特に外れる) は
+  方向別の追加ルールを `entry_rules` に書いてください
+- **direction-aware 表記**: 表示される avg-return は方向調整済 (DOWN-win も
+  正の値)。「的中時 +5% / 外れ時 -3%」が正常。負の的中時リターンが出ていたら
+  集計バグなので無視せず報告してください
 
 JSONのみを出力してください。
 """

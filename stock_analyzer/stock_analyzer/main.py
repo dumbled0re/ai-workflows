@@ -12,6 +12,42 @@ import jpholiday
 JST = timezone(timedelta(hours=9))
 _DATA_DIR = Path(__file__).parent.parent / "data"
 
+
+class _ClosesShim:
+    """Minimal shim presenting a list of closes as ``df["Close"].tail(N).iloc[i]``.
+
+    Used by ``phase_notify`` so ``portfolio_risk.check_pairwise_correlation``
+    can read the close-history JSON saved in Phase 1 without pulling
+    pandas back into Phase 3 just for a few lookups.
+    """
+
+    def __init__(self, closes: list[float]) -> None:
+        self._closes = list(closes)
+
+    def __getitem__(self, key: str | int) -> _ClosesShim | float:
+        # ``df["Close"]`` returns the same closes view; ``tail.iloc[i]``
+        # passes through to a numeric close. The branch keeps both call
+        # patterns satisfied without dragging pandas in.
+        if isinstance(key, str):
+            if key == "Close":
+                return self
+            raise KeyError(key)
+        return float(self._closes[key])
+
+    def tail(self, n: int) -> _ClosesShim:
+        return _ClosesShim(self._closes[-n:])
+
+    def __len__(self) -> int:
+        return len(self._closes)
+
+    @property
+    def iloc(self) -> _ClosesShim:
+        return self
+
+    def tolist(self) -> list[float]:
+        return list(self._closes)
+
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -214,6 +250,38 @@ def phase_prepare() -> None:
     save_history(perf_history)
     logger.info("Performance review complete")
 
+    # Inject the previous run's portfolio-risk violations into the
+    # feedback block so the AI gets a chance to fix the pattern (e.g.
+    # "you put 3 banks in last run — don't again"). Same mechanism as
+    # `performance_feedback`, just for portfolio-level rules.
+    findings_path = _DATA_DIR / "portfolio_findings.json"
+    if findings_path.exists():
+        try:
+            from stock_analyzer.portfolio_risk import RiskFinding, format_findings_for_prompt
+
+            with open(findings_path, encoding="utf-8") as f:
+                prev = json.load(f)
+            # JSON round-trips tuple → list; re-tupleise so the dataclass
+            # invariant holds when we feed it back through the formatter.
+            prev_findings: list[RiskFinding] = []
+            for d in prev.get("findings", []):
+                if not isinstance(d, dict):
+                    continue
+                prev_findings.append(
+                    RiskFinding(
+                        severity=str(d.get("severity", "warning")),
+                        kind=str(d.get("kind", "")),
+                        message=str(d.get("message", "")),
+                        affected_tickers=tuple(d.get("affected_tickers") or []),
+                    )
+                )
+            risk_feedback = format_findings_for_prompt(prev_findings)
+            if risk_feedback:
+                performance_feedback = (performance_feedback + "\n\n" + risk_feedback).strip()
+                logger.info("Injected %d portfolio-risk findings from previous run into prompt", len(prev_findings))
+        except Exception:
+            logger.exception("Failed to inject prior portfolio-risk findings")
+
     # Save prompts for Claude Code Action
     prepare_prompts(
         holdings_summaries=holdings_summaries,
@@ -235,6 +303,37 @@ def phase_prepare() -> None:
     # Save data quality and timing info for Phase 3
     with open(meta_dir / "meta.json", "w", encoding="utf-8") as f:
         json.dump({"timing": timing, "data_quality": data_quality}, f)
+
+    # Save portfolio-risk auxiliary data so Phase 3 can run sector +
+    # correlation checks against Claude's recommendations without
+    # re-fetching anything. Keep it compact: sector per ticker, plus
+    # last 60 daily closes (~3 months) per ticker — enough for a
+    # pairwise daily-return correlation that flags near-duplicates.
+    portfolio_aux: dict = {"ticker_info": {}, "close_history": {}}
+    for ticker, info in all_ticker_info.items():
+        sector = info.get("sector")
+        if sector:
+            portfolio_aux["ticker_info"][ticker] = {"sector": sector}
+    all_dfs: dict[str, object] = {}
+    if config.holdings:
+        all_dfs.update(holdings_data)  # type: ignore[possibly-undefined]
+    # Also grab DataFrames from screening — screen_stocks didn't return
+    # them directly, but the screened_candidates list carries per-ticker
+    # closes via current_price only. Re-build from holdings_data alone
+    # is fine: a real close history is the typical screening data path,
+    # and a candidate without history can still be checked for sector.
+    for ticker, df in all_dfs.items():
+        try:
+            close = df["Close"]  # type: ignore[index]
+            tail = close.tail(60)
+            if len(tail) >= 20:
+                portfolio_aux["close_history"][ticker] = [round(float(v), 2) for v in tail.tolist()]
+        except Exception:
+            # best-effort: a missing close history for one ticker just
+            # excludes it from the correlation check, never aborts.
+            continue
+    with open(meta_dir / "portfolio_aux.json", "w", encoding="utf-8") as f:
+        json.dump(portfolio_aux, f, ensure_ascii=False)
 
     logger.info("Phase 1 complete. Prompt file ready for Claude Code Action.")
 
@@ -291,6 +390,56 @@ def phase_notify() -> None:
     else:
         logger.warning("No current prices available; skipping prediction tracking")
 
+    # Portfolio-level risk check: sector concentration / total count /
+    # near-duplicate correlation. Findings flow two directions:
+    #  - Slack notification (immediate operator visibility, inline)
+    #  - portfolio_findings.json on disk so the next ``phase_prepare``
+    #    can inject them back into Claude's analysis prompt and the
+    #    AI gets a chance to fix the pattern next run.
+    portfolio_findings_text = ""
+    aux_path = _DATA_DIR / "portfolio_aux.json"
+    if aux_path.exists():
+        try:
+            from stock_analyzer.portfolio_risk import check_all, format_findings_for_slack
+
+            with open(aux_path, encoding="utf-8") as f:
+                portfolio_aux = json.load(f)
+            ticker_info = portfolio_aux.get("ticker_info") or {}
+            close_history = portfolio_aux.get("close_history") or {}
+            # Re-wrap close_history values as objects with a ``Close``
+            # attribute so portfolio_risk's DataFrame-style access path
+            # works without pulling pandas into Phase 3. The shim is
+            # minimal: only ``df["Close"].tail(N).iloc[i]`` is used.
+            price_data: dict[str, object] = {t: _ClosesShim(closes) for t, closes in close_history.items()}
+            recommendations: list[dict] = []
+            for h in holdings_result.get("holdings_analysis", []) or []:
+                if h.get("prediction") in ("UP", "DOWN"):
+                    recommendations.append(h)
+            for key in ("short_term_picks", "long_term_picks", "recommended_stocks"):
+                for r in discovery_result.get(key, []) or []:
+                    if r.get("prediction") in ("UP", "DOWN"):
+                        recommendations.append(r)
+            findings = check_all(recommendations, ticker_info=ticker_info, price_data=price_data)
+            portfolio_findings_text = format_findings_for_slack(findings)
+            # Persist a compact dict so phase_prepare's next run can
+            # inject the violations back into Claude's prompt without
+            # importing portfolio_risk just to deserialise.
+            findings_payload = [
+                {
+                    "severity": f.severity,
+                    "kind": f.kind,
+                    "message": f.message,
+                    "affected_tickers": list(f.affected_tickers),
+                }
+                for f in findings
+            ]
+            with open(_DATA_DIR / "portfolio_findings.json", "w", encoding="utf-8") as f:
+                json.dump({"findings": findings_payload}, f, ensure_ascii=False)
+            if findings:
+                logger.warning("Portfolio risk findings: %d (see Slack)", len(findings))
+        except Exception:
+            logger.exception("Portfolio risk check failed; continuing without it")
+
     # Send to Slack
     success = send_analysis_to_slack(
         bot_token=slack_token,
@@ -299,6 +448,7 @@ def phase_notify() -> None:
         discovery_results=discovery_result,
         timing=meta["timing"],
         data_quality=meta.get("data_quality"),
+        portfolio_risk_text=portfolio_findings_text or None,
     )
 
     if success:

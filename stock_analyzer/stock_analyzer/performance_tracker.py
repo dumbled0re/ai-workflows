@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from datetime import datetime
 from pathlib import Path
 
@@ -11,6 +12,31 @@ _DATA_DIR = Path(__file__).parent.parent / "data"
 _HISTORY_FILE = str(_DATA_DIR / "predictions_history.json")
 _REVIEW_WINDOW_DAYS = 14  # Evaluate predictions after 2 weeks
 _MIN_REVIEW_DAYS = 5  # Start checking after 5 trading days
+# Minimum resolved trades before reporting a sub-bucket (HIGH/MEDIUM, by
+# source, by confidence × direction). Below this, accuracy_pct is too
+# noisy to drive Claude's self-improvement decisions.
+_MIN_BUCKET_N = 5
+
+
+def _directional_return(p: dict) -> float | None:
+    """Return the realised return signed so that "predicting correctly" is positive.
+
+    A DOWN prediction that resolves with -10% actual_return_pct means the
+    AI was right and gained 10% (in a short / hedge sense), so we report
+    +10. Without this flip, averaging raw signed returns mixes UP-wins
+    (positive raw) with DOWN-wins (negative raw) and the mean ends up
+    nonsensical (or worse, misleading — wins averaging negative is what
+    the feedback prompt was showing the AI before this helper landed).
+    """
+    r = p.get("actual_return_pct")
+    if r is None:
+        return None
+    direction = p.get("prediction")
+    if direction == "UP":
+        return float(r)
+    if direction == "DOWN":
+        return -float(r)
+    return None
 
 
 def load_history(path: str = _HISTORY_FILE) -> dict:
@@ -264,7 +290,14 @@ def save_new_predictions(
 
 
 def compute_performance_stats(history: dict) -> dict:
-    """Compute accuracy metrics from historical predictions."""
+    """Compute accuracy + risk-adjusted P&L metrics from historical predictions.
+
+    All return-based metrics use ``_directional_return`` (= return signed so
+    "predicting correctly" is positive), so DOWN-wins don't cancel out
+    UP-wins in the averages. The previous version summed raw signed
+    returns and reported ``avg_return_wins`` as negative when the
+    population was DOWN-heavy — actively misleading the feedback loop.
+    """
     predictions = history.get("predictions", [])
     if not predictions:
         return {}
@@ -283,13 +316,69 @@ def compute_performance_stats(history: dict) -> dict:
         "accuracy_pct": round(len(wins) / len(resolved) * 100, 1) if resolved else None,
     }
 
-    # Average returns
-    if wins:
-        stats["avg_return_wins"] = round(sum(p.get("actual_return_pct", 0) for p in wins) / len(wins), 2)
-    if losses:
-        stats["avg_return_losses"] = round(sum(p.get("actual_return_pct", 0) for p in losses) / len(losses), 2)
+    # Direction-aware average returns (a DOWN-win with raw -10% → +10
+    # directional return, so DOWN-wins are correctly aggregated alongside
+    # UP-wins instead of dragging the average toward zero or negative).
+    win_dir_returns = [r for r in (_directional_return(p) for p in wins) if r is not None]
+    loss_dir_returns = [r for r in (_directional_return(p) for p in losses) if r is not None]
+    if win_dir_returns:
+        stats["avg_return_wins"] = round(sum(win_dir_returns) / len(win_dir_returns), 2)
+    if loss_dir_returns:
+        stats["avg_return_losses"] = round(sum(loss_dir_returns) / len(loss_dir_returns), 2)
 
-    # Confidence breakdown
+    # Risk-adjusted P&L: expectancy, profit factor, Sharpe-like, max DD.
+    # These answer "are we actually making money?" rather than just "are
+    # we right >50% of the time?". A 55% win rate with -2% avg-win and
+    # +5% avg-loss is still losing money.
+    all_dir_returns = win_dir_returns + loss_dir_returns
+    if all_dir_returns:
+        mean_r = sum(all_dir_returns) / len(all_dir_returns)
+        stats["mean_return_per_trade_pct"] = round(mean_r, 2)
+        if len(all_dir_returns) >= 2:
+            variance = sum((r - mean_r) ** 2 for r in all_dir_returns) / (len(all_dir_returns) - 1)
+            stdev = math.sqrt(variance)
+            stats["return_stdev_pct"] = round(stdev, 2)
+            # Sharpe-like ratio (per-trade, not annualised). Above 0
+            # means positive risk-adjusted return; above ~0.3 is a
+            # genuinely good per-trade edge.
+            if stdev > 0:
+                stats["sharpe_like_per_trade"] = round(mean_r / stdev, 2)
+    if win_dir_returns and loss_dir_returns:
+        win_rate = len(wins) / len(resolved)
+        avg_w = sum(win_dir_returns) / len(win_dir_returns)
+        avg_l_abs = abs(sum(loss_dir_returns) / len(loss_dir_returns))
+        # Expectancy = average % gained per trade including losers.
+        # >0 means each trade is positive-EV on average; <0 means
+        # bleeding even before slippage / commissions.
+        stats["expectancy_per_trade_pct"] = round(win_rate * avg_w - (1 - win_rate) * avg_l_abs, 2)
+        # Profit factor = gross wins / gross losses. >1 means total
+        # winning $$ exceeds total losing $$.
+        gross_loss = abs(sum(loss_dir_returns))
+        if gross_loss > 0:
+            stats["profit_factor"] = round(sum(win_dir_returns) / gross_loss, 2)
+
+    # Equity-curve max drawdown — treat each resolved trade as a 1%
+    # position size and walk through chronologically. Peak/trough
+    # measured against the running cumulative sum, so a series of
+    # losing trades shows up as a single drawdown number. Sensitive
+    # only to ordering and magnitudes, not annualised.
+    if all_dir_returns:
+        chrono_resolved = sorted(resolved, key=lambda p: p.get("reviewed_date") or p.get("date", ""))
+        chrono_returns = [r for r in (_directional_return(p) for p in chrono_resolved) if r is not None]
+        cumulative = 0.0
+        peak = 0.0
+        max_dd = 0.0
+        for r in chrono_returns:
+            cumulative += r
+            peak = max(peak, cumulative)
+            drawdown = peak - cumulative
+            max_dd = max(max_dd, drawdown)
+        stats["max_drawdown_pct"] = round(max_dd, 2)
+
+    # Confidence breakdown (the single most important diagnostic — if
+    # HIGH < MEDIUM, the AI is over-using HIGH and needs to tighten its
+    # bar). ``format_performance_feedback`` reads this back and emits an
+    # explicit warning when inverted.
     confidence_stats: dict[str, dict] = {}
     for conf in ("HIGH", "MEDIUM", "LOW"):
         conf_preds = [p for p in resolved if p.get("confidence") == conf]
@@ -303,10 +392,29 @@ def compute_performance_stats(history: dict) -> dict:
     if confidence_stats:
         stats["by_confidence"] = confidence_stats
 
-    # Source breakdown (holdings vs discovery)
-    for source in ("holdings", "discovery"):
+    # Confidence × direction cross-tab. Reveals asymmetric bias — e.g.
+    # HIGH-UP could be reliable while HIGH-DOWN is the failure mode (or
+    # vice versa). Only emit buckets with ``_MIN_BUCKET_N`` resolved
+    # trades so noise doesn't dominate.
+    conf_dir_stats: dict[str, dict] = {}
+    for conf in ("HIGH", "MEDIUM", "LOW"):
+        for direction in ("UP", "DOWN"):
+            subset = [p for p in resolved if p.get("confidence") == conf and p.get("prediction") == direction]
+            if len(subset) >= _MIN_BUCKET_N:
+                sub_wins = [p for p in subset if p["status"] == "win"]
+                conf_dir_stats[f"{conf}_{direction}"] = {
+                    "total": len(subset),
+                    "wins": len(sub_wins),
+                    "accuracy_pct": round(len(sub_wins) / len(subset) * 100, 1),
+                }
+    if conf_dir_stats:
+        stats["by_confidence_direction"] = conf_dir_stats
+
+    # Source breakdown — separate holdings / short_term / long_term /
+    # discovery so the review prompt can tell which path is dragging.
+    for source in ("holdings", "short_term", "long_term", "discovery"):
         src_preds = [p for p in resolved if p.get("source") == source]
-        if src_preds:
+        if len(src_preds) >= _MIN_BUCKET_N:
             src_wins = [p for p in src_preds if p["status"] == "win"]
             stats[f"{source}_accuracy_pct"] = round(len(src_wins) / len(src_preds) * 100, 1)
 
@@ -316,7 +424,9 @@ def compute_performance_stats(history: dict) -> dict:
         recent_wins = sum(1 for p in recent if p["status"] == "win")
         stats["recent_accuracy_pct"] = round(recent_wins / len(recent) * 100, 1)
 
-    # Best and worst predictions
+    # Best and worst predictions — keep using raw return for the
+    # ticker-level highlight so the date+name pair is interpretable
+    # without explaining direction adjustment.
     if resolved:
         best = max(resolved, key=lambda p: p.get("actual_return_pct", 0))
         worst = min(resolved, key=lambda p: p.get("actual_return_pct", 0))
@@ -362,7 +472,33 @@ def format_performance_feedback(history: dict) -> str:
         f"保留{stats.get('pending', 0)}件"
     )
 
-    # Confidence breakdown
+    # Risk-adjusted P&L — answers "are these picks actually profitable?".
+    # Expectancy <=0 means even the winning trades aren't covering the
+    # losing trades on average; profit_factor < 1.0 means total gain $$
+    # is less than total loss $$. Surface these explicitly so the AI
+    # doesn't lean on accuracy_pct alone.
+    exp = stats.get("expectancy_per_trade_pct")
+    pf = stats.get("profit_factor")
+    sharpe = stats.get("sharpe_like_per_trade")
+    max_dd = stats.get("max_drawdown_pct")
+    risk_parts: list[str] = []
+    if exp is not None:
+        risk_parts.append(f"期待値 {exp:+.2f}%/件")
+    if pf is not None:
+        risk_parts.append(f"PF {pf:.2f}")
+    if sharpe is not None:
+        risk_parts.append(f"Sharpe {sharpe:+.2f}")
+    if max_dd is not None:
+        risk_parts.append(f"最大DD {max_dd:.1f}%")
+    if risk_parts:
+        lines.append("リスク調整後: " + " / ".join(risk_parts))
+        if exp is not None and exp <= 0:
+            lines.append("  ⚠ 期待値が 0 以下 = 平均で損失方向。勝率より「勝ち幅 > 負け幅」を優先してください")
+        if pf is not None and pf < 1.0:
+            lines.append("  ⚠ プロフィットファクター < 1 = 累積 P&L マイナス。損切り徹底 + 利益拡大を意識")
+
+    # Confidence breakdown — same data as before, but now we surface
+    # calibration inversion explicitly so the AI can self-correct.
     by_conf = stats.get("by_confidence", {})
     if by_conf:
         conf_parts = []
@@ -372,12 +508,54 @@ def format_performance_feedback(history: dict) -> str:
                 conf_parts.append(f"{conf}={c['accuracy_pct']}%({c['total']}件)")
         if conf_parts:
             lines.append(f"信頼度別的中率: {' / '.join(conf_parts)}")
+        # Calibration inversion warning. HIGH being less accurate than
+        # MEDIUM is the strongest signal that the AI is over-using HIGH
+        # for noisy / strong-looking setups. The fix needs to come from
+        # the AI itself; this warning forces it into view every prompt.
+        high = by_conf.get("HIGH", {})
+        medium = by_conf.get("MEDIUM", {})
+        if (
+            high.get("accuracy_pct") is not None
+            and medium.get("accuracy_pct") is not None
+            and high.get("total", 0) >= 5
+            and medium.get("total", 0) >= 5
+            and high["accuracy_pct"] < medium["accuracy_pct"]
+        ):
+            lines.append(
+                f"  ⚠ キャリブレーション逆転: HIGH({high['accuracy_pct']}%) < MEDIUM({medium['accuracy_pct']}%)。"
+                "HIGHの判定基準が緩い可能性 — テクニカル+ファンダ+需給の全一致を確認してから HIGH を付与してください。"
+                "迷ったら MEDIUM 以下に下げる方が結果的に当たります。"
+            )
 
-    # Average returns
+    # Confidence × direction breakdown (only when meaningful). Reveals
+    # whether the AI's bias is direction-specific (e.g. HIGH-UP solid
+    # but HIGH-DOWN failing) so the targeted fix can be smaller.
+    by_cd = stats.get("by_confidence_direction", {})
+    if by_cd:
+        cd_parts = [f"{key}={val['accuracy_pct']}%({val['total']}件)" for key, val in sorted(by_cd.items())]
+        lines.append(f"信頼度×方向: {' / '.join(cd_parts)}")
+
+    # Source breakdown — which earning path (holdings / short_term /
+    # long_term / discovery) is the weak link?
+    src_parts: list[str] = []
+    for src in ("holdings", "short_term", "long_term", "discovery"):
+        v = stats.get(f"{src}_accuracy_pct")
+        if v is not None:
+            src_parts.append(f"{src}={v}%")
+    if src_parts:
+        lines.append(f"ソース別的中率: {' / '.join(src_parts)}")
+
+    # Average returns (now direction-aware: wins should be positive,
+    # losses negative — if not, the fix in compute_performance_stats
+    # didn't take).
     avg_w = stats.get("avg_return_wins")
     avg_l = stats.get("avg_return_losses")
     if avg_w is not None and avg_l is not None:
-        lines.append(f"平均リターン: 的中時 {avg_w:+.1f}% / 外れ時 {avg_l:+.1f}%")
+        lines.append(f"方向調整リターン: 的中時 {avg_w:+.1f}% / 外れ時 {avg_l:+.1f}%")
+        if avg_w + avg_l < 0:
+            # Even on equal win/loss rates this means each round-trip
+            # loses money — risk-reward asymmetry needs widening.
+            lines.append("  ⚠ 勝ち幅 < 負け幅 (リスクリワード逆転)。損切りを早めるか、利確を遅らせてください")
 
     # Recent trend
     recent_acc = stats.get("recent_accuracy_pct")
