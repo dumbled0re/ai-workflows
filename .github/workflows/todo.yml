@@ -1,9 +1,11 @@
 name: TODO Daily Reminder
 
 on:
-  schedule:
-    # Every day 9:00 JST = 0:00 UTC
-    - cron: '0 0 * * *'
+  # Schedule paused per user request (2026-05-11). Re-enable by
+  # uncommenting the cron line below — manual workflow_dispatch
+  # still works for one-shot runs.
+  #  schedule:
+  #    - cron: '0 0 * * *'  # 9:00 JST
   workflow_dispatch: {}
 
 permissions:

@@ -25,6 +25,7 @@ stock_analyzer/data/discovery_result.pre_critique.json
 # ─── Tech Catchup ───
 tech_catchup/data/tech_catchup_prompt.txt
 tech_catchup/data/tech_catchup_result.json
+tech_catchup/data/skip.flag
 
 # ─── Point Sites ───
 point_sites/data/

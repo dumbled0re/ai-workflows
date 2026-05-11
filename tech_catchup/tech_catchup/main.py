@@ -15,102 +15,143 @@ logger = logging.getLogger(__name__)
 
 
 def phase_gather() -> None:
-    """Gather AI news from multiple sources and build analysis prompt."""
+    """Focused gather: Claude Code / OpenAI Codex / Gemini CLI only.
+
+    Picks up only updates from the last ``LOOKBACK_HOURS`` window so the
+    cron can run every few hours and surface releases / commits / blog
+    posts as they appear, without re-summarising stale material. When
+    the window has zero updates, exits silently with status 0 — the
+    workflow skips its AI + Slack steps via a sentinel file, and the
+    user trusts an absent Slack post to mean "nothing new" rather than
+    parsing identical digests repeatedly.
+
+    Wider sources (HN / arXiv / GitHub Trending / generic AI company
+    news) remain available in ``sources.py`` but are intentionally not
+    called here — the user has narrowed the scope to "stuff that
+    directly affects my daily dev tools" for now. Re-enable by adding
+    them back to this function.
+    """
     from tech_catchup.sources import (
-        fetch_ai_company_news,
-        fetch_ai_tools_releases,
-        fetch_arxiv_ai,
-        fetch_github_trending_ai,
-        fetch_hackernews_ai,
-        format_all_sources,
+        fetch_focused_tool_updates,
+        fetch_github_trending_buzz,
+        fetch_hn_ai_buzz,
+        fetch_x_ai_buzz,
+        format_buzz_layer,
+        format_focused_updates,
     )
 
-    logger.info("Gathering AI tech news...")
+    # Lookback window. Sized to comfortably overlap the cron interval
+    # (every 2-4 hours) so a release published *between* runs is still
+    # caught by the next one, without re-surfacing the same item more
+    # than twice (the AI dedupes against its own prior digests in
+    # spirit, though there's no machine state — overlap is the
+    # belt-and-braces.).
+    lookback_hours = int(os.environ.get("TECH_CATCHUP_LOOKBACK_HOURS", "6"))
 
-    hn = fetch_hackernews_ai(max_items=15)
-    github = fetch_github_trending_ai(max_items=10)
-    arxiv = fetch_arxiv_ai(max_items=10)
-    company_news = fetch_ai_company_news(max_per_source=5)
-    tool_releases = fetch_ai_tools_releases(max_items=10)
+    # Two-layer gather:
+    # 1. Focused tools — Claude Code / Codex / Gemini CLI specific
+    #    releases / commits / blog posts within the lookback window
+    # 2. AI buzz — what's actually getting attention right now via HN
+    #    high-engagement filter + GitHub Trending + X (best-effort
+    #    RSSHub mirror). Always pulled fresh (no time window — these
+    #    are "what's hot now" signals that change throughout the day).
+    updates = fetch_focused_tool_updates(lookback_hours=lookback_hours)
+    hn_buzz = fetch_hn_ai_buzz(min_score=50, min_comments=30, max_items=10)
+    trending = fetch_github_trending_buzz(max_items=10)
+    x_buzz = fetch_x_ai_buzz(max_items=8)
 
-    logger.info(
-        "Sources: HN=%d, GitHub=%d, arXiv=%d, Companies=%d, Tools=%d",
-        len(hn),
-        len(github),
-        len(arxiv),
-        len(company_news),
-        len(tool_releases),
-    )
+    out = Path(__file__).parent.parent / "data"
+    out.mkdir(exist_ok=True)
+    sentinel_path = out / "skip.flag"
+    # Wipe the sentinel from a prior run so a fresh cron doesn't
+    # accidentally short-circuit if its phase_gather actually produced
+    # updates this time.
+    if sentinel_path.exists():
+        sentinel_path.unlink()
 
-    if not hn and not github and not arxiv and not company_news:
-        logger.warning("No AI news found from any source")
+    has_any = bool(updates) or bool(hn_buzz) or bool(trending) or bool(x_buzz)
+    if not has_any:
+        logger.info(
+            "No focused updates / HN buzz / trending / X buzz in last %dh — skipping AI + Slack steps",
+            lookback_hours,
+        )
+        sentinel_path.write_text("no_updates", encoding="utf-8")
         sys.exit(0)
 
-    sources_text = format_all_sources(hn, github, arxiv, company_news, tool_releases)
+    focused_text = format_focused_updates(updates)
+    buzz_text = format_buzz_layer(hn_buzz, trending, x_buzz)
+    sources_text = "\n\n".join(s for s in (focused_text, buzz_text) if s)
 
     from datetime import datetime, timedelta, timezone
 
     jst = timezone(timedelta(hours=9))
-    today = datetime.now(jst).strftime("%Y-%m-%d")
+    now_jst = datetime.now(jst)
+    today = now_jst.strftime("%Y-%m-%d")
+    window_label = now_jst.strftime("%Y-%m-%d %H:%M JST")
 
     prompt = f"""\
-あなたはシニアAIエンジニア向けの技術キュレーターです。
-以下の情報源から、エンジニアが今日知っておくべきAI関連の最新動向をまとめてください。
+あなたは Claude Code / OpenAI Codex / Gemini CLI の3ツール + AI 業界のバズに特化した
+技術キュレーターです。エンジニアが**今知っておくべき**変更点と話題を簡潔にまとめてください。
 
-本日: {today}
+実行時刻: {window_label}
+データ収集ウィンドウ: 直近 {lookback_hours} 時間
+
+データソースは 2 層構成:
+- **focused_updates**: 上記 3 ツールの release / commit / blog (window 内の差分のみ)
+- **buzz_layer**: HN 高エンゲージメント (>=50pts or >=30comments) + GitHub Trending + X (Twitter)
+  → 「window 関係なく今バズってる AI ネタ」を catch するための直交層
 
 {sources_text}
 
-以下の基準で情報を整理・優先順位付けしてください:
+整理ルール:
 
-1. **重要度HIGH**: 業界を変える可能性がある発表、主要なモデル/ツールのリリース、セキュリティ関連
-2. **重要度MEDIUM**: 実務で使える新ツール/ライブラリ、興味深い研究成果
-3. **重要度LOW**: トレンド把握として知っておくと良い情報
+1. **重要度 HIGH**: 破壊的変更 / メジャー機能追加 / セキュリティ修正 / 業界を変える発表
+2. **重要度 MEDIUM**: 新機能の追加、改善、性能向上、注目を集めている新ツール
+3. **重要度 LOW**: バグ修正、軽微な変更、ドキュメント更新、トレンド把握用情報
 
-以下のJSON形式で回答してください:
+以下の JSON 形式のみで回答してください:
 {{
   "date": "{today}",
-  "top_stories": [
+  "window_label": "{window_label}",
+  "tool_updates": [
     {{
-      "title": "記事/リポジトリ/論文のタイトル",
-      "importance": "HIGH/MEDIUM/LOW",
-      "category": "LLM/Agent/Tool/Research/Infrastructure/Other",
-      "summary": "エンジニア向けの簡潔な要約（2-3文、日本語）",
-      "why_it_matters": "なぜエンジニアが知るべきか（1文）",
+      "tool": "Claude Code / OpenAI Codex / Gemini CLI のいずれか",
+      "title": "リリースタグ / コミット要約 / ブログタイトル",
+      "kind": "release / commit / blog",
+      "importance": "HIGH / MEDIUM / LOW",
+      "summary": "2-3 文で要約。具体的なフラグ名・コマンド・破壊的変更を含めること",
+      "why_it_matters": "日常の使い方への影響を 1 文で",
       "url": "元のURL",
-      "source": "Hacker News/GitHub Trending/arXiv"
+      "version": "リリースの場合はタグ名、それ以外は空"
     }}
   ],
-  "daily_insight": "今日のAI業界の全体的な動向を1段落で要約（日本語）"
+  "buzz": [
+    {{
+      "title": "話題のタイトル",
+      "source": "HN / GitHub Trending / X / 統合",
+      "importance": "HIGH / MEDIUM / LOW",
+      "summary": "なぜ話題か + どんな内容か (2-3 文、日本語)",
+      "url": "元のURL"
+    }}
+  ],
+  "summary": "この時間帯の更新と話題を 2-3 文で総括（日本語）"
 }}
 
 重要:
-- 重複する情報は統合する
-- 既に広く知られている情報より、新しい動きを優先する
-- エンジニアが実務で活用できる情報を重視する
-- top_storiesは最大10件に絞る
-- **重要度の付与基準を厳格に守ること**:
-  - HIGH は1日あたり**最大3件まで**。本当に業界を変える発表のみに限定する
-  - 通常は MEDIUM が中心になり、HIGH が0件の日があってもよい
-  - インフレ防止のため、迷ったら一段下げる
-- **daily_insight の制約**:
-  - 冒頭に日付を書かない（ヘッダーに既に表示されているため）
-  - 「今日は」「本日は」などで自然に始める
-- **ソースの裏付けがない情報は書かない**:
-  - 提供されたソース一覧に無い数値（HNポイント数、バージョン番号、企業名など）を推測で書かない
-  - 不明な詳細は省略するか「詳細は元記事参照」と書く
-- 【必須】 ソース上で「【必須掲載】」と明示された Claude Code / OpenAI Codex / Gemini CLI の
-  最新リリースは、その日のリリースがあれば**必ず top_stories に1項目以上含める**。
-  当該ツールの新機能・破壊的変更・バグ修正を summary に簡潔に列挙する。
-  （これらはユーザの日常開発に直結する must-watch ツール）
+- **同一リリースの release / commit / blog は統合**して 1 tool_updates エントリにする
+- ソースに無い情報を推測しない (バージョン番号、機能名、コマンド等)
+- changelog 本文の**具体的な変更点**を summary に必ず引用する。一般論で済ませない
+- tool_updates: 最大 8 件
+- buzz: 最大 5 件。HN/Trending/X で類似の話題があれば統合 (1 エントリで複数 URL は最も代表的なもの)
+- buzz は「Claude Code / Codex / Gemini 本体」の話題でも、上記 tool_updates と被らないなら採用
+  (例: ユーザの使用例 blog、3rd-party integration、性能比較記事)
+- 重要度: HIGH は本当の breaking change / 大型機能 / 業界転換のみ。version bump だけなら LOW
 """
 
-    out = Path(__file__).parent.parent / "data"
-    out.mkdir(exist_ok=True)
     with open(out / "tech_catchup_prompt.txt", "w", encoding="utf-8") as f:
         f.write(prompt)
 
-    logger.info("Tech catchup prompt saved")
+    logger.info("Focused tech catchup prompt saved (%d updates)", len(updates))
 
 
 def phase_notify() -> None:
@@ -155,65 +196,106 @@ def phase_notify() -> None:
 
 
 def _build_slack_blocks(result: dict) -> list[dict]:
-    """Build Slack blocks from tech catchup result."""
+    """Build Slack blocks from focused tech catchup result.
+
+    Two sections matching the new prompt schema:
+    - tool_updates: Claude Code / Codex / Gemini CLI specific changes
+    - buzz: AI industry buzz from HN / GitHub Trending / X
+    Each rendered as its own block group with a header so the operator
+    can immediately spot whether a run was "tool release" or "industry
+    chatter" without reading every item.
+    """
     blocks: list[dict] = []
 
-    date = result.get("date", "")
+    window = result.get("window_label") or result.get("date", "")
     blocks.append(
         {
             "type": "header",
-            "text": {"type": "plain_text", "text": f"AI Tech Catchup - {date}"},
+            "text": {"type": "plain_text", "text": f"AI Tech Catchup - {window}"},
         }
     )
 
-    # Daily insight
-    insight = result.get("daily_insight", "")
-    if insight:
+    summary = result.get("summary", "") or result.get("daily_insight", "")
+    if summary:
         blocks.append(
             {
                 "type": "section",
-                "text": {"type": "mrkdwn", "text": f"*:brain: 今日のAI動向*\n>{insight}"},
+                "text": {"type": "mrkdwn", "text": f"*:brain: 今回の動向*\n>{summary}"},
             }
         )
         blocks.append({"type": "divider"})
 
-    # Top stories
     importance_emoji = {"HIGH": ":red_circle:", "MEDIUM": ":large_yellow_circle:", "LOW": ":white_circle:"}
-    category_emoji = {
-        "LLM": ":robot_face:",
-        "Agent": ":mechanical_arm:",
-        "Tool": ":wrench:",
-        "Research": ":microscope:",
-        "Infrastructure": ":building_construction:",
-        "Other": ":bulb:",
+    tool_emoji = {
+        "Claude Code": ":hammer_and_wrench:",
+        "OpenAI Codex": ":computer:",
+        "Gemini CLI": ":sparkles:",
     }
+    kind_emoji = {"release": ":package:", "commit": ":wrench:", "blog": ":newspaper:"}
 
-    stories = result.get("top_stories", [])
-    for idx, story in enumerate(stories):
-        imp = story.get("importance", "LOW")
-        cat = story.get("category", "Other")
-        imp_e = importance_emoji.get(imp, ":white_circle:")
-        cat_e = category_emoji.get(cat, ":bulb:")
-
-        text = (
-            f"{imp_e} {cat_e} *{story.get('title', '')}*\n"
-            f"{story.get('summary', '')}\n"
-            f"_:point_right: {story.get('why_it_matters', '')}_"
+    # Tool updates section
+    tool_updates = result.get("tool_updates") or result.get("top_stories") or []
+    if tool_updates:
+        blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": "*:rocket: Tool Updates (Claude Code / Codex / Gemini CLI)*"},
+            }
         )
-        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": text}})
+        for idx, story in enumerate(tool_updates):
+            imp = story.get("importance", "LOW")
+            imp_e = importance_emoji.get(imp, ":white_circle:")
+            tool = story.get("tool", "")
+            tool_e = tool_emoji.get(tool, ":bulb:")
+            kind = story.get("kind", "")
+            kind_e = kind_emoji.get(kind, "")
+            version = story.get("version", "")
+            ver_text = f" `{version}`" if version else ""
 
-        url = story.get("url", "")
-        source = story.get("source", "")
-        if url and source:
-            blocks.append(
-                {
-                    "type": "context",
-                    "elements": [{"type": "mrkdwn", "text": f":link: 出典: <{url}|{source}>"}],
-                }
+            text = (
+                f"{imp_e} {tool_e} {kind_e} *{story.get('title', '')}*{ver_text}\n"
+                f"{story.get('summary', '')}\n"
+                f"_:point_right: {story.get('why_it_matters', '')}_"
             )
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": text}})
 
-        if idx < len(stories) - 1:
-            blocks.append({"type": "divider"})
+            url = story.get("url", "")
+            if url:
+                blocks.append(
+                    {
+                        "type": "context",
+                        "elements": [{"type": "mrkdwn", "text": f":link: <{url}|Source>"}],
+                    }
+                )
+            if idx < len(tool_updates) - 1:
+                blocks.append({"type": "divider"})
+
+    # Buzz section
+    buzz = result.get("buzz") or []
+    if buzz:
+        blocks.append({"type": "divider"})
+        blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": "*:fire: AI Buzz (HN / GitHub Trending / X)*"},
+            }
+        )
+        for idx, story in enumerate(buzz):
+            imp = story.get("importance", "LOW")
+            imp_e = importance_emoji.get(imp, ":white_circle:")
+            source = story.get("source", "")
+            text = f"{imp_e} *{story.get('title', '')}* _[{source}]_\n{story.get('summary', '')}"
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": text}})
+            url = story.get("url", "")
+            if url:
+                blocks.append(
+                    {
+                        "type": "context",
+                        "elements": [{"type": "mrkdwn", "text": f":link: <{url}|Source>"}],
+                    }
+                )
+            if idx < len(buzz) - 1:
+                blocks.append({"type": "divider"})
 
     blocks.append({"type": "divider"})
     blocks.append(
@@ -224,8 +306,8 @@ def _build_slack_blocks(result: dict) -> list[dict]:
                     "type": "mrkdwn",
                     "text": (
                         ":robot_face: Powered by Claude AI | "
-                        "Sources: Hacker News, GitHub Trending, arXiv, "
-                        "AI Company Blogs, Tool Releases"
+                        "Sources: GitHub Releases/Commits (Claude Code, Codex, Gemini CLI), "
+                        "Anthropic/OpenAI/Google blogs, Hacker News, GitHub Trending, X via RSSHub"
                     ),
                 }
             ],

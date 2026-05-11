@@ -2,8 +2,13 @@ name: AI Tech Catchup
 
 on:
   schedule:
-    # Every morning 7:30 JST = 22:30 UTC (previous day)
-    - cron: '30 22 * * *'
+    # Every 2 hours UTC = ~once every 2 hours. The 6-hour lookback
+    # window inside phase_gather comfortably overlaps so a release that
+    # lands between runs is still caught next cron. phase_gather drops
+    # a skip.flag when no updates are in the window, and the
+    # subsequent AI + Slack steps short-circuit on the flag — so
+    # high-frequency cron stays silent when there's nothing to report.
+    - cron: '0 */2 * * *'
   workflow_dispatch: {}
 
 permissions:
@@ -29,23 +34,39 @@ jobs:
       - name: Sync deps
         run: uv sync --frozen
 
-      # Phase 1: Gather AI news from multiple sources
-      - name: Gather AI news
+      # Phase 1: Focused gather — Claude Code / Codex / Gemini CLI updates
+      # + AI buzz (HN high-engagement / GitHub Trending / X via RSSHub).
+      # Writes data/skip.flag if nothing new — the AI + Slack steps gate
+      # on its absence so a quiet hour doesn't spam an empty digest.
+      - name: Gather focused tech updates
         run: uv run python -m tech_catchup.main gather
 
-      # Phase 2: Claude summarizes and prioritizes
+      - name: Check whether anything to summarise
+        id: check
+        run: |
+          if [ -f data/skip.flag ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No updates this run — skipping AI + Slack steps"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Phase 2: Claude summarises only when there's content
       - name: Analyze with Claude AI
+        if: steps.check.outputs.skip == 'false'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: '--allowedTools "Read,Write,Edit,Bash"'
           prompt: |
-            tech_catchup/data/tech_catchup_prompt.txt を読んで、その内容に従いAI技術動向を整理・要約してください。
-            結果は指定されたJSON形式のみを tech_catchup/data/tech_catchup_result.json に書き込んでください。
-            JSONのみを出力し、他のテキストは含めないでください。
+            tech_catchup/data/tech_catchup_prompt.txt を読んで、その内容に従い
+            Claude Code / OpenAI Codex / Gemini CLI の更新と AI 業界バズを整理してください。
+            結果は指定された JSON 形式のみを tech_catchup/data/tech_catchup_result.json に書き込んでください。
+            JSON 以外のテキスト (markdown fence 含む) は出力しないでください。
 
-      # Phase 3: Send to Slack
+      # Phase 3: Send to Slack only when AI ran
       - name: Send to Slack
+        if: steps.check.outputs.skip == 'false'
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_TECH: ${{ secrets.SLACK_CHANNEL_TECH }}

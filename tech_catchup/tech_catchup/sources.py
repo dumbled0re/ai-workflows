@@ -457,6 +457,451 @@ def fetch_ai_tools_releases(max_items: int = 10) -> list[dict]:
     return results
 
 
+_FOCUSED_TOOLS: list[dict] = [
+    {
+        "name": "Claude Code",
+        "repo": "anthropics/claude-code",
+        "blog_url": "https://www.anthropic.com/news",
+        "blog_filter_keywords": ["claude code", "claude-code"],
+        "blog_source_label": "Anthropic",
+    },
+    {
+        "name": "OpenAI Codex",
+        "repo": "openai/codex",
+        "blog_url": "https://openai.com/blog/rss.xml",
+        "blog_filter_keywords": ["codex"],
+        "blog_source_label": "OpenAI",
+    },
+    {
+        "name": "Gemini CLI",
+        "repo": "google-gemini/gemini-cli",
+        "blog_url": "https://blog.google/technology/developers/",
+        "blog_filter_keywords": ["gemini cli", "gemini-cli", "gemini 2", "gemini api"],
+        "blog_source_label": "Google Developers",
+    },
+]
+
+
+def fetch_focused_tool_updates(lookback_hours: int = 6) -> list[dict]:
+    """Fetch recent updates for Claude Code / Codex / Gemini CLI only.
+
+    Three classes of update per tool, all filtered to the last
+    ``lookback_hours``:
+
+    1. **GitHub releases** — official version cuts with full changelog
+    2. **Recent commits to default branch** — pre-release activity that
+       sometimes signals "feature is shipping today" before the tag drops
+    3. **Vendor blog posts** — Anthropic / OpenAI / Google Developers
+       filtered for the tool's keyword set
+
+    The caller (``main.phase_gather``) checks the returned list length:
+    empty → no new releases / commits / blog posts in window → exit
+    silently without spamming Slack. This is the "timely without
+    noisy" trade-off — the user trusts an absent post to mean
+    "nothing new" rather than reading the same digest twice.
+
+    Each item dict carries: ``tool`` / ``kind`` (release|commit|blog)
+    / ``title`` / ``summary`` / ``url`` / ``published_iso`` / ``source``.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    cutoff = datetime.now(UTC) - timedelta(hours=lookback_hours)
+    results: list[dict] = []
+
+    for tool in _FOCUSED_TOOLS:
+        results.extend(_fetch_github_releases_recent(tool, cutoff))
+        results.extend(_fetch_github_commits_recent(tool, cutoff))
+        results.extend(_fetch_vendor_blog_recent(tool, cutoff))
+
+    # Stable sort: newest first so the prompt leads with the most-recent
+    # update. Items without parseable timestamps fall to the back.
+    results.sort(key=lambda r: r.get("published_iso", ""), reverse=True)
+    logger.info(
+        "fetch_focused_tool_updates: %d items in last %dh (%s)",
+        len(results),
+        lookback_hours,
+        ", ".join(f"{r['tool']}/{r['kind']}" for r in results[:10]),
+    )
+    return results
+
+
+def _fetch_github_releases_recent(tool: dict, cutoff_dt: object) -> list[dict]:
+    """GitHub releases for one tool, filtered to those after ``cutoff_dt``."""
+    from datetime import datetime
+
+    out: list[dict] = []
+    try:
+        resp = requests.get(
+            f"https://api.github.com/repos/{tool['repo']}/releases",
+            headers={**_HEADERS, "Accept": "application/vnd.github.v3+json"},
+            timeout=_TIMEOUT,
+            params={"per_page": 5},
+        )
+        if resp.status_code != 200:
+            logger.warning("GitHub releases %s returned %d", tool["repo"], resp.status_code)
+            return out
+        for rel in resp.json():
+            published = rel.get("published_at") or ""
+            if not published:
+                continue
+            try:
+                pub_dt = datetime.fromisoformat(published.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if pub_dt < cutoff_dt:  # type: ignore[operator]
+                continue
+            tag = rel.get("tag_name", "")
+            body = (rel.get("body") or "")[:2000]
+            out.append(
+                {
+                    "tool": tool["name"],
+                    "kind": "release",
+                    "title": f"{tool['name']} {tag}",
+                    "summary": body,
+                    "url": rel.get("html_url", ""),
+                    "published_iso": published,
+                    "source": f"GitHub Releases ({tool['repo']})",
+                }
+            )
+    except Exception as e:
+        logger.debug("GitHub releases fetch failed for %s: %s", tool["repo"], e)
+    return out
+
+
+def _fetch_github_commits_recent(tool: dict, cutoff_dt: object) -> list[dict]:
+    """Recent commits to the tool's default branch.
+
+    Includes commits in the same window as releases. A burst of commits
+    immediately before a release tag often signals shipping activity that
+    won't show up in the release tag for another few hours. Capped at
+    5 commits per tool to keep the prompt focused.
+    """
+    out: list[dict] = []
+    try:
+        # ``since`` accepts ISO 8601 — pass the cutoff directly so the
+        # API does the filtering server-side.
+        since_iso = cutoff_dt.isoformat().replace("+00:00", "Z")  # type: ignore[attr-defined]
+        resp = requests.get(
+            f"https://api.github.com/repos/{tool['repo']}/commits",
+            headers={**_HEADERS, "Accept": "application/vnd.github.v3+json"},
+            timeout=_TIMEOUT,
+            params={"per_page": 5, "since": since_iso},
+        )
+        if resp.status_code != 200:
+            logger.warning("GitHub commits %s returned %d", tool["repo"], resp.status_code)
+            return out
+        for c in resp.json():
+            sha = (c.get("sha") or "")[:7]
+            msg_full = (c.get("commit") or {}).get("message", "")
+            # Take the subject line only — body is usually noisy
+            # (Co-Authored-By, references). Truncate aggressively.
+            msg = msg_full.split("\n", 1)[0][:200]
+            published = (c.get("commit") or {}).get("author", {}).get("date") or ""
+            out.append(
+                {
+                    "tool": tool["name"],
+                    "kind": "commit",
+                    "title": f"{tool['name']} commit {sha}: {msg}",
+                    "summary": msg_full[:500],
+                    "url": c.get("html_url", ""),
+                    "published_iso": published,
+                    "source": f"GitHub Commits ({tool['repo']})",
+                }
+            )
+    except Exception as e:
+        logger.debug("GitHub commits fetch failed for %s: %s", tool["repo"], e)
+    return out
+
+
+def _fetch_vendor_blog_recent(tool: dict, cutoff_dt: object) -> list[dict]:
+    """Vendor blog posts mentioning the tool, filtered to the window.
+
+    Cutoff filtering here is best-effort: blogs don't always expose
+    machine-parseable dates in HTML. When the date is missing we
+    include the post anyway (latest item) so we don't miss
+    announcement blogs that happen to land outside the cron's exact
+    window. The AI summariser dedupes against the GitHub release/
+    commit content downstream.
+    """
+    out: list[dict] = []
+    try:
+        resp = requests.get(tool["blog_url"], headers=_HEADERS, timeout=_TIMEOUT)
+        if resp.status_code != 200:
+            return out
+        soup = BeautifulSoup(resp.text, "xml" if tool["blog_url"].endswith(".xml") else "html.parser")
+
+        if tool["blog_url"].endswith(".xml"):
+            # RSS path (OpenAI)
+            items = soup.find_all("item")[:10]
+            for it in items:
+                title_el = it.find("title")
+                link_el = it.find("link")
+                date_el = it.find("pubDate") or it.find("dc:date")
+                if not title_el:
+                    continue
+                title = title_el.get_text(strip=True)
+                if not _matches_keyword(title, tool["blog_filter_keywords"]):
+                    continue
+                out.append(
+                    {
+                        "tool": tool["name"],
+                        "kind": "blog",
+                        "title": f"{tool['blog_source_label']}: {title}",
+                        "summary": "",
+                        "url": link_el.get_text(strip=True) if link_el else "",
+                        "published_iso": date_el.get_text(strip=True) if date_el else "",
+                        "source": tool["blog_source_label"],
+                    }
+                )
+        else:
+            # HTML scrape — Anthropic / Google. Anchor-tag heuristic.
+            seen: set[str] = set()
+            for a in soup.select("a"):
+                title = a.get_text(strip=True)
+                href = a.get("href", "")
+                if len(title) < 20 or title in seen:
+                    continue
+                if not _matches_keyword(title, tool["blog_filter_keywords"]):
+                    continue
+                seen.add(title)
+                if href.startswith("/"):
+                    # reconstruct absolute URL from blog_url's host
+                    from urllib.parse import urlparse
+
+                    parsed = urlparse(tool["blog_url"])
+                    href = f"{parsed.scheme}://{parsed.netloc}{href}"
+                out.append(
+                    {
+                        "tool": tool["name"],
+                        "kind": "blog",
+                        "title": f"{tool['blog_source_label']}: {title}",
+                        "summary": "",
+                        "url": href,
+                        "published_iso": "",
+                        "source": tool["blog_source_label"],
+                    }
+                )
+                if len(seen) >= 3:
+                    break
+    except Exception as e:
+        logger.debug("Vendor blog fetch failed for %s: %s", tool["blog_url"], e)
+    return out
+
+
+def _matches_keyword(text: str, keywords: list[str]) -> bool:
+    """Case-insensitive substring match against any of the tool keywords."""
+    if not text:
+        return False
+    lower = text.lower()
+    return any(k.lower() in lower for k in keywords)
+
+
+def fetch_hn_ai_buzz(min_score: int = 50, min_comments: int = 30, max_items: int = 10) -> list[dict]:
+    """High-engagement AI stories on Hacker News — proxy for "what's
+    AI Twitter buzzing about".
+
+    Stricter filter than ``fetch_hackernews_ai``: requires score >=
+    ``min_score`` OR comments >= ``min_comments`` so we only surface
+    posts that have actually broken out. HN's AI subset tends to lag
+    Twitter by a few hours but the bar there is much higher signal-
+    to-noise than raw Twitter (no paid API access for X anyway).
+    """
+    try:
+        resp = requests.get(
+            "https://hacker-news.firebaseio.com/v0/topstories.json",
+            timeout=_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            return []
+        story_ids = resp.json()[:150]
+        out: list[dict] = []
+        for story_id in story_ids:
+            if len(out) >= max_items:
+                break
+            try:
+                r2 = requests.get(f"https://hacker-news.firebaseio.com/v0/item/{story_id}.json", timeout=_TIMEOUT)
+                if r2.status_code != 200:
+                    continue
+                item = r2.json()
+                if not item or item.get("type") != "story":
+                    continue
+                score = int(item.get("score", 0))
+                comments = int(item.get("descendants", 0))
+                if score < min_score and comments < min_comments:
+                    continue
+                title = item.get("title", "")
+                if not any(kw in title.lower() for kw in _AI_KEYWORDS):
+                    continue
+                out.append(
+                    {
+                        "title": title,
+                        "url": item.get("url") or f"https://news.ycombinator.com/item?id={story_id}",
+                        "score": score,
+                        "comments": comments,
+                        "source": "Hacker News",
+                    }
+                )
+            except Exception:
+                continue
+        logger.info("fetch_hn_ai_buzz: %d items (score>=%d or comments>=%d)", len(out), min_score, min_comments)
+        return out
+    except Exception as e:
+        logger.warning("HN buzz fetch failed: %s", e)
+        return []
+
+
+def fetch_github_trending_buzz(max_items: int = 10) -> list[dict]:
+    """GitHub Trending (daily) filtered for AI keywords — directly
+    "what's getting starred today in AI".
+
+    Identical mechanic to ``fetch_github_trending_ai`` but exposed as a
+    separate name so phase_gather can mark its output as a "buzz"
+    section in the prompt distinct from tool-specific updates.
+    """
+    return fetch_github_trending_ai(max_items=max_items)
+
+
+def fetch_x_ai_buzz(max_items: int = 10) -> list[dict]:
+    """Best-effort X / Twitter signal via RSSHub public mirrors.
+
+    X has no free programmatic access tier, so we rely on RSSHub's
+    bridge for a handful of high-signal AI accounts. RSSHub mirrors
+    are flaky and rate-limited; each request silently fails to an
+    empty result on timeout or non-200, and the caller treats absence
+    of data as "no Twitter buzz this run". This is acceptable: HN
+    and GitHub Trending cover most of the real buzz independently.
+
+    Accounts chosen for high signal per post (rather than volume) —
+    Anthropic / OpenAI / Google official + a few engineering voices
+    who consistently surface AI tool news first.
+    """
+    accounts = [
+        "AnthropicAI",
+        "OpenAI",
+        "GoogleAI",
+        "GoogleDeepMind",
+        "simonw",  # Simon Willison — frequent Claude Code / LLM dev commentary
+        "swyx",
+        "alexalbert__",  # Anthropic developer relations
+    ]
+    out: list[dict] = []
+    # Trim per-account requests aggressively — even 1 successful
+    # account is useful, and a slow RSSHub mirror shouldn't block
+    # the rest of the gather pipeline.
+    per_request_timeout = 5
+    for account in accounts:
+        if len(out) >= max_items:
+            break
+        try:
+            resp = requests.get(
+                f"https://rsshub.app/twitter/user/{account}",
+                headers=_HEADERS,
+                timeout=per_request_timeout,
+            )
+            if resp.status_code != 200:
+                continue
+            soup = BeautifulSoup(resp.text, "xml")
+            for item in soup.find_all("item")[:3]:  # latest 3 per account
+                title_el = item.find("title")
+                link_el = item.find("link")
+                date_el = item.find("pubDate")
+                if not title_el:
+                    continue
+                title = title_el.get_text(strip=True)
+                # AI-relevance gate even on AI accounts — they post
+                # plenty of non-AI stuff (recruiting, ops, etc.).
+                if not any(kw in title.lower() for kw in _AI_KEYWORDS):
+                    continue
+                out.append(
+                    {
+                        "title": f"@{account}: {title[:200]}",
+                        "url": link_el.get_text(strip=True) if link_el else "",
+                        "published": date_el.get_text(strip=True) if date_el else "",
+                        "source": f"X / @{account}",
+                    }
+                )
+                if len(out) >= max_items:
+                    break
+        except Exception:
+            # RSSHub down / rate-limited / network hiccup — silently
+            # skip this account. Don't log per-account because the
+            # mirror dies daily and the noise drowns the run log.
+            continue
+    if out:
+        logger.info("fetch_x_ai_buzz: %d items via RSSHub", len(out))
+    else:
+        logger.info("fetch_x_ai_buzz: 0 items (RSSHub unavailable or no AI-tagged posts)")
+    return out
+
+
+def format_buzz_layer(
+    hn: list[dict],
+    trending: list[dict],
+    x_buzz: list[dict],
+) -> str:
+    """Render the AI-buzz layer (HN high-score + Trending + X) as a
+    prompt block distinct from the focused tool updates."""
+    if not hn and not trending and not x_buzz:
+        return ""
+    parts: list[str] = []
+    if hn:
+        parts.append("\n=== Hacker News (高エンゲージメント AI ストーリー) ===")
+        for item in hn:
+            parts.append(
+                f"- [{item.get('score', 0)}pts, {item.get('comments', 0)}comments] {item.get('title', '')}\n"
+                f"  URL: {item.get('url', '')}"
+            )
+    if trending:
+        parts.append("\n=== GitHub Trending (AI 関連 — daily) ===")
+        for repo in trending:
+            lang = f" [{repo['language']}]" if repo.get("language") else ""
+            stars = f" ({repo['stars_today']})" if repo.get("stars_today") else ""
+            desc = repo.get("description", "")
+            url = repo.get("url", "")
+            parts.append(f"- {repo['name']}{lang}{stars}\n  {desc}\n  URL: {url}")
+    if x_buzz:
+        parts.append("\n=== X (Twitter) — AI 系アカウントの最新投稿 ===")
+        for item in x_buzz:
+            parts.append(f"- [{item.get('source', '')}] {item.get('title', '')}\n  URL: {item.get('url', '')}")
+    return "\n".join(parts)
+
+
+def format_focused_updates(updates: list[dict]) -> str:
+    """Render the focused-updates list into a prompt-injection string.
+
+    Groups by tool so the AI sees Claude Code / Codex / Gemini CLI as
+    distinct sections rather than one chronological mush. Within each
+    tool group, items are ordered release → commit → blog so the most
+    canonical / version-stable info leads.
+    """
+    if not updates:
+        return ""
+    by_tool: dict[str, list[dict]] = {}
+    for u in updates:
+        by_tool.setdefault(u["tool"], []).append(u)
+    kind_order = {"release": 0, "commit": 1, "blog": 2}
+    parts: list[str] = []
+    for tool, items in by_tool.items():
+        parts.append(f"\n=== {tool} ===")
+        items_sorted = sorted(items, key=lambda x: (kind_order.get(x.get("kind", "blog"), 9), -1))
+        for u in items_sorted:
+            kind = u.get("kind", "blog")
+            published = u.get("published_iso", "") or "(時刻不明)"
+            line = f"- [{kind.upper()}] {u.get('title', '')}"
+            if published:
+                line += f"  ({published[:16].replace('T', ' ')} UTC)"
+            parts.append(line)
+            summary = (u.get("summary") or "").strip()
+            if summary:
+                # Indent multi-line summary for readability
+                summary_short = summary[:1500]
+                parts.append(f"  概要: {summary_short}")
+            url = u.get("url", "")
+            if url:
+                parts.append(f"  URL: {url}")
+    return "\n".join(parts)
+
+
 def format_all_sources(
     hn: list[dict],
     github: list[dict],
