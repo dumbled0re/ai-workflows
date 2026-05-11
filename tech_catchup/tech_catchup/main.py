@@ -46,7 +46,7 @@ def phase_gather() -> None:
     # than twice (the AI dedupes against its own prior digests in
     # spirit, though there's no machine state — overlap is the
     # belt-and-braces.).
-    lookback_hours = int(os.environ.get("TECH_CATCHUP_LOOKBACK_HOURS", "6"))
+    lookback_hours = int(os.environ.get("TECH_CATCHUP_LOOKBACK_HOURS", "24"))
 
     # Two-layer gather:
     # 1. Focused tools — Claude Code / Codex / Gemini CLI specific

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 import requests
 from bs4 import BeautifulSoup
@@ -10,34 +11,42 @@ logger = logging.getLogger(__name__)
 _HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 _TIMEOUT = 15
 
-# AI-related keywords for filtering
-_AI_KEYWORDS = [
+# AI-related keywords for filtering. Short tokens ("ai", "ml", "gpt",
+# "llm", "rag", "nlp", "mcp") must word-boundary match — substring
+# match on "ai" silently scoops "Gmail" / "fail" / "nail" / "Maryland"
+# and the buzz layer fills with noise. Longer keywords are matched as
+# substrings (case-insensitive) which is safe enough.
+_AI_KEYWORDS_WORDBOUND = [
     "ai",
+    "ml",
+    "gpt",
+    "llm",
+    "rag",
+    "nlp",
+    "mcp",
+    "kv",
+]
+_AI_KEYWORDS_SUBSTRING = [
     "artificial intelligence",
     "machine learning",
     "deep learning",
-    "llm",
     "large language model",
-    "gpt",
     "claude",
     "gemini",
     "openai",
     "anthropic",
     "transformer",
     "neural",
-    "nlp",
     "computer vision",
     "diffusion",
     "generative",
     "agent",
-    "rag",
     "fine-tune",
     "embedding",
     "chatbot",
     "copilot",
     "model",
     "inference",
-    "training",
     "pytorch",
     "tensorflow",
     "hugging face",
@@ -48,9 +57,32 @@ _AI_KEYWORDS = [
     "multimodal",
     "foundation model",
     "reinforcement learning",
-    "mcp",
     "tool use",
+    "codex",
+    "agentic",
 ]
+
+_WORDBOUND_REGEX = re.compile(
+    r"\b(" + "|".join(re.escape(k) for k in _AI_KEYWORDS_WORDBOUND) + r")\b",
+    re.IGNORECASE,
+)
+
+
+def _is_ai_related(text: str) -> bool:
+    """Combined keyword check — word-boundary for short tokens, substring
+    for the rest. The split prevents 'ai' matching 'Gmail' / 'nail' /
+    'Maryland' which was poisoning the HN buzz layer."""
+    if not text:
+        return False
+    lower = text.lower()
+    if any(k in lower for k in _AI_KEYWORDS_SUBSTRING):
+        return True
+    return bool(_WORDBOUND_REGEX.search(text))
+
+
+# Backwards-compat alias used by existing call sites. New code should
+# call ``_is_ai_related`` directly.
+_AI_KEYWORDS = _AI_KEYWORDS_SUBSTRING + _AI_KEYWORDS_WORDBOUND
 
 
 def fetch_hackernews_ai(max_items: int = 15) -> list[dict]:
@@ -81,8 +113,8 @@ def fetch_hackernews_ai(max_items: int = 15) -> list[dict]:
                 if not item or item.get("type") != "story":
                     continue
 
-                title = item.get("title", "").lower()
-                if any(kw in title for kw in _AI_KEYWORDS):
+                title = item.get("title", "")
+                if _is_ai_related(title):
                     ai_stories.append(
                         {
                             "title": item.get("title", ""),
@@ -131,9 +163,9 @@ def fetch_github_trending_ai(max_items: int = 10) -> list[dict]:
             p = article.select_one("p")
             desc = p.get_text(strip=True) if p else ""
 
-            # Check if AI-related
-            combined = f"{repo_name} {desc}".lower()
-            if not any(kw in combined for kw in _AI_KEYWORDS):
+            # Check if AI-related (word-boundary for short tokens)
+            combined = f"{repo_name} {desc}"
+            if not _is_ai_related(combined):
                 continue
 
             # Stars today
@@ -526,7 +558,15 @@ def fetch_focused_tool_updates(lookback_hours: int = 6) -> list[dict]:
 
 
 def _fetch_github_releases_recent(tool: dict, cutoff_dt: object) -> list[dict]:
-    """GitHub releases for one tool, filtered to those after ``cutoff_dt``."""
+    """GitHub releases for one tool, filtered to those after ``cutoff_dt``.
+
+    Pre-release dedup: when multiple alpha / RC / dev tags share the
+    same base version (``X.Y.Z``) inside the lookback window, keep
+    only the most-recent one. Otherwise a release cadence like
+    0.131.0-alpha.2 / .4 / .6 within a couple of hours floods the
+    digest with what is functionally one release in progress. Stable
+    tags are always kept regardless.
+    """
     from datetime import datetime
 
     out: list[dict] = []
@@ -535,7 +575,7 @@ def _fetch_github_releases_recent(tool: dict, cutoff_dt: object) -> list[dict]:
             f"https://api.github.com/repos/{tool['repo']}/releases",
             headers={**_HEADERS, "Accept": "application/vnd.github.v3+json"},
             timeout=_TIMEOUT,
-            params={"per_page": 5},
+            params={"per_page": 10},
         )
         if resp.status_code != 200:
             logger.warning("GitHub releases %s returned %d", tool["repo"], resp.status_code)
@@ -561,8 +601,29 @@ def _fetch_github_releases_recent(tool: dict, cutoff_dt: object) -> list[dict]:
                     "url": rel.get("html_url", ""),
                     "published_iso": published,
                     "source": f"GitHub Releases ({tool['repo']})",
+                    "_tag": tag,
+                    "_is_prerelease": bool(rel.get("prerelease")),
                 }
             )
+
+        # Pre-release dedup: group consecutive alpha/RC/dev tags sharing
+        # a base version, keep the latest per group. Iterate latest-
+        # first so the surviving entry is the most-recent pre-release.
+        deduped: list[dict] = []
+        seen_bases: set[str] = set()
+        out.sort(key=lambda r: r.get("published_iso", ""), reverse=True)
+        for rel in out:
+            tag = rel.get("_tag", "")
+            if rel.get("_is_prerelease") or any(t in tag.lower() for t in ("alpha", "beta", "rc", "-dev")):
+                base = re.split(r"-(?:alpha|beta|rc|dev)", tag, maxsplit=1)[0]
+                if base in seen_bases:
+                    continue
+                seen_bases.add(base)
+            deduped.append(rel)
+        for r in deduped:
+            r.pop("_tag", None)
+            r.pop("_is_prerelease", None)
+        return deduped
     except Exception as e:
         logger.debug("GitHub releases fetch failed for %s: %s", tool["repo"], e)
     return out
@@ -613,15 +674,65 @@ def _fetch_github_commits_recent(tool: dict, cutoff_dt: object) -> list[dict]:
     return out
 
 
+_BLOG_DATE_RE = re.compile(
+    r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+20\d{2})",
+    re.IGNORECASE,
+)
+
+
+def _pretty_published(raw: str) -> str:
+    """Render a published timestamp for the prompt block.
+
+    Handles both ISO 8601 ("2026-05-12T00:27:00+00:00") and RFC 2822
+    ("Thu, 07 May 2026 12:00:00 GMT") inputs uniformly. ISO 8601 gets
+    the T-separator collapsed to a space; RFC 2822 is returned as-is
+    after a length trim. The previous code did a global ``.replace
+    ('T', ' ')`` which munched the T in 'Thu' and emitted ' hu, 07
+    May 2026' — pin the right format here so the bug stays dead.
+    """
+    if not raw:
+        return ""
+    s = raw.strip()
+    # ISO 8601: starts with 4 digits + dash. Safely T->space.
+    if len(s) >= 10 and s[:4].isdigit() and s[4] == "-":
+        return f"{s[:16].replace('T', ' ')} UTC"
+    return f"{s[:32]} UTC"
+
+
+def _parse_blog_date(text: str) -> object:
+    """Best-effort parse of an embedded date string like 'May 6, 2026'.
+
+    Returns a tz-aware datetime when matched, else None. Anthropic's
+    news page bakes the date into the link text alongside the title
+    ("AnnouncementsMay 6, 2026Higher usage limits for Claude..."),
+    so this lets us cutoff-filter blog entries without depending on a
+    `<time datetime="">` attribute we'd have to scrape separately.
+    """
+    if not text:
+        return None
+    m = _BLOG_DATE_RE.search(text)
+    if not m:
+        return None
+    from datetime import UTC, datetime
+
+    for fmt in ("%b %d, %Y", "%b %d %Y", "%B %d, %Y", "%B %d %Y"):
+        try:
+            dt = datetime.strptime(m.group(1).replace(".", ""), fmt)
+            return dt.replace(tzinfo=UTC)
+        except ValueError:
+            continue
+    return None
+
+
 def _fetch_vendor_blog_recent(tool: dict, cutoff_dt: object) -> list[dict]:
     """Vendor blog posts mentioning the tool, filtered to the window.
 
-    Cutoff filtering here is best-effort: blogs don't always expose
-    machine-parseable dates in HTML. When the date is missing we
-    include the post anyway (latest item) so we don't miss
-    announcement blogs that happen to land outside the cron's exact
-    window. The AI summariser dedupes against the GitHub release/
-    commit content downstream.
+    Anthropic / Google paths now restrict to ``/news/`` anchor hrefs so
+    nav links to product / pricing pages (which match the tool keyword
+    by accident) don't bleed in. Date parsing is best-effort via
+    ``_parse_blog_date``: when we can extract a date from the link text
+    we honour the cutoff window; when we can't, we include the entry
+    anyway because most vendor news pages list latest-first.
     """
     out: list[dict] = []
     try:
@@ -631,8 +742,15 @@ def _fetch_vendor_blog_recent(tool: dict, cutoff_dt: object) -> list[dict]:
         soup = BeautifulSoup(resp.text, "xml" if tool["blog_url"].endswith(".xml") else "html.parser")
 
         if tool["blog_url"].endswith(".xml"):
-            # RSS path (OpenAI)
-            items = soup.find_all("item")[:10]
+            # RSS path (OpenAI). pubDate is RFC 2822 ("Thu, 07 May 2026
+            # 12:00:00 GMT"); parse it for the cutoff filter and pass
+            # through as-is for display. The display code MUST NOT
+            # blindly .replace('T', ' ') on this — that ate the T in
+            # "Thu" and produced " hu, 07 May" in earlier output.
+            from datetime import UTC, datetime
+            from email.utils import parsedate_to_datetime
+
+            items = soup.find_all("item")[:15]
             for it in items:
                 title_el = it.find("title")
                 link_el = it.find("link")
@@ -642,6 +760,21 @@ def _fetch_vendor_blog_recent(tool: dict, cutoff_dt: object) -> list[dict]:
                 title = title_el.get_text(strip=True)
                 if not _matches_keyword(title, tool["blog_filter_keywords"]):
                     continue
+                pub_str = date_el.get_text(strip=True) if date_el else ""
+                pub_dt: object = None
+                if pub_str:
+                    try:
+                        pub_dt = parsedate_to_datetime(pub_str)
+                        if pub_dt.tzinfo is None:  # type: ignore[attr-defined]
+                            pub_dt = pub_dt.replace(tzinfo=UTC)  # type: ignore[union-attr]
+                    except (TypeError, ValueError):
+                        pub_dt = None
+                if pub_dt is not None and pub_dt < cutoff_dt:  # type: ignore[operator]
+                    continue
+                # Normalise published_iso to ISO 8601 when we parsed it,
+                # so the downstream display ("[:16].replace('T',' ')")
+                # works uniformly.
+                iso = pub_dt.isoformat() if isinstance(pub_dt, datetime) else pub_str
                 out.append(
                     {
                         "tool": tool["name"],
@@ -649,27 +782,44 @@ def _fetch_vendor_blog_recent(tool: dict, cutoff_dt: object) -> list[dict]:
                         "title": f"{tool['blog_source_label']}: {title}",
                         "summary": "",
                         "url": link_el.get_text(strip=True) if link_el else "",
-                        "published_iso": date_el.get_text(strip=True) if date_el else "",
+                        "published_iso": iso,
                         "source": tool["blog_source_label"],
                     }
                 )
         else:
-            # HTML scrape — Anthropic / Google. Anchor-tag heuristic.
+            # HTML scrape — Anthropic / Google. Restrict to /news/-style
+            # hrefs to skip nav / product links, parse embedded date.
             seen: set[str] = set()
-            for a in soup.select("a"):
+            news_selectors = ["a[href^='/news/']", "a[href^='/blog/']", "a[href*='/news/']"]
+            anchors: list = []
+            for sel in news_selectors:
+                anchors.extend(soup.select(sel))
+            if not anchors:
+                # Fallback — keep prior behaviour but at least restrict
+                # to in-domain hrefs so product pages on other domains
+                # don't slip through.
+                anchors = [a for a in soup.select("a") if (a.get("href") or "").startswith(("/", tool["blog_url"]))]
+
+            for a in anchors:
                 title = a.get_text(strip=True)
                 href = a.get("href", "")
+                # Drop href self-references (/news/, /news/category/...).
+                if href.rstrip("/").endswith(("/news", "/blog")) or "/category/" in href:
+                    continue
                 if len(title) < 20 or title in seen:
                     continue
                 if not _matches_keyword(title, tool["blog_filter_keywords"]):
                     continue
+                blog_dt = _parse_blog_date(title)
+                if blog_dt is not None and blog_dt < cutoff_dt:  # type: ignore[operator]
+                    continue
                 seen.add(title)
                 if href.startswith("/"):
-                    # reconstruct absolute URL from blog_url's host
                     from urllib.parse import urlparse
 
                     parsed = urlparse(tool["blog_url"])
                     href = f"{parsed.scheme}://{parsed.netloc}{href}"
+                iso_str = blog_dt.isoformat() if blog_dt is not None else ""  # type: ignore[union-attr]
                 out.append(
                     {
                         "tool": tool["name"],
@@ -677,7 +827,7 @@ def _fetch_vendor_blog_recent(tool: dict, cutoff_dt: object) -> list[dict]:
                         "title": f"{tool['blog_source_label']}: {title}",
                         "summary": "",
                         "url": href,
-                        "published_iso": "",
+                        "published_iso": iso_str,
                         "source": tool["blog_source_label"],
                     }
                 )
@@ -730,7 +880,7 @@ def fetch_hn_ai_buzz(min_score: int = 50, min_comments: int = 30, max_items: int
                 if score < min_score and comments < min_comments:
                     continue
                 title = item.get("title", "")
-                if not any(kw in title.lower() for kw in _AI_KEYWORDS):
+                if not _is_ai_related(title):
                     continue
                 out.append(
                     {
@@ -810,7 +960,7 @@ def fetch_x_ai_buzz(max_items: int = 10) -> list[dict]:
                 title = title_el.get_text(strip=True)
                 # AI-relevance gate even on AI accounts — they post
                 # plenty of non-AI stuff (recruiting, ops, etc.).
-                if not any(kw in title.lower() for kw in _AI_KEYWORDS):
+                if not _is_ai_related(title):
                     continue
                 out.append(
                     {
@@ -889,7 +1039,7 @@ def format_focused_updates(updates: list[dict]) -> str:
             published = u.get("published_iso", "") or "(時刻不明)"
             line = f"- [{kind.upper()}] {u.get('title', '')}"
             if published:
-                line += f"  ({published[:16].replace('T', ' ')} UTC)"
+                line += f"  ({_pretty_published(published)})"
             parts.append(line)
             summary = (u.get("summary") or "").strip()
             if summary:

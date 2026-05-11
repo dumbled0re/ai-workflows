@@ -2,13 +2,12 @@ name: AI Tech Catchup
 
 on:
   schedule:
-    # Every 2 hours UTC = ~once every 2 hours. The 6-hour lookback
-    # window inside phase_gather comfortably overlaps so a release that
-    # lands between runs is still caught next cron. phase_gather drops
-    # a skip.flag when no updates are in the window, and the
-    # subsequent AI + Slack steps short-circuit on the flag — so
-    # high-frequency cron stays silent when there's nothing to report.
-    - cron: '0 */2 * * *'
+    # 7:30 JST daily (22:30 UTC the previous day). Lookback is 24 hours
+    # so the morning digest catches everything that landed during the
+    # previous calendar day, including overnight US-time releases from
+    # Anthropic / OpenAI / Google. phase_gather drops a skip.flag if
+    # truly nothing happened and the AI / Slack steps short-circuit.
+    - cron: '30 22 * * *'
   workflow_dispatch: {}
 
 permissions:
