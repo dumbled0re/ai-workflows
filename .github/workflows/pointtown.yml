@@ -8,7 +8,13 @@ name: pointtown
 
 on:
   schedule:
-    - cron: "30 0 * * *"  # JST 9:30
+    # Twice-daily cron to keep the session alive — pointtown cookies
+    # observed to expire in ~20h (GMO anti-fraud session policy). The
+    # 9:30 run does the actual click work; the 21:30 run is a session-
+    # keepalive (verify_login + balance scrape only; state-store dedup
+    # prevents any double-click).
+    - cron: "30 0 * * *"   # JST 9:30 (primary click run)
+    - cron: "30 12 * * *"  # JST 21:30 (session keepalive)
   workflow_dispatch:
     inputs:
       dry_run:

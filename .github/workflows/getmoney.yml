@@ -14,7 +14,13 @@ name: getmoney
 
 on:
   schedule:
-    - cron: "45 0 * * *"  # JST 9:45 (15 min after pointtown.yml)
+    # Twice-daily cron to keep the session alive — dietnavi (getmoney)
+    # cookies observed to expire in ~20h (株式会社インフォニア系の session
+    # policy)。The 9:45 run does the actual click work; the 21:45 run is
+    # a session-keepalive (verify_login + balance scrape only; state-
+    # store dedup prevents any double-click).
+    - cron: "45 0 * * *"   # JST 9:45 (primary click run, 15 min after pointtown.yml)
+    - cron: "45 12 * * *"  # JST 21:45 (session keepalive)
   workflow_dispatch:
     inputs:
       dry_run:
