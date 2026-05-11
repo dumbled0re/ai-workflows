@@ -58,8 +58,10 @@ CRITIC_PROMPT_TEMPLATE = """\
    3 営業日以内の銘柄」block にこの ticker があれば N (=危険)、なければ Y (=安全)。
 4. momentum_agrees: prediction direction (UP/DOWN) が、銘柄データの SMA トレンド・
    MACD・RSI と一致しているか? 一致しなければ N。
-5. risk_reward: stop_loss と target_price から R/R = (target-entry)/(entry-stop)
-   を計算し、UP なら >=2.0、DOWN なら 絶対値 >=2.0 か? 値が読めない場合は null。
+5. risk_reward: 各 pick の ``risk_reward_ratio`` フィールド (システムが
+   AI 文字列を deterministic にパースして算出済み) が >= 2.0 か?
+   null の場合は評価不能 (target が指定されてない、文字列がパースできない等)
+   として null。0.0 は target が entry の逆側にあるという致命的設定ミスなので必ず N。
 
 === Verdict 判定ロジック ===
 
@@ -125,10 +127,24 @@ def build_critic_prompt(
     first-pass AI saw — handing it to the critic gives a shared frame of
     reference for "is this fingerprint similar to past winners?" without
     re-deriving anything. Pass empty string when unavailable.
+
+    Before serialising, every pick is annotated with a deterministically
+    computed ``risk_reward_ratio`` field (or ``None`` when not derivable).
+    This pre-empties the critic's rubric item 5 (risk_reward) so the AI
+    consumes a precomputed number instead of re-parsing the AI-generated
+    free-form ``stop_loss`` / ``target_price`` strings itself — a step
+    that empirically produced inconsistent verdicts on identical inputs.
     """
+    from stock_analyzer.risk_reward import annotate_pick
+
     holdings_picks = holdings_result.get("holdings_analysis", []) or []
     short_term = discovery_result.get("short_term_picks") or discovery_result.get("recommended_stocks") or []
     long_term = discovery_result.get("long_term_picks") or []
+
+    for collection in (holdings_picks, short_term, long_term):
+        for pick in collection:
+            if isinstance(pick, dict):
+                annotate_pick(pick)
 
     return CRITIC_PROMPT_TEMPLATE.format(
         performance_block=performance_block or "(過去のパフォーマンスデータなし)",

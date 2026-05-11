@@ -179,6 +179,53 @@ def check_pairwise_correlation(
     return findings
 
 
+def check_risk_reward(
+    recommendations: list[dict],
+    min_ratio: float | None = None,
+) -> list[RiskFinding]:
+    """Flag picks whose deterministically-computed R/R is below ``min_ratio``.
+
+    Reads ``entry_price`` / ``stop_loss`` / ``target_price`` /
+    ``prediction`` from each rec, parses the AI's free-form strings
+    into numerics, and computes the actual risk/reward ratio. Picks
+    that can't be parsed (missing target, malformed string) skip
+    silently — we cannot meaningfully flag a setup we don't
+    understand. Inverted setups (target on the wrong side of entry)
+    parse to ratio 0.0 and are explicitly flagged.
+
+    Holdings picks generally don't carry ``target_price`` and so go
+    unchecked here; the constraint is meaningful primarily for
+    discovery short_term / long_term picks where the AI sets a
+    target. This is intentional: holdings already represent capital
+    at work, not a fresh entry choice.
+    """
+    from stock_analyzer.risk_reward import DEFAULT_MIN_RATIO, compute_for_pick
+
+    threshold = DEFAULT_MIN_RATIO if min_ratio is None else min_ratio
+    findings: list[RiskFinding] = []
+    for r in recommendations:
+        ticker = r.get("ticker")
+        if not ticker:
+            continue
+        rr = compute_for_pick(r)
+        if rr is None:
+            continue
+        if rr < threshold:
+            findings.append(
+                RiskFinding(
+                    severity="warning",
+                    kind="risk_reward",
+                    message=(
+                        f"{ticker} の R/R = {rr:.2f} < {threshold:.1f}: "
+                        "想定上昇幅に対し損切り幅が広すぎます。"
+                        f"target_price を引き上げる or stop_loss を縮めて R/R >= {threshold:.1f} を確保してください"
+                    ),
+                    affected_tickers=(str(ticker),),
+                )
+            )
+    return findings
+
+
 def check_all(
     recommendations: list[dict],
     ticker_info: dict[str, dict] | None = None,
@@ -191,6 +238,7 @@ def check_all(
         findings.extend(check_sector_concentration(recommendations, ticker_info))
     if price_data is not None:
         findings.extend(check_pairwise_correlation(recommendations, price_data))
+    findings.extend(check_risk_reward(recommendations))
     # Stable order: warnings before info, then by kind for determinism
     severity_rank = {"warning": 0, "info": 1}
     findings.sort(key=lambda f: (severity_rank.get(f.severity, 2), f.kind))
