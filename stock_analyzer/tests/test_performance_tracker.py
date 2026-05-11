@@ -339,6 +339,76 @@ def test_format_few_shot_renders_wins_and_losses_with_signals() -> None:
     assert "似ているか" in out
 
 
+# ---------- drawdown stop --------------------------------------------------
+
+
+def test_current_drawdown_reported_separately_from_max() -> None:
+    """A run of wins followed by deeper losses should leave
+    current_drawdown_pct = max_drawdown_pct (equity at the trough)."""
+    history = {
+        "predictions": [
+            _pred("win", "UP", 5.0, reviewed_date="2026-01-01"),
+            _pred("win", "UP", 5.0, reviewed_date="2026-01-02"),
+            _pred("loss", "UP", -8.0, reviewed_date="2026-01-03"),
+            _pred("loss", "UP", -10.0, reviewed_date="2026-01-04"),
+        ],
+    }
+    stats = compute_performance_stats(history)
+    # Cumulative: +5, +10, +2, -8 → peak 10, current -8 → DD 18
+    assert stats["current_drawdown_pct"] == 18.0
+    assert stats["max_drawdown_pct"] == 18.0
+
+
+def test_current_drawdown_zero_when_at_new_peak() -> None:
+    """A series ending on a new high → current DD is 0 even if there
+    was a historical drawdown along the way."""
+    history = {
+        "predictions": [
+            _pred("win", "UP", 5.0, reviewed_date="2026-01-01"),
+            _pred("loss", "UP", -3.0, reviewed_date="2026-01-02"),
+            _pred("win", "UP", 10.0, reviewed_date="2026-01-03"),
+        ],
+    }
+    stats = compute_performance_stats(history)
+    # Cumulative: +5, +2, +12 → peak 12 = current → DD 0
+    assert stats["current_drawdown_pct"] == 0.0
+    # max DD was the 3-point dip from peak 5
+    assert stats["max_drawdown_pct"] == 3.0
+
+
+def test_drawdown_stop_directive_emitted_above_15pct() -> None:
+    """The format block must include the hard 'no new HIGH' directive
+    once current DD crosses 15% — the AI cannot miss this in scanning."""
+    # Build a clear DD: +10, +10, -20, -10 → peak 20, current -10, DD 30
+    history = {
+        "predictions": [
+            _pred("win", "UP", 10.0, reviewed_date="2026-01-01"),
+            _pred("win", "UP", 10.0, reviewed_date="2026-01-02"),
+            _pred("loss", "UP", -20.0, reviewed_date="2026-01-03"),
+            _pred("loss", "UP", -10.0, reviewed_date="2026-01-04"),
+        ],
+    }
+    history["performance_stats"] = compute_performance_stats(history)
+    feedback = format_performance_feedback(history)
+    assert "累計DD" in feedback
+    assert "15% 閾値" in feedback
+    assert "HIGH" in feedback
+
+
+def test_drawdown_stop_silent_below_threshold() -> None:
+    """Below 15% the directive must not appear — operator should see
+    'normal expectancy text' only, no false alarm."""
+    history = {
+        "predictions": [
+            _pred("win", "UP", 5.0, reviewed_date="2026-01-01"),
+            _pred("loss", "UP", -3.0, reviewed_date="2026-01-02"),
+        ],
+    }
+    history["performance_stats"] = compute_performance_stats(history)
+    feedback = format_performance_feedback(history)
+    assert "15% 閾値" not in feedback
+
+
 # ---------- drift indicator ------------------------------------------------
 
 

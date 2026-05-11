@@ -367,6 +367,12 @@ def compute_performance_stats(history: dict) -> dict:
     # measured against the running cumulative sum, so a series of
     # losing trades shows up as a single drawdown number. Sensitive
     # only to ordering and magnitudes, not annualised.
+    #
+    # Track current drawdown (peak-to-latest) separately from max DD:
+    # max tells the historical worst-case, current tells the operator
+    # whether *right now* the equity curve is well below its peak. A
+    # current DD >= 15% triggers a "no new HIGH picks" directive in
+    # the prompt — a hard rule that runs even if calibration looks OK.
     if all_dir_returns:
         chrono_resolved = sorted(resolved, key=lambda p: p.get("reviewed_date") or p.get("date", ""))
         chrono_returns = [r for r in (_directional_return(p) for p in chrono_resolved) if r is not None]
@@ -379,6 +385,7 @@ def compute_performance_stats(history: dict) -> dict:
             drawdown = peak - cumulative
             max_dd = max(max_dd, drawdown)
         stats["max_drawdown_pct"] = round(max_dd, 2)
+        stats["current_drawdown_pct"] = round(peak - cumulative, 2)
 
     # Confidence breakdown (the single most important diagnostic — if
     # HIGH < MEDIUM, the AI is over-using HIGH and needs to tighten its
@@ -775,6 +782,18 @@ def format_performance_feedback(history: dict) -> str:
             lines.append("  ⚠ 期待値が 0 以下 = 平均で損失方向。勝率より「勝ち幅 > 負け幅」を優先してください")
         if pf is not None and pf < 1.0:
             lines.append("  ⚠ プロフィットファクター < 1 = 累積 P&L マイナス。損切り徹底 + 利益拡大を意識")
+
+    # Drawdown stop — hard directive when the equity curve is sitting
+    # well below its peak right now. Independent of expectancy /
+    # calibration: drawdown discipline limits damage from a regime
+    # change the rest of the metrics haven't priced in yet.
+    current_dd = stats.get("current_drawdown_pct")
+    if current_dd is not None and current_dd >= 15.0:
+        lines.append(
+            f"  ⚠ 累計DDが {current_dd:.1f}% で 15% 閾値超過。"
+            "今回は新規 HIGH 信頼度の付与を停止し、MEDIUM 以下のみ推奨してください。"
+            "リカバリーまで HIGH 復活させない"
+        )
 
     # Confidence breakdown — same data as before, but now we surface
     # calibration inversion explicitly so the AI can self-correct.
