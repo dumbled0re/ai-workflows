@@ -54,7 +54,7 @@
       "still_valid": false,
       "date_added": "2026-04-28",
       "last_validated": "2026-04-28",
-      "deprecated_date": "2026-05-03"
+      "deprecated_date": "2026-05-12"
     },
     {
       "insight": "同一市場局面で多数ポジションを同時保有すると相関リスクが高まる。市場全体が下落した際に複数ポジションが同時に損切りラインに達する。同時保有は最大5銘柄、かつセクター分散を徹底する",
@@ -64,7 +64,7 @@
       "still_valid": false,
       "date_added": "2026-04-28",
       "last_validated": "2026-04-28",
-      "deprecated_date": "2026-05-03"
+      "deprecated_date": "2026-05-12"
     },
     {
       "insight": "SMA25ブレイクアウト＋出来高1.5倍以上の複合シグナルが確認できる銘柄は短期モメンタムトレードの主軸候補。分割エントリー（1/2ずつ）でリスクを制御しながら参入し、押し目での追加エントリーを計画する",
@@ -74,7 +74,7 @@
       "still_valid": false,
       "date_added": "2026-04-28",
       "last_validated": "2026-04-28",
-      "deprecated_date": "2026-05-05"
+      "deprecated_date": "2026-05-12"
     },
     {
       "insight": "PBR0.9倍以下かつ配当利回り3.5%以上かつ売上成長率15%超の銘柄は長期保有の優先候補。さらにPER15以下なら割安判断が成立しやすい",
@@ -84,7 +84,7 @@
       "still_valid": false,
       "date_added": "2026-04-28",
       "last_validated": "2026-04-28",
-      "deprecated_date": "2026-05-03"
+      "deprecated_date": "2026-05-12"
     },
     {
       "insight": "市場全体が下落トレンドにある時は、新規UP予測のエントリーを極力控え、既存ポジションの損切り実行と現金比率の引き上げを優先する。底打ちシグナル（RSI30以下＋出来高急増＋陽線転換）が複数セクターで確認されてから初めてエントリー検討する",
@@ -113,7 +113,7 @@
       "still_valid": false,
       "date_added": "2026-04-28",
       "last_validated": "2026-04-28",
-      "deprecated_date": "2026-05-03"
+      "deprecated_date": "2026-05-12"
     },
     {
       "insight": "同一日に保有銘柄数が5件を超えている状態では新規エントリーを禁止する。保有整理が完了して5件以下になってから初めて新規推奨を検討する",
@@ -123,7 +123,7 @@
       "still_valid": false,
       "date_added": "2026-04-28",
       "last_validated": "2026-04-28",
-      "deprecated_date": "2026-05-03"
+      "deprecated_date": "2026-05-12"
     },
     {
       "insight": "SMA25ブレイクアウト＋出来高1.5倍以上の複合シグナルは短期モメンタムの主力エントリー条件として一貫性がある。特に決算通過後の底打ち反発（決算翌日の出来高増加＋陽線）との組み合わせは確度が上がる",
@@ -133,7 +133,7 @@
       "still_valid": false,
       "date_added": "2026-04-28",
       "last_validated": "2026-04-28",
-      "deprecated_date": "2026-05-07"
+      "deprecated_date": "2026-05-12"
     },
     {
       "insight": "長期保有の選定基準としてPBR0.9倍以下＋配当利回り3.5%以上＋売上成長率15%超の複合条件を維持する。さらにPER15以下が揃えば割安判断が成立し、長期リターンの安定性が高まる",
@@ -143,7 +143,7 @@
       "still_valid": false,
       "date_added": "2026-04-28",
       "last_validated": "2026-04-28",
-      "deprecated_date": "2026-05-03"
+      "deprecated_date": "2026-05-12"
     },
     {
       "insight": "下落相場での逆張りエントリーは個別銘柄のRSI30以下だけを根拠にせず、複数セクターにわたる底打ちシグナル（出来高急増＋陽線転換）の同時確認を必須条件とする",
@@ -153,7 +153,7 @@
       "still_valid": false,
       "date_added": "2026-04-28",
       "last_validated": "2026-04-28",
-      "deprecated_date": "2026-05-03"
+      "deprecated_date": "2026-05-12"
     },
     {
       "insight": "決算通過後（翌営業日以降）にBB下限付近＋出来高増加＋陽線転換が確認された銘柄は積極的なエントリー候補となる。決算不確実性が解消された後の押し目は優良な買い場になりやすい",
@@ -163,7 +163,7 @@
       "still_valid": false,
       "date_added": "2026-04-28",
       "last_validated": "2026-04-28",
-      "deprecated_date": "2026-05-03"
+      "deprecated_date": "2026-05-12"
     },
     {
       "insight": "信用倍率5倍以上の銘柄はいかなる局面でもUP推奨を避ける。信用買い残は将来の反対売買（売り）を意味し、テクニカルシグナルを無効化する需給圧力となる",
@@ -879,13 +879,85 @@
       "still_valid": true,
       "date_added": "2026-05-12",
       "last_validated": "2026-05-12"
+    },
+    {
+      "insight": "direction=DOWNのみに絞るとTC後net+24.3%・PF 1.43・DD 33.7%で全フィルター最優秀。UP予測はTC後net-18.4%と価値破壊。DOWN予測を戦略の主軸とし、UP予測は市場回復局面（異なるセクター3件以上の同時UP成功確認翌営業日以降）が明確な場合のみに限定する",
+      "evidence": "DOWN: 67件 EV+0.76% Sharpe+0.15 PF 1.43 gross+51.1%→net+24.3% / UP: 51件 EV+0.04% PF 1.02 gross+2.0%→net-18.4% (TC drag 20.4%)",
+      "confidence": "HIGH",
+      "category": "market_regime",
+      "still_valid": true,
+      "date_added": "2026-05-12",
+      "last_validated": "2026-05-12"
+    },
+    {
+      "insight": "HIGH信頼度（51.5%）がMEDIUM（52.7%）を1.2pt下回るキャリブレーション逆転が継続。HIGH_DOWN(52.0%)もMEDIUM_DOWN(54.1%)に劣り、HIGHはUP・DOWN両方向で機能していない。HIGH付与条件を「テクニカル+ファンダメンタル+需給の全条件同方向かつ全除外フラグ（バイオ/暗号資産/急騰小型株/連続方向転換/市場逆張り）が皆無かつ市場レジーム一致」に厳格化し、1%でも迷いがあれば必ずMEDIUMに格下げする。目標勝率55%以上",
+      "evidence": "HIGH: 51.5%(17/33) < MEDIUM: 52.7%(39/74) / HIGH_DOWN: 52.0%(13/25) < MEDIUM_DOWN: 54.1%(20/37) / HIGH_UP: 50.0%(4/8) < MEDIUM_UP: 51.4%(19/37) / HIGH net+8.6% vs MEDIUM net+2.9%(ただしMEDIUMはDD 21.1%で圧倒的低リスク)",
+      "confidence": "HIGH",
+      "category": "risk_management",
+      "still_valid": true,
+      "date_added": "2026-05-12",
+      "last_validated": "2026-05-12"
+    },
+    {
+      "insight": "source=short_termはEV-0.65%・PF 0.70・Sharpe-0.16・net-9.4%と全フィルター中唯一の累積マイナスソース。short_termベースの予測を大幅削減し、holdings（net+10.8%・91件）とlong_term（net+6.7%・17件）にリソースを集中する",
+      "evidence": "short_term: 9件 勝率44.4% EV-0.65% Sharpe-0.16 PF 0.70 DD 16.5% gross-5.8%→net-9.4% / holdings: 91件 EV+0.52% net+10.8% / long_term: 17件 EV+0.79% net+6.7%",
+      "confidence": "HIGH",
+      "category": "risk_management",
+      "still_valid": true,
+      "date_added": "2026-05-12",
+      "last_validated": "2026-05-12"
+    },
+    {
+      "insight": "MEDIUM信頼度はDD 21.1%と全フィルター最小（baseline DD 28.8%比-7.7pt）で、DOWN+MEDIUMの組み合わせ（MEDIUM_DOWN 54.1%）が最優位クロス集計。MEDIUMを主軸として予測件数の大半をMEDIUMに割り当て、HIGH格上げは全条件充足時のみに限定することでDD30%以下が実現可能",
+      "evidence": "MEDIUM: 74件 DD 21.1% / MEDIUM_DOWN: 54.1%(20/37) > HIGH_DOWN: 52.0%(13/25) > MEDIUM_UP: 51.4%(19/37) > HIGH_UP: 50.0%(4/8) / LOW: 45.5%(5/11)",
+      "confidence": "HIGH",
+      "category": "risk_management",
+      "still_valid": true,
+      "date_added": "2026-05-12",
+      "last_validated": "2026-05-12"
+    },
+    {
+      "insight": "source=long_termは件数あたりEV効率が全フィルター最高（EV+0.79%/件・Sharpe+0.12・net+6.7%）かつTC drag 6.8%と最小。long_term予測の質を最優先で維持し、PBR0.9倍以下+配当3.5%以上+売上成長15%超+PER15以下の4条件スクリーニングを引き続き最重要long_termシグナルとして扱う",
+      "evidence": "long_term: 17件 勝率52.9% EV+0.79% Sharpe+0.12 PF 1.31 DD 26.3% gross+13.5%→net+6.7% TC drag 6.8% (全フィルター最小TC drag)",
+      "confidence": "MEDIUM",
+      "category": "fundamental_insight",
+      "still_valid": true,
+      "date_added": "2026-05-12",
+      "last_validated": "2026-05-12"
+    },
+    {
+      "insight": "TC 0.40%/round-trip考慮後に正のリターンを生む確認済みフィルターはDOWN（net+24.3%）・holdings（net+10.8%）・HIGH（net+8.6%）・long_term（net+6.7%）の4つのみ。MEDIUMはnet+2.9%と辛うじてプラス。baseline all-in（net+5.9%）はDOWN特化の約5分の1。取引件数削減（high-frequency→precision選択）がnet P&L改善の最重要施策",
+      "evidence": "TC drag比較: DOWN 26.8% / holdings 36.4% / HIGH 13.2% / long_term 6.8% / baseline 47.2% / UP 20.4% / short_term 3.6%。long_termはTC dragが最小で件数効率が最高",
+      "confidence": "HIGH",
+      "category": "risk_management",
+      "still_valid": true,
+      "date_added": "2026-05-12",
+      "last_validated": "2026-05-12"
+    },
+    {
+      "insight": "全体MAX DD 74.0%の主因はUP予測（DD 47.5%）とshort_term予測の混入。MEDIUM単独でDD 21.1%、DOWN単独でDD 33.7%まで削減可能。DOWN+MEDIUM+holdingsの組み合わせに絞り込み、同時保有5件以内ルールと合わせることでDD 25%以下が現実的目標",
+      "evidence": "全体DD 74.0% / MEDIUM DD 21.1% / DOWN DD 33.7% / baseline (フィルター内) DD 28.8% / UP DD 47.5%。MEDIUMへの絞り込みだけでDD差-52.9pt",
+      "confidence": "HIGH",
+      "category": "risk_management",
+      "still_valid": true,
+      "date_added": "2026-05-12",
+      "last_validated": "2026-05-12"
+    },
+    {
+      "insight": "LOW_DOWN勝率60.0%(3/5件)はMEDIUM_DOWNの54.1%を上回る可能性があるが、サンプルN=5で統計的根拠不足。LOW_UP 33.3%(2/6件)は全バケット最低。LOWのDOWN予測のみサンプル蓄積を続け（N≥15になるまで判断保留）、LOWのUP予測は引き続きエントリー完全禁止とする",
+      "evidence": "LOW_DOWN: 60.0%(3/5件) / LOW_UP: 33.3%(2/6件) / LOW全体: 45.5%(5/11件)。N=5では95%信頼区間が14.7%〜94.7%と広く仮説段階",
+      "confidence": "LOW",
+      "category": "risk_management",
+      "still_valid": true,
+      "date_added": "2026-05-12",
+      "last_validated": "2026-05-12"
     }
   ],
   "regime_strategies": {
-    "上昇トレンド": "金融・証券セクターを第一優先のUP候補とし、建設インフラ（PBR0.9倍以下+配当4%超+売上成長30%超）で分割エントリー+トレーリングストップを採用。SMA25+出来高1.5倍超のUPシグナルが有効な唯一の局面。MEDIUM信頼度を基本とし、HIGHへの格上げは全シグナル同方向+全除外フラグ皆無の場合のみ。同時保有5件以内・holdings+long_term優先・short_term最小化。2連続同方向的中銘柄はトレンド確立としてトレーリングストップで利益を伸ばす",
-    "下降トレンド": "DOWN予測のみに集中（EV+0.65%・PF 1.36）。新規UPエントリーを全停止し保有5件超なら新規エントリー禁止。損切り基準は新規-5%・保有-8%超+回復シグナルなし。SMA25+出来高UPシグナルは完全無視。バイオ/暗号資産/急騰小型株/連続方向転換銘柄は全除外。同一銘柄2連続DOWN失敗→10営業日禁止を厳守。3セクター以上のUP同時成功が出たらDOWN集中を終了し次営業日から局面転換を判定",
-    "レンジ相場": "MEDIUM信頼度のDOWN優先（MEDIUM_DOWN 52.8%）。UP予測はMEDIUM_UP（54.3%）で市場中立確認後に実施。RSI30以下+BB下限+出来高増加の3条件合致銘柄は反発候補だが市場レジーム中立の確認を前提条件とする。LOW信頼度は原則エントリー禁止（勝率33%以下）。PBR0.9倍以下+配当3.5%以上+売上成長15%超+PER15以下の長期候補をスクリーニングの中心に。2連続失敗ルールを厳守",
-    "高ボラティリティ": "ポジションサイズを通常の50%以下に削減。HIGH信頼度の付与を原則禁止しMEDIUM固定。バイオ・暗号資産・急騰小型株（時価総額300億円以下+直近20日+20%超）・連続方向転換銘柄を完全除外。同時保有3件以内に制限。UP予測はDD 47.5%のリスクがあるため回避しDOWN予測のみ。2連続失敗→即座に10営業日禁止を最優先で実施。製造業大手の関税影響継続銘柄のDOWNは有効だが市場転換シグナル確認まで継続"
+    "上昇トレンド": "日経平均/TOPIX 25SMA上方維持かつ異なるセクター3件以上の同時UP成功確認後に解禁。金融・証券セクター（大和・野村・SBI等）を第一優先UPターゲット（市場回復先行指標）。建設インフラ（PBR0.9倍以下+配当4%超+売上成長30%超）でトレンド継続エントリー＋トレーリングストップ。SMA25ブレイクアウト+出来高1.5倍以上シグナルが有効な唯一の局面。MEDIUM信頼度主軸でDOWN:UP比率を段階的に6:4まで拡大可能。2連続同方向成功銘柄はポジション維持とトレーリングストップで利益継続",
+    "下降トレンド": "DOWN予測に完全集中（UP予測全停止）。MEDIUM信頼度のみ使用（HIGH_DOWNはMEDIUM_DOWNより劣るため）。バイオ/製薬/暗号資産/急騰小型株（時価総額300億円以下かつ直近20日+20%超）を厳格除外。同一銘柄2回連続DOWN失敗で即時10営業日予測禁止。ファンダメンタル過大評価+業績懸念銘柄を優先DOWNターゲットとして選定（ただし市場転換シグナル後は即停止）。異なるセクター3件以上同時UP成功シグナルが出るまでDOWN特化を継続",
+    "レンジ相場": "MEDIUM+DOWN組み合わせのみ（MEDIUM_DOWN 54.1%最高勝率）。保有5件以内厳守。short_term信号完全不使用（net-9.4%）。long_termのファンダメンタル4条件（PBR0.9倍以下+配当3.5%以上+売上成長15%超+PER15以下）銘柄への集中。1日あたり最大2予測に制限してTC drag（baseline 47.2%）を最小化。UP予測はMEDIUM確信かつ市場方向が明確（複数セクター同時UP確認）な場合のみ",
+    "高ボラティリティ": "ポジションサイズを通常の50%以下に削減。MEDIUM信頼度のみ（HIGH不使用）。バイオ・製薬・暗号資産・急騰小型株の除外を二重確認。DOWN方向のみ（UP予測完全停止）。連続失敗ストップルール（2回→10営業日禁止）を最優先チェックとして実施。同時保有3件以内（通常の5件より厳格化）。1銘柄の最大損失を-5%で機械的カット。TC drag最小化のため取引頻度を週3件以下に制限"
   },
   "last_review_date": "2026-05-12"
 }
