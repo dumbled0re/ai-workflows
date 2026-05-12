@@ -310,6 +310,41 @@ def test_enforce_discovery_cap_prioritises_critic_prelow() -> None:
     assert "MED.T" in remaining
 
 
+def test_sanitize_unicode_strips_lone_surrogates_from_prompt() -> None:
+    """A pick whose reasons / risk_factor accidentally carries a lone
+    UTF-16 surrogate (real cause of the 2026-05-12 API 400 'no low
+    surrogate in string' failure) must not bleed into the rendered
+    critic prompt — otherwise the second-pass Claude Code Action
+    rejects the request body and the whole improvement loop breaks."""
+    from stock_analyzer.ai_analyzer import _sanitize_unicode
+
+    bad = "正常テキスト\ud800lone-high-surrogate"
+    cleaned = _sanitize_unicode(bad)
+    assert isinstance(cleaned, str)
+    assert "\ud800" not in cleaned
+    assert "正常テキスト" in cleaned
+    assert "lone-high-surrogate" in cleaned
+
+    # Critic prompt construction with a pick carrying a surrogate
+    # in its reasons[] must render cleanly.
+    holdings = {
+        "holdings_analysis": [
+            {
+                "ticker": "X.T",
+                "name": "Bad Co",
+                "prediction": "UP",
+                "confidence": "MEDIUM",
+                "reasons": ["clean reason", "polluted\ud800tail"],
+            }
+        ]
+    }
+    prompt = build_critic_prompt(holdings, {}, performance_block="")
+    assert "\ud800" not in prompt
+    # Verify the surrogate-stripped string still survives in the prompt
+    assert "polluted" in prompt
+    assert "tail" in prompt
+
+
 def test_coerce_downgrade_handles_unknown_values_safely() -> None:
     # Random / empty / lowercase suggestions all fall back to a single
     # notch down from the current — keeps the function total.

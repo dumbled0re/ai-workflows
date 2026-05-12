@@ -154,6 +154,20 @@ def build_critic_prompt(
             if isinstance(pick, dict):
                 annotate_pick(pick)
 
+    # Strip unpaired UTF-16 surrogates before they hit the prompt text —
+    # see ai_analyzer._sanitize_unicode for the upstream rationale.
+    # critic prompts hit the API on a second pass so the same hygiene
+    # applies. A single stray surrogate from a TDnet / news title that
+    # bled into a pick's reasons / risk_factor would otherwise crash
+    # the critic step with "API Error: 400 invalid JSON".
+    from stock_analyzer.ai_analyzer import _sanitize_unicode
+
+    holdings_picks = _sanitize_unicode(holdings_picks)
+    short_term = _sanitize_unicode(short_term)
+    long_term = _sanitize_unicode(long_term)
+    performance_block = _sanitize_unicode(performance_block)
+    portfolio_findings_text = _sanitize_unicode(portfolio_findings_text)
+
     return CRITIC_PROMPT_TEMPLATE.format(
         performance_block=performance_block or "(過去のパフォーマンスデータなし)",
         portfolio_findings_block=portfolio_findings_text or "(deterministic check で violations なし)",

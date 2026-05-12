@@ -2,12 +2,44 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 _DATA_DIR = Path(__file__).parent.parent / "data"
+
+# Unpaired UTF-16 surrogates (high 0xD800-DBFF / low 0xDC00-DFFF) are
+# legal in Python str but produce invalid JSON when ensure_ascii=False.
+# Real cause from the 2026-05-12 manual run was a TDnet / news title
+# containing a stray surrogate that Anthropic's API rejected with
+# "no low surrogate in string". Strip them at the JSON-write boundary.
+_SURROGATE_RE = re.compile(r"[\uD800-\uDFFF]")
+
+
+def _sanitize_unicode(value: object) -> object:
+    """Recursively strip unpaired UTF-16 surrogates from any string
+    inside a JSON-serialisable structure.
+
+    Python allows lone surrogates as str code points (they survive
+    slicing, concatenation, etc.) but ``json.dumps(ensure_ascii=False)``
+    emits them verbatim and downstream JSON parsers reject the bytes.
+    Sanitizing at the dump boundary covers every source that flows
+    into the prompt (TDnet titles, news headlines, AI summaries,
+    fundamentals strings) without forcing each fetcher to handle
+    Unicode hygiene itself.
+    """
+    if isinstance(value, str):
+        return _SURROGATE_RE.sub("", value)
+    if isinstance(value, dict):
+        return {k: _sanitize_unicode(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_unicode(v) for v in value]
+    if isinstance(value, tuple):
+        return tuple(_sanitize_unicode(v) for v in value)
+    return value
+
 
 SYSTEM_PROMPT = """\
 あなたはプロの短期投資家兼アナリストです。東京証券取引所に上場する銘柄を、
@@ -227,6 +259,7 @@ def prepare_prompts(
     }
 
     prompt_file = out / "analysis_input.json"
+    prompt_data = _sanitize_unicode(prompt_data)
     with open(prompt_file, "w", encoding="utf-8") as f:
         json.dump(prompt_data, f, ensure_ascii=False, indent=2)
 
