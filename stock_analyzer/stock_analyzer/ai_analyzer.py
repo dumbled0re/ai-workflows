@@ -506,6 +506,14 @@ def _format_stock_data(summaries: list[dict]) -> str:
                 margin_line += f" | 推移: {s['margin_trend']}"
             lines.append(margin_line)
 
+        # Macro sensitivity tags from cross-asset moves (USDJPY /
+        # yield / oil). Renders as "マクロ: [usdjpy +2.1%] tailwind"
+        # so the AI sees which macro factor is currently helping or
+        # hurting this sector.
+        macro_tags = s.get("macro_tags")
+        if isinstance(macro_tags, list) and macro_tags:
+            lines.append(f"マクロ感応: {' / '.join(macro_tags)}")
+
         # Trailing-stop recommendation for holdings already in the
         # green (>+3% unrealized). Pros raise the stop as positions
         # move favourably — this surfaces the suggestion alongside

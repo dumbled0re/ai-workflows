@@ -151,6 +151,32 @@ def phase_prepare() -> None:
         logger.info(
             "Calendar signals: %d active (%s)", len(calendar_signals), ", ".join(s.kind for s in calendar_signals)
         )
+
+    # Cross-asset macro (USDJPY / 金利 / 油) → sector sensitivity.
+    # Pulls 5-day deltas, derives tailwind / headwind sector sets via
+    # the curated sensitivity matrix, and surfaces both an aggregate
+    # market_context block AND per-ticker tags that the prompt
+    # renderer reads onto each candidate's line.
+    from stock_analyzer.macro_sensitivity import (
+        derive_sector_signals,
+        fetch_macro_deltas,
+        format_macro_context_for_prompt,
+        per_ticker_tags,
+    )
+
+    macro_deltas: dict[str, float] = {}
+    macro_signals: dict = {}
+    macro_tags_by_ticker: dict[str, list[str]] = {}
+    try:
+        macro_deltas = fetch_macro_deltas()
+        macro_signals = derive_sector_signals(macro_deltas)
+        macro_block = format_macro_context_for_prompt(macro_deltas, macro_signals)
+        if macro_block:
+            market_context_text = market_context_text + "\n\n" + macro_block
+            logger.info("Macro signals active: %d factors", len(macro_signals))
+    except Exception:
+        logger.exception("Macro sensitivity fetch failed; continuing without it")
+
     logger.info("Market context ready")
 
     # Fetch market news
@@ -270,11 +296,20 @@ def phase_prepare() -> None:
 
     from stock_analyzer.trailing_stop import annotate_holding as annotate_trailing_stop
 
+    # Compute macro sector tags once for the universe so each summary
+    # gets the same tag dict to read from. Holdings tagged via the
+    # config's holdings sector (we don't have ticker_info for those),
+    # candidates via all_ticker_info.
+    macro_tags_by_ticker = per_ticker_tags(all_ticker_info, macro_signals) if macro_signals else {}
+
     for s in holdings_summaries + screened_candidates:
         annotate_margin_signals(s)
         annotate_liquidity(s)
         annotate_position_size(s, kelly_bases=kelly_bases)
         annotate_trailing_stop(s)
+        tags = macro_tags_by_ticker.get(s.get("ticker", ""))
+        if tags:
+            s["macro_tags"] = tags
 
     # Earnings momentum (quarterly YoY) + surprise (PEAD) + analyst
     # consensus drift. All three are one extra HTTP per ticker so we
