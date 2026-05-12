@@ -335,6 +335,37 @@ def phase_prepare() -> None:
             ", ".join(f"{w.ticker}@{w.trading_days_until}d" for w in imminent),
         )
 
+    # TDnet 適時開示 — canonical real-time disclosure feed. Pulls the
+    # daily list page for today, filters to our holdings + top-20
+    # candidate tickers, and attaches per-ticker disclosure lines to
+    # each summary. Urgent categories (TOB / 業績修正 / etc.) get a
+    # dedicated top-of-prompt block alongside the news_classifier
+    # output; the two sources naturally de-duplicate at the AI step.
+    from stock_analyzer.tdnet_fetcher import (
+        fetch_tdnet_today,
+        format_disclosures_for_summary,
+        format_urgent_summary,
+    )
+
+    tdnet_target_tickers = {h.ticker for h in (config.holdings or [])} | {
+        c["ticker"] for c in screened_candidates[:20] if c.get("ticker")
+    }
+    tdnet_by_ticker = fetch_tdnet_today(target_tickers=tdnet_target_tickers, target_date=now_jst.date())
+    for s in holdings_summaries + screened_candidates:
+        items = tdnet_by_ticker.get(s["ticker"])
+        if items:
+            s["tdnet_disclosures_text"] = format_disclosures_for_summary(items)
+    tdnet_urgent_items = format_urgent_summary(tdnet_by_ticker)
+    if tdnet_urgent_items:
+        lines = ["=== TDnet 適時開示 (本日の緊急カテゴリ) ==="]
+        for u in tdnet_urgent_items[:15]:
+            lines.append(f"🔴 [{u['category']}] {u['time']} {u['ticker']} {u['company']} — {u['title'][:140]}")
+        lines.append(
+            "上記は東証の公式適時開示で、株価に直接影響します。entry / direction / 信頼度判断時に必ず反映してください"
+        )
+        market_context_text = market_context_text + "\n\n" + "\n".join(lines)
+        logger.info("TDnet urgent disclosures: %d items injected into prompt", len(tdnet_urgent_items))
+
     # Urgent disclosures: scan classified per-stock news for TDnet-style
     # urgent categories (TOB / 業績修正 / 自己株取得 / 大量保有 / M&A /
     # 増資 etc.) and surface them as a top-of-prompt warning. The per-

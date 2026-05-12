@@ -473,6 +473,13 @@ def _format_stock_data(summaries: list[dict]) -> str:
                 margin_line += f" | 推移: {s['margin_trend']}"
             lines.append(margin_line)
 
+        # TDnet 適時開示 — official disclosure feed, distinct from
+        # general news (TOB / 業績修正 / 自己株式取得 etc. land here
+        # first). Rendered above general news so the AI processes
+        # canonical sources before noisy headline streams.
+        if s.get("tdnet_disclosures_text"):
+            lines.append(s["tdnet_disclosures_text"])
+
         # Recent news
         if s.get("recent_news"):
             lines.append(f"最新ニュース: {s['recent_news']}")
