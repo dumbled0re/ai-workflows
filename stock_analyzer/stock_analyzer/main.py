@@ -519,6 +519,51 @@ def phase_prepare() -> None:
             # best-effort: a missing close history for one ticker just
             # excludes it from the correlation check, never aborts.
             continue
+    # Factor exposures (market beta / size / value / momentum) per
+    # ticker so phase_notify can compute portfolio-level aggregates
+    # and warn on factor concentration. Stored as a separate file
+    # to keep portfolio_aux focused on its existing purpose.
+    try:
+        from stock_analyzer.factor_model import compute_factor_exposures
+
+        # Closes pulled from holdings_data first (full history series),
+        # then per-screened-candidate close_history if we have it.
+        closes_for_factor: dict[str, list[float]] = {}
+        for ticker, closes in portfolio_aux["close_history"].items():
+            closes_for_factor[ticker] = closes
+
+        # Market reference closes — read the N225 series the screener
+        # already fetched (relative_strength reuses this); we don't
+        # carry it in portfolio_aux today, so just refetch once.
+        market_closes: list[float] = []
+        try:
+            from stock_analyzer.data_fetcher import fetch_batch as _fb
+
+            n225_data, _, _ = _fb(["^N225"], period="3mo", fetch_fundamentals=False)
+            if "^N225" in n225_data:
+                market_closes = [float(v) for v in n225_data["^N225"]["Close"].tolist()]
+        except Exception:
+            logger.debug("Factor model: N225 refetch failed; market_beta will be None")
+
+        # fundamentals_subset = all_fundamentals for screened universe
+        exposures = compute_factor_exposures(
+            universe=all_fundamentals,
+            market_closes=market_closes,
+            closes_by_ticker=closes_for_factor,
+        )
+        portfolio_aux["factor_exposures"] = {
+            t: {
+                "market_beta_z": e.market_beta_z,
+                "size_z": e.size_z,
+                "value_z": e.value_z,
+                "momentum_z": e.momentum_z,
+            }
+            for t, e in exposures.items()
+        }
+        logger.info("Factor exposures computed for %d tickers", len(exposures))
+    except Exception:
+        logger.exception("Factor model computation failed; continuing without it")
+
     with open(meta_dir / "portfolio_aux.json", "w", encoding="utf-8") as f:
         json.dump(portfolio_aux, f, ensure_ascii=False)
 
@@ -832,6 +877,41 @@ def phase_notify() -> None:
                         recommendations.append(r)
             findings = check_all(recommendations, ticker_info=ticker_info, price_data=price_data)
             portfolio_findings_text = format_findings_for_slack(findings)
+
+            # Factor exposure aggregate + concentration warning. The
+            # check fires when the picks share a strong tilt (z>=1.5)
+            # on any of market_beta / size / value / momentum, even
+            # if sector concentration looks fine. Goes into the same
+            # Slack block + persisted in portfolio_findings for next-
+            # run prompt injection.
+            try:
+                from stock_analyzer.factor_model import (
+                    FactorExposure,
+                    aggregate_portfolio_exposure,
+                    detect_factor_concentration,
+                    format_factor_concentration_for_prompt,
+                )
+
+                fe_dict = portfolio_aux.get("factor_exposures") or {}
+                exposures = {
+                    t: FactorExposure(
+                        ticker=t,
+                        market_beta_z=v.get("market_beta_z"),
+                        size_z=v.get("size_z"),
+                        value_z=v.get("value_z"),
+                        momentum_z=v.get("momentum_z"),
+                    )
+                    for t, v in fe_dict.items()
+                }
+                factor_aggregate = aggregate_portfolio_exposure(recommendations, exposures)
+                factor_findings = detect_factor_concentration(factor_aggregate)
+                factor_block = format_factor_concentration_for_prompt(factor_findings, factor_aggregate)
+                if factor_block:
+                    portfolio_findings_text = (portfolio_findings_text + "\n\n" + factor_block).strip()
+                if factor_findings:
+                    logger.warning("Factor concentration: %d factors flagged", len(factor_findings))
+            except Exception:
+                logger.exception("Factor concentration check failed; continuing without it")
             # Persist a compact dict so phase_prepare's next run can
             # inject the violations back into Claude's prompt without
             # importing portfolio_risk just to deserialise.
