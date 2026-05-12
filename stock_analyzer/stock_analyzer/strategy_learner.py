@@ -258,9 +258,15 @@ def build_weekly_review_prompt(predictions_history: dict, strategy_notes: dict) 
     # Counterfactual backtest — re-run resolved history under canned
     # filters (HIGH-only, by direction, by source) to surface "what
     # filter would have most-improved Sharpe" as actionable evidence.
+    # Two layers: gross sharpe ordering, plus net P&L with TC applied
+    # so the AI sees which filters survive the realistic round-trip
+    # cost and which ones look profitable on paper but bleed money.
     try:
         from stock_analyzer.backtest import (
+            _DEFAULT_TC_ROUND_TRIP_PCT,
+            compare_gross_vs_net,
             format_counterfactuals_for_prompt,
+            format_gross_vs_net_for_prompt,
             standard_counterfactuals,
         )
 
@@ -268,6 +274,11 @@ def build_weekly_review_prompt(predictions_history: dict, strategy_notes: dict) 
         bt_block = format_counterfactuals_for_prompt(sims)
         if bt_block:
             prompt += "\n" + bt_block + "\n"
+
+        net_report = compare_gross_vs_net(predictions_history, _DEFAULT_TC_ROUND_TRIP_PCT)
+        net_block = format_gross_vs_net_for_prompt(net_report)
+        if net_block:
+            prompt += "\n" + net_block + "\n"
     except Exception:
         pass
 

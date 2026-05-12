@@ -54,11 +54,26 @@ class SimResult:
         return self.equity_curve[-1] if self.equity_curve else 0.0
 
 
+_DEFAULT_TC_ROUND_TRIP_PCT = 0.4
+"""Round-trip transaction cost for typical JP-equity retail swing trade.
+
+Decomposition (rough):
+- Bid-ask spread half-cost on entry + exit: 0.1-0.2% each, ~0.3% total
+- Broker commission (SBI / Rakuten retail tier): ~0.05% each side
+- Slippage on market orders: ~0.05% each side
+
+Total round-trip ~0.4%. For a 14-day swing targeting ~2% expected return,
+this is 20% of gross return — material enough that ignoring it makes
+gross-metric reports systematically optimistic. Pass 0.0 to retain
+gross-only behaviour, e.g. for comparison."""
+
+
 def simulate(
     history: dict,
     *,
     filter_fn: PredicateFn | None = None,
     label: str = "all",
+    tc_round_trip_pct: float = 0.0,
 ) -> SimResult:
     """Run a counterfactual sim over resolved predictions.
 
@@ -66,6 +81,15 @@ def simulate(
     True to include it. Pass ``None`` for the unfiltered baseline.
     Returns a ``SimResult`` carrying both the headline metrics and
     the per-trade equity curve.
+
+    ``tc_round_trip_pct`` deducts a per-trade transaction cost from
+    every directional return before metrics aggregate. Default 0.0
+    preserves the old "gross only" behaviour so existing callers
+    keep their results stable; pass ``_DEFAULT_TC_ROUND_TRIP_PCT``
+    (0.4) for realistic net-of-cost numbers on JP retail swing.
+    The TC is applied uniformly — a more rigorous model would scale
+    by liquidity, but at this granularity uniform is the best
+    available estimate.
     """
     resolved = [p for p in history.get("predictions", []) if p.get("status") in ("win", "loss")]
     if filter_fn is not None:
@@ -93,7 +117,8 @@ def simulate(
             equity_curve=[],
         )
 
-    # Equity curve: cumulative directional return after each trade.
+    # Equity curve: cumulative directional return after each trade,
+    # net of TC when configured.
     equity: list[float] = []
     cumulative = 0.0
     peak = 0.0
@@ -103,14 +128,15 @@ def simulate(
         r = _directional_return(p)
         if r is None:
             continue
-        returns.append(r)
-        cumulative += r
+        net_r = r - tc_round_trip_pct
+        returns.append(net_r)
+        cumulative += net_r
         equity.append(round(cumulative, 2))
         peak = max(peak, cumulative)
         max_dd = max(max_dd, peak - cumulative)
 
-    win_returns = [r for r in (_directional_return(p) for p in wins) if r is not None]
-    loss_returns = [r for r in (_directional_return(p) for p in losses) if r is not None]
+    win_returns = [r - tc_round_trip_pct for r in (_directional_return(p) for p in wins) if r is not None]
+    loss_returns = [r - tc_round_trip_pct for r in (_directional_return(p) for p in losses) if r is not None]
 
     mean_r = sum(returns) / len(returns) if returns else 0.0
     expectancy = 0.0
@@ -179,22 +205,116 @@ def combine_and(*filters: PredicateFn) -> PredicateFn:
 # --- canned comparison set ----------------------------------------------
 
 
-def standard_counterfactuals(history: dict) -> list[SimResult]:
+def standard_counterfactuals(history: dict, tc_round_trip_pct: float = 0.0) -> list[SimResult]:
     """Run a small fixed battery of "what if I had filtered" sims.
 
     The point isn't to be exhaustive — it's to surface the obvious
     filter that would have most-improved Sharpe, so the weekly review
     prompt can recommend a targeted rule (e.g. "drop HIGH-DOWN" or
     "only trades with macd_crossover").
+
+    Pass ``tc_round_trip_pct=_DEFAULT_TC_ROUND_TRIP_PCT`` (0.4) to see
+    the same battery net of transaction costs — useful when comparing
+    filter candidates whose gross-return advantage gets eaten by
+    higher trade frequency.
     """
-    sims: list[SimResult] = [simulate(history, label="baseline (all)")]
+    sims: list[SimResult] = [simulate(history, label="baseline (all)", tc_round_trip_pct=tc_round_trip_pct)]
     for conf in ("HIGH", "MEDIUM"):
-        sims.append(simulate(history, filter_fn=only_confidence(conf), label=f"confidence={conf}"))
+        sims.append(
+            simulate(
+                history,
+                filter_fn=only_confidence(conf),
+                label=f"confidence={conf}",
+                tc_round_trip_pct=tc_round_trip_pct,
+            )
+        )
     for direction in ("UP", "DOWN"):
-        sims.append(simulate(history, filter_fn=only_direction(direction), label=f"direction={direction}"))
+        sims.append(
+            simulate(
+                history,
+                filter_fn=only_direction(direction),
+                label=f"direction={direction}",
+                tc_round_trip_pct=tc_round_trip_pct,
+            )
+        )
     for source in ("holdings", "short_term", "long_term"):
-        sims.append(simulate(history, filter_fn=from_source(source), label=f"source={source}"))
+        sims.append(
+            simulate(
+                history,
+                filter_fn=from_source(source),
+                label=f"source={source}",
+                tc_round_trip_pct=tc_round_trip_pct,
+            )
+        )
     return [s for s in sims if s.trades >= 5]
+
+
+def compare_gross_vs_net(history: dict, tc_round_trip_pct: float = _DEFAULT_TC_ROUND_TRIP_PCT) -> dict:
+    """Run baseline gross vs net (TC-applied) to quantify cost drag.
+
+    For each filter in the standard battery, returns a pair of
+    SimResult dicts (one with tc=0, one with tc=tc_round_trip_pct)
+    so the weekly review can show "you would have made X% gross but
+    only Y% net". When net is negative on a gross-positive strategy,
+    that's a strong signal the filter has too many marginal trades.
+    """
+    gross = standard_counterfactuals(history, tc_round_trip_pct=0.0)
+    net = standard_counterfactuals(history, tc_round_trip_pct=tc_round_trip_pct)
+    by_label_gross = {s.label: s for s in gross}
+    by_label_net = {s.label: s for s in net}
+    rows: list[dict] = []
+    for label in by_label_gross:
+        g = by_label_gross.get(label)
+        n = by_label_net.get(label)
+        if g is None or n is None:
+            continue
+        rows.append(
+            {
+                "label": label,
+                "trades": g.trades,
+                "gross_total_return_pct": g.total_return_pct,
+                "net_total_return_pct": n.total_return_pct,
+                "tc_drag_pct": round(g.total_return_pct - n.total_return_pct, 2),
+                "gross_expectancy_pct": g.expectancy_per_trade_pct,
+                "net_expectancy_pct": n.expectancy_per_trade_pct,
+                "gross_sharpe": g.sharpe_like,
+                "net_sharpe": n.sharpe_like,
+                "gross_max_dd_pct": g.max_drawdown_pct,
+                "net_max_dd_pct": n.max_drawdown_pct,
+            }
+        )
+    return {
+        "tc_round_trip_pct": tc_round_trip_pct,
+        "rows": rows,
+    }
+
+
+def format_gross_vs_net_for_prompt(report: dict) -> str:
+    """Weekly-review-style block showing TC drag per filter strategy.
+
+    Sorted by net total return descending so the strategies that stay
+    profitable after costs surface at the top. Negative net is
+    explicitly flagged so the AI can recommend dropping the filter.
+    """
+    rows = report.get("rows") or []
+    if not rows:
+        return ""
+    tc = report.get("tc_round_trip_pct", 0.0)
+    lines = [
+        f"=== Gross vs Net (TC = {tc:.2f}%/round-trip) ===",
+        "filter ごとに TC を引いた net P&L 比較。net がマイナスなら gross が黒字でも実質損。",
+    ]
+    rows_sorted = sorted(rows, key=lambda r: r.get("net_total_return_pct", -1e9), reverse=True)
+    for r in rows_sorted:
+        net = r.get("net_total_return_pct", 0.0)
+        gross = r.get("gross_total_return_pct", 0.0)
+        drag = r.get("tc_drag_pct", 0.0)
+        flag = "  ⚠ net マイナス" if net < 0 < gross else ""
+        lines.append(
+            f"- {r.get('label', '?')}: trades={r.get('trades', 0)} / "
+            f"gross {gross:+.1f}% → net {net:+.1f}% (TC drag {drag:.1f}%){flag}"
+        )
+    return "\n".join(lines)
 
 
 def format_counterfactuals_for_prompt(sims: list[SimResult]) -> str:
