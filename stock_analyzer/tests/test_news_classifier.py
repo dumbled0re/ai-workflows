@@ -3,10 +3,12 @@ from __future__ import annotations
 import pytest
 
 from stock_analyzer.news_classifier import (
+    aggregate_sentiment,
     classify_headline,
     classify_news_list,
     extract_urgent,
     format_for_prompt,
+    score_sentiment,
 )
 
 
@@ -125,3 +127,87 @@ def test_format_for_prompt_handles_missing_title_field() -> None:
     items = [{"category": "TOB", "severity": "urgent"}]
     text = format_for_prompt(items)
     assert text == ""
+
+
+# ---------- sentiment scoring -------------------------------------------
+
+
+def test_score_sentiment_positive_terms_sum() -> None:
+    """Multiple bullish terms in one headline accumulate. The
+    granularity is intentionally low (±1 per term) — a single
+    headline with three positives is meaningfully more bullish
+    than one with one."""
+    assert score_sentiment("好調な決算で増益、最高益更新") == 3
+    assert score_sentiment("上方修正と増配を発表") == 2
+
+
+def test_score_sentiment_negative_terms_sum() -> None:
+    assert score_sentiment("下方修正、減益で赤字転落") == -3
+    assert score_sentiment("急落して業績下振れ懸念") == -3
+
+
+def test_score_sentiment_mixed_terms_cancel() -> None:
+    """Bullish minus bearish — a headline with both '増益' and
+    'リスク' nets to zero (or close)."""
+    score = score_sentiment("増益だが為替リスクが懸念")
+    # +1 (増益) -1 (リスク) -1 (懸念) = -1
+    assert score == -1
+
+
+def test_score_sentiment_neutral_headline_returns_zero() -> None:
+    """A factual headline without lexicon terms scores 0 — the
+    sentiment system silently passes neutral news through."""
+    assert score_sentiment("代表取締役人事に関するお知らせ") == 0
+    assert score_sentiment("月次売上高のお知らせ") == 0
+
+
+def test_score_sentiment_empty_input_returns_zero() -> None:
+    assert score_sentiment("") == 0
+    assert score_sentiment(None) == 0  # type: ignore[arg-type]
+
+
+def test_classify_news_list_adds_sentiment_field() -> None:
+    """classify_news_list annotates each item with sentiment when
+    non-zero. Items with zero sentiment don't get the field added —
+    same pattern as category (truthy-check works as 'present'
+    detector at the rendering layer)."""
+    items = [
+        {"title": "好調で増益発表"},  # +2
+        {"title": "代表取締役人事のお知らせ"},  # 0
+        {"title": "赤字転落"},  # -1 (赤字 + 赤字転落 are separate matches actually)
+    ]
+    classify_news_list(items)
+    assert items[0]["sentiment"] == 2
+    assert "sentiment" not in items[1]  # neutral → no field
+    assert items[2]["sentiment"] < 0  # negative
+
+
+def test_aggregate_sentiment_summarises_list() -> None:
+    """For a 5-headline list with mixed sentiment, the aggregate
+    counts positive/negative/total and the net signed sum."""
+    items = [
+        {"title": "好調", "sentiment": 1},
+        {"title": "増益", "sentiment": 1},
+        {"title": "悪材料", "sentiment": -1},
+        {"title": "下方修正", "sentiment": -1},
+        {"title": "通常開示"},  # no sentiment field
+    ]
+    agg = aggregate_sentiment(items)
+    assert agg["count"] == 4
+    assert agg["net_sentiment"] == 0
+    assert agg["positive_count"] == 2
+    assert agg["negative_count"] == 2
+
+
+def test_aggregate_sentiment_empty_list() -> None:
+    agg = aggregate_sentiment([])
+    assert agg["count"] == 0
+    assert agg["net_sentiment"] == 0
+
+
+def test_format_for_prompt_includes_sentiment_tag() -> None:
+    """The rendered prompt block shows a [sent=+N] tag inline so
+    the AI sees per-headline sentiment without needing to re-classify."""
+    items = [{"title": "好調な決算", "sentiment": 1}]
+    text = format_for_prompt(items)
+    assert "[sent=+1]" in text

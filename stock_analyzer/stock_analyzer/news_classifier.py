@@ -45,6 +45,106 @@ class NewsClassification:
     direction_hint: str = ""
 
 
+# Sentiment lexicon — Japanese terms that consistently flag positive
+# or negative market impact when present in a headline. The list is
+# narrow on purpose: broad sentiment lexicons collected from social-
+# media data are noisy for financial news (e.g. "問題" is neutral in
+# headlines but negative in casual speech). These terms have been
+# selected because they routinely appear in disclosure / press-
+# release headlines and consistently correlate with price impact.
+_BULLISH_TERMS = [
+    "急騰",
+    "上昇",
+    "好調",
+    "増益",
+    "増収",
+    "最高益",
+    "黒字",
+    "黒字転換",
+    "黒字化",
+    "上方修正",
+    "増配",
+    "復配",
+    "自社株買い",
+    "自己株式取得",
+    "受注",
+    "好材料",
+    "ポジティブ",
+    "強気",
+    "買い推奨",
+    "格上げ",
+    "新製品",
+    "提携",
+    "新規契約",
+    "成長",
+    "拡大",
+    "突破",
+    "達成",
+    "高値",
+    "復活",
+]
+_BEARISH_TERMS = [
+    "急落",
+    "下落",
+    "下方修正",
+    "減益",
+    "減収",
+    # NOTE: 赤字 / 赤字転落 / 赤字拡大 — keep only 赤字 (substring of
+    # the others) to avoid double-counting. Same for 下方 vs 下方修正.
+    "赤字",
+    "悪材料",
+    "ネガティブ",
+    "弱気",
+    "売り推奨",
+    "格下げ",
+    "減配",
+    "無配",
+    "減少",
+    "縮小",
+    "懸念",
+    "リスク",
+    "警告",
+    "不振",
+    "苦戦",
+    "下振れ",
+    "破綻",
+    "倒産",
+    "停止",
+    "中止",
+    "撤退",
+    "リコール",
+    "違反",
+    "訴訟",
+    "炎上",
+]
+
+
+def score_sentiment(title: str) -> int:
+    """Net sentiment score from a headline.
+
+    Returns sum of bullish-term hits minus bearish-term hits. Each
+    term contributes ±1; the result is unbounded but typically ±3
+    or smaller for real headlines. Zero means "balanced" — either
+    no terms hit, or equal hits each way.
+
+    This is intentionally cheap (substring search, no NLP model).
+    For financial JP headlines, the canonical-term presence is a
+    better signal than ML sentiment classifiers trained on social
+    data, which mis-classify domain-specific phrasing like 「業績
+    予想を下方修正」 as neutral.
+    """
+    if not title:
+        return 0
+    score = 0
+    for term in _BULLISH_TERMS:
+        if term in title:
+            score += 1
+    for term in _BEARISH_TERMS:
+        if term in title:
+            score -= 1
+    return score
+
+
 _CATEGORIES = [
     # TOB / 公開買付 — almost always urgent, premium-to-market driven
     (("TOB", "公開買付"), "TOB", "urgent", "bullish"),
@@ -92,11 +192,14 @@ def classify_headline(title: str) -> NewsClassification:
 
 def classify_news_list(news_items: list[dict]) -> list[dict]:
     """Annotate each news dict with ``category`` / ``severity`` /
-    ``direction_hint`` fields in place; return the list for chaining.
+    ``direction_hint`` / ``sentiment`` fields in place; return the
+    list for chaining.
 
-    Items without a meaningful classification are left untouched
-    (no empty-string fields added) so the prompt renderer can use
-    ``item.get("category")`` truthiness to detect the urgent subset.
+    Items without a category classification are still scored for
+    sentiment — a broad-market headline like "日経平均急落" has no
+    canonical category but carries clear bearish sentiment that
+    propagates to all stocks. The sentiment score is added on every
+    item; the categorical fields only when a canonical category fires.
     """
     for item in news_items:
         title = item.get("title", "")
@@ -106,6 +209,10 @@ def classify_news_list(news_items: list[dict]) -> list[dict]:
             item["severity"] = result.severity
             if result.direction_hint:
                 item["direction_hint"] = result.direction_hint
+        # Sentiment score independent of categorical match
+        sentiment = score_sentiment(title)
+        if sentiment != 0:
+            item["sentiment"] = sentiment
     return news_items
 
 
@@ -134,15 +241,50 @@ def format_for_prompt(news_items: list[dict]) -> str:
         if not title:
             continue
         cat = item.get("category")
+        sentiment = item.get("sentiment", 0)
+        sent_tag = ""
+        if isinstance(sentiment, int) and sentiment != 0:
+            sent_tag = f" [sent={sentiment:+d}]"
         if cat and item.get("severity") == "urgent":
             direction = item.get("direction_hint") or ""
             dir_tag = f"({direction})" if direction else ""
-            urgent.append(f"🔴 [{cat}{dir_tag}] {title}")
+            urgent.append(f"🔴 [{cat}{dir_tag}] {title}{sent_tag}")
         else:
-            other.append(title)
+            other.append(f"{title}{sent_tag}")
     parts: list[str] = []
     if urgent:
         parts.append(" / ".join(urgent))
     if other:
         parts.append(" / ".join(other))
     return " || ".join(parts)
+
+
+def aggregate_sentiment(news_items: list[dict]) -> dict:
+    """Compute per-stock aggregate sentiment from a list of classified
+    items.
+
+    Returns ``{"count": N, "net_sentiment": sum, "positive_count": p,
+    "negative_count": n}``. Useful for the AI prompt to see "this
+    stock has 5 recent headlines, net sentiment +3" at a glance
+    without parsing each headline.
+    """
+    count = 0
+    net = 0
+    pos = 0
+    neg = 0
+    for item in news_items:
+        s = item.get("sentiment")
+        if not isinstance(s, int):
+            continue
+        count += 1
+        net += s
+        if s > 0:
+            pos += 1
+        elif s < 0:
+            neg += 1
+    return {
+        "count": count,
+        "net_sentiment": net,
+        "positive_count": pos,
+        "negative_count": neg,
+    }
