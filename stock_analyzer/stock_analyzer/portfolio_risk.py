@@ -101,7 +101,7 @@ def check_total_recommendations(
                 kind="total_count",
                 message=(
                     f"推奨銘柄 {count} 件が上限 {max_count} を超過。"
-                    "集中度を下げる + ポジション管理の観点で {max_count} 件以下に絞ってください"
+                    f"集中度を下げる + ポジション管理の観点で {max_count} 件以下に絞ってください"
                 ),
             )
         ]

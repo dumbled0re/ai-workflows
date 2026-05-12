@@ -138,6 +138,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config pull.rebase true
           git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git
           git add -f data/predictions_history.json data/strategy_notes.json data/screening_weights.json 2>/dev/null || true
           if git diff --cached --quiet; then
@@ -145,11 +146,26 @@ jobs:
             echo "push_status=skipped" >> "$GITHUB_OUTPUT"
           else
             git commit -m "Update prediction tracking and strategy data [skip ci]"
-            if git push; then
+            # Retry loop for push: if origin moved forward during the
+            # cron (likely when the operator was pushing to master
+            # during the same window), rebase our data commit on top
+            # and try again. Up to 3 attempts before declaring failure.
+            push_ok=false
+            for attempt in 1 2 3; do
+              if git push; then
+                push_ok=true
+                break
+              fi
+              echo "push attempt $attempt failed; rebasing on origin/master and retrying"
+              git fetch origin master
+              git rebase origin/master || git rebase --abort
+              sleep 5
+            done
+            if $push_ok; then
               echo "push_status=success" >> "$GITHUB_OUTPUT"
             else
               echo "push_status=failed" >> "$GITHUB_OUTPUT"
-              echo "::error::Git push failed - tracking data will be lost!"
+              echo "::error::Git push failed after 3 attempts — tracking data will be lost!"
             fi
           fi
 

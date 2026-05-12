@@ -565,7 +565,57 @@ def phase_critique() -> None:
         except Exception:
             logger.warning("Failed to extract performance_block for critic", exc_info=True)
 
-    prompt_text = build_critic_prompt(holdings_result, discovery_result, performance_block)
+    # Pre-critic deterministic portfolio_risk run — picks up sector
+    # concentration / total-count / R/R / pairwise-correlation / stop-
+    # loss inconsistency on the *first-pass* recommendations and
+    # injects those findings into the critic prompt as
+    # "must-reject" tickers. Without this the critic sees only the
+    # picks and tends to be lenient (28 keep / 1 downgrade on a 29-
+    # pick set with obvious sector clusters was the empirical floor).
+    portfolio_findings_text = ""
+    try:
+        from stock_analyzer.portfolio_risk import (
+            check_pairwise_correlation,
+            check_risk_reward,
+            check_sector_concentration,
+            check_stop_loss_consistency,
+            check_total_recommendations,
+            format_findings_for_prompt,
+        )
+
+        recommendations: list[dict] = []
+        for h in holdings_result.get("holdings_analysis", []) or []:
+            if h.get("prediction") in ("UP", "DOWN"):
+                recommendations.append(h)
+        for key in ("short_term_picks", "long_term_picks", "recommended_stocks"):
+            for r in discovery_result.get(key, []) or []:
+                if r.get("prediction") in ("UP", "DOWN"):
+                    recommendations.append(r)
+
+        aux_path = _DATA_DIR / "portfolio_aux.json"
+        ticker_info: dict = {}
+        price_data: dict = {}
+        if aux_path.exists():
+            from stock_analyzer.main import _ClosesShim
+
+            with open(aux_path, encoding="utf-8") as f:
+                aux = json.load(f)
+            ticker_info = aux.get("ticker_info") or {}
+            close_history = aux.get("close_history") or {}
+            price_data = {t: _ClosesShim(closes) for t, closes in close_history.items()}
+
+        pre_findings = []
+        pre_findings.extend(check_total_recommendations(recommendations))
+        pre_findings.extend(check_sector_concentration(recommendations, ticker_info))
+        pre_findings.extend(check_pairwise_correlation(recommendations, price_data))
+        pre_findings.extend(check_risk_reward(recommendations))
+        pre_findings.extend(check_stop_loss_consistency(recommendations))
+        portfolio_findings_text = format_findings_for_prompt(pre_findings)
+        logger.info("Pre-critic portfolio findings: %d violations", len(pre_findings))
+    except Exception:
+        logger.exception("Pre-critic portfolio check failed; critic will see no violations block")
+
+    prompt_text = build_critic_prompt(holdings_result, discovery_result, performance_block, portfolio_findings_text)
     out_path = _DATA_DIR / "critic_prompt.txt"
     out_path.parent.mkdir(exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
@@ -589,12 +639,25 @@ def phase_apply_critique() -> None:
     import json
 
     from stock_analyzer.ai_analyzer import load_analysis_results
-    from stock_analyzer.critic import apply_critique, format_summary_for_slack, load_critique_result
+    from stock_analyzer.critic import (
+        apply_critique,
+        enforce_discovery_cap,
+        format_summary_for_slack,
+        load_critique_result,
+    )
 
     holdings_result, discovery_result = load_analysis_results()
     critique_result = load_critique_result(_DATA_DIR / "critique_result.json")
 
     holdings_result, discovery_result, summary = apply_critique(holdings_result, discovery_result, critique_result)
+
+    # Deterministic enforcement: even after critic, the AI sometimes
+    # leaves the discovery list at 20+ picks (real-world observed:
+    # 29 picks / 28 keep / 1 downgrade). Force-trim down to the
+    # configured cap by dropping lowest-confidence entries first.
+    # Without this the operator gets a Slack with way too many picks
+    # to act on, and the rules in investment_rules.json are decorative.
+    discovery_result = enforce_discovery_cap(discovery_result, summary, max_total=5)
 
     # Persist updated results so phase-notify reads the critique-adjusted
     # picks. Original first-pass output is backed up alongside for

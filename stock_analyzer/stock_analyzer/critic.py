@@ -74,6 +74,13 @@ failing 数 (= N の数、null は除く):
 
 {performance_block}
 
+=== Deterministic Portfolio Risk Check (このランで検出された違反) ===
+
+以下は code 側で機械的に検出した violations。critic として **これらに該当する pick は必ず
+reject または downgrade** してください。違反に該当する ticker は前段の自信度に関わらず NG:
+
+{portfolio_findings_block}
+
 === 前段が出した結論 ===
 
 [Holdings 分析]
@@ -120,6 +127,7 @@ def build_critic_prompt(
     holdings_result: dict,
     discovery_result: dict,
     performance_block: str = "",
+    portfolio_findings_text: str = "",
 ) -> str:
     """Render the full critic prompt as a single string ready for the AI step.
 
@@ -148,6 +156,7 @@ def build_critic_prompt(
 
     return CRITIC_PROMPT_TEMPLATE.format(
         performance_block=performance_block or "(過去のパフォーマンスデータなし)",
+        portfolio_findings_block=portfolio_findings_text or "(deterministic check で violations なし)",
         holdings_json=json.dumps(holdings_picks, ensure_ascii=False, indent=2),
         short_term_json=json.dumps(short_term, ensure_ascii=False, indent=2),
         long_term_json=json.dumps(long_term, ensure_ascii=False, indent=2),
@@ -300,6 +309,83 @@ def apply_critique(
         discovery_result[list_key] = kept
 
     return holdings_result, discovery_result, summary
+
+
+_MAX_DISCOVERY_PICKS = 5
+_CONFIDENCE_RANK = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
+
+
+def enforce_discovery_cap(
+    discovery_result: dict,
+    summary: dict[str, list[str]],
+    max_total: int = _MAX_DISCOVERY_PICKS,
+) -> dict:
+    """Deterministically trim discovery picks down to ``max_total``.
+
+    The critic AI is meant to reject obvious violations, but in
+    practice it sometimes returns lenient verdicts (28 keep / 1
+    downgrade out of 29 in real-world output). This step runs
+    *after* apply_critique and force-removes the lowest-confidence
+    picks across short_term + long_term combined until the
+    discovery total is within the configured cap. holdings are
+    untouched — we own those positions, the cap is a forward-entry
+    constraint.
+
+    Trim ordering, lowest-first (= dropped first):
+    1. confidence_pre_critique = LOW (critic-rejected stragglers)
+    2. confidence = LOW
+    3. confidence = MEDIUM (long_term entries first, then short_term)
+    4. confidence = HIGH (only as last resort)
+
+    The ``summary`` dict gets the dropped tickers appended to
+    ``rejected`` so Slack shows them and the next-cron portfolio_
+    findings injection picks them up for the AI's next-run prompt.
+    """
+    short_term = discovery_result.get("short_term_picks") or discovery_result.get("recommended_stocks") or []
+    long_term = discovery_result.get("long_term_picks") or []
+
+    def sort_key(p: dict) -> tuple:
+        pre = (p.get("confidence_pre_critique") or "").upper()
+        cur = (p.get("confidence") or "MEDIUM").upper()
+        return (
+            0 if pre == "LOW" else 1,  # critic-pre-LOW first
+            _CONFIDENCE_RANK.get(cur, 2),
+            0 if p in long_term else 1,  # drop long_term before short_term at same conf
+        )
+
+    combined: list[tuple[str, dict]] = []
+    for p in short_term:
+        combined.append(("short_term_picks", p))
+    for p in long_term:
+        combined.append(("long_term_picks", p))
+    total = len(combined)
+    if total <= max_total:
+        return discovery_result
+
+    # Sort by drop-priority ascending; head of list goes first.
+    combined.sort(key=lambda x: sort_key(x[1]))
+    drop_count = total - max_total
+    to_drop = combined[:drop_count]
+    keep = combined[drop_count:]
+
+    # Rebuild lists from the survivors.
+    new_short: list[dict] = []
+    new_long: list[dict] = []
+    for collection, pick in keep:
+        if collection == "short_term_picks":
+            new_short.append(pick)
+        else:
+            new_long.append(pick)
+    # Honour legacy key when the original used recommended_stocks
+    if "recommended_stocks" in discovery_result and "short_term_picks" not in discovery_result:
+        discovery_result["recommended_stocks"] = new_short
+    else:
+        discovery_result["short_term_picks"] = new_short
+    discovery_result["long_term_picks"] = new_long
+
+    dropped_tickers = [p.get("ticker", "?") for _coll, p in to_drop]
+    summary.setdefault("rejected", []).extend(str(t) for t in dropped_tickers)
+    return discovery_result
 
 
 def format_summary_for_slack(summary: dict[str, list[str]]) -> str:

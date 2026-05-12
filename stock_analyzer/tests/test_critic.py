@@ -7,6 +7,7 @@ from stock_analyzer.critic import (
     _coerce_downgrade,
     apply_critique,
     build_critic_prompt,
+    enforce_discovery_cap,
     format_summary_for_slack,
     load_critique_result,
 )
@@ -238,6 +239,75 @@ def test_format_summary_lists_tickers_per_bucket() -> None:
     assert "keep=1" in out
     assert "B.T" in out and "C.T" in out
     assert "D.T" in out
+
+
+def test_enforce_discovery_cap_drops_lowest_confidence_first() -> None:
+    """7 discovery picks → must be trimmed to 5. Drop order is LOW
+    then MEDIUM, then long_term ahead of short_term at the same
+    confidence. HIGH picks survive."""
+    discovery = {
+        "short_term_picks": [
+            _pick("S1.T", confidence="HIGH"),
+            _pick("S2.T", confidence="MEDIUM"),
+            _pick("S3.T", confidence="LOW"),
+            _pick("S4.T", confidence="MEDIUM"),
+        ],
+        "long_term_picks": [
+            _pick("L1.T", confidence="HIGH"),
+            _pick("L2.T", confidence="MEDIUM"),
+            _pick("L3.T", confidence="LOW"),
+        ],
+    }
+    summary: dict = {"kept": [], "downgraded": [], "rejected": []}
+    enforce_discovery_cap(discovery, summary, max_total=5)
+    remaining = [p["ticker"] for p in discovery["short_term_picks"] + discovery["long_term_picks"]]
+    # 5 survivors, both LOW dropped first, then long_term MEDIUM (L2.T)
+    assert len(remaining) == 5
+    assert "S3.T" not in remaining  # LOW dropped
+    assert "L3.T" not in remaining  # LOW dropped
+    # HIGH always survives
+    assert "S1.T" in remaining
+    assert "L1.T" in remaining
+    # Dropped tickers logged into summary.rejected for Slack visibility
+    assert "S3.T" in summary["rejected"]
+    assert "L3.T" in summary["rejected"]
+
+
+def test_enforce_discovery_cap_no_op_when_under_cap() -> None:
+    """3 picks <= cap of 5 → no trimming, no summary mutation."""
+    discovery = {
+        "short_term_picks": [_pick("A.T"), _pick("B.T")],
+        "long_term_picks": [_pick("C.T")],
+    }
+    summary: dict = {"kept": [], "downgraded": [], "rejected": []}
+    enforce_discovery_cap(discovery, summary, max_total=5)
+    assert len(discovery["short_term_picks"]) == 2
+    assert len(discovery["long_term_picks"]) == 1
+    assert summary["rejected"] == []
+
+
+def test_enforce_discovery_cap_prioritises_critic_prelow() -> None:
+    """Picks the critic flagged with confidence_pre_critique=LOW are
+    drop-first regardless of current confidence — they're the
+    'almost rejected' bucket and should go before plain LOWs."""
+    pre_low = _pick("PRE.T", confidence="MEDIUM")
+    pre_low["confidence_pre_critique"] = "LOW"
+    discovery = {
+        "short_term_picks": [
+            _pick("HI.T", confidence="HIGH"),
+            _pick("MED.T", confidence="MEDIUM"),
+            _pick("LOW.T", confidence="LOW"),
+            pre_low,
+        ],
+        "long_term_picks": [],
+    }
+    summary: dict = {"kept": [], "downgraded": [], "rejected": []}
+    enforce_discovery_cap(discovery, summary, max_total=2)
+    remaining = [p["ticker"] for p in discovery["short_term_picks"]]
+    assert "PRE.T" not in remaining  # critic-pre-LOW dropped first
+    assert "LOW.T" not in remaining  # then plain LOW
+    assert "HI.T" in remaining
+    assert "MED.T" in remaining
 
 
 def test_coerce_downgrade_handles_unknown_values_safely() -> None:
