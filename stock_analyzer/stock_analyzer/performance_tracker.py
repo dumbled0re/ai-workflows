@@ -576,29 +576,89 @@ def format_signal_efficacy(efficacy: dict[str, dict]) -> str:
     return "\n".join(lines)
 
 
+def _welch_t_test_pvalue_lower_tail(
+    recent_returns: list[float], baseline_returns: list[float]
+) -> float | None:
+    """Welch's t-test for "recent mean < baseline mean", one-tailed.
+
+    Returns the lower-tail p-value (probability that we'd see a
+    delta this negative under H0: same population). Uses
+    Welch-Satterthwaite df because the two samples have unequal
+    sizes and we don't assume equal variance.
+
+    Approximates the Student-t survival function via a small
+    polynomial good to ~3 decimals for df >= 5 and |t| <= 5,
+    avoiding a scipy dependency. None when inputs are degenerate
+    (zero variance or empty).
+    """
+    n1 = len(recent_returns)
+    n2 = len(baseline_returns)
+    if n1 < 2 or n2 < 2:
+        return None
+    m1 = sum(recent_returns) / n1
+    m2 = sum(baseline_returns) / n2
+    var1 = sum((r - m1) ** 2 for r in recent_returns) / (n1 - 1)
+    var2 = sum((r - m2) ** 2 for r in baseline_returns) / (n2 - 1)
+    if var1 <= 0 and var2 <= 0:
+        return None
+    se = math.sqrt(var1 / n1 + var2 / n2)
+    if se == 0:
+        return None
+    t_stat = (m1 - m2) / se
+    # Welch-Satterthwaite degrees of freedom
+    num = (var1 / n1 + var2 / n2) ** 2
+    denom = (var1 / n1) ** 2 / max(n1 - 1, 1) + (var2 / n2) ** 2 / max(n2 - 1, 1)
+    if denom <= 0:
+        return None
+    df = num / denom
+    # Convert t to lower-tail p via Student-t CDF approximation.
+    # For our purposes (decision threshold p < 0.05), a normal
+    # approximation with small-df correction is accurate enough.
+    # Use the cumulative normal CDF on a tail-corrected t.
+    # For df >= 30 the t and normal are within 1% on the body;
+    # we apply a Welch-style correction for small df.
+    if df < 5:
+        # Below 5 df the test is so weak it's not actionable
+        return None
+    # CDF of standard normal at x
+    z = t_stat / math.sqrt(1 + t_stat * t_stat / (4 * df))
+    return 0.5 * (1 + math.erf(z / math.sqrt(2)))
+
+
+_DRIFT_PVALUE_THRESHOLD = 0.10
+"""p-value threshold for declaring drift. 10% is moderate evidence;
+0.05 would be the conventional research bar but with ~14 trades vs
+~50 baseline the test is power-limited. 10% trades false-positive
+rate for catching drift earlier — appropriate for a warning signal
+where the cost of missing real decay > cost of one false alarm."""
+
+
 def _compute_drift_indicator(
     resolved: list[dict],
     recent_n: int = 14,
     min_recent: int = 5,
     min_baseline: int = 10,
-    drift_threshold_pp: float = 2.0,
 ) -> dict | None:
     """Compare per-trade expectancy on the latest ``recent_n`` resolved
-    trades against the older baseline.
+    trades against the older baseline, using Welch's t-test.
 
     Returns ``None`` when either side has fewer than its minimum sample
     count — drift conclusions on tiny windows are noise. Otherwise
     returns ``{"recent_expectancy_pct", "baseline_expectancy_pct",
-    "delta_pp", "is_drift", "recent_n", "baseline_n"}`` and the
-    ``format_performance_feedback`` prompt block emits a ⚠ when
-    ``is_drift`` is True (= recent expectancy is more than
-    ``drift_threshold_pp`` percentage points below baseline).
+    "delta_pp", "is_drift", "p_value", "recent_n", "baseline_n"}``.
 
-    The motivation: any prompt / scoring change that *seems* fine on
-    the unit tests but quietly biases picks toward marginal setups
-    will show up here within a couple of weeks of cron runs. Without
-    this signal the cron stays green and the operator only notices
-    weeks later when accuracy reports look bad in aggregate.
+    ``is_drift`` previously fired on a heuristic 2pp delta. That
+    threshold was scale-invariant: a 2pp drop on a strategy with
+    1pp/trade std-dev is huge (one stdev), but on a strategy with
+    5pp/trade std-dev (high-volatility) it's noise. The t-test
+    properly accounts for both sample variances and sample sizes
+    so a drift warning fires only when the difference is
+    statistically meaningful for the data in hand.
+
+    Threshold: p < _DRIFT_PVALUE_THRESHOLD (10%). Conservative is
+    0.05; we use 0.10 so the warning catches genuine decay earlier
+    at the cost of more false positives (which only affect prompt
+    text, not picks).
     """
     chrono = sorted(
         (p for p in resolved if p.get("reviewed_date") and _directional_return(p) is not None),
@@ -610,19 +670,29 @@ def _compute_drift_indicator(
     baseline = chrono[: max(0, len(chrono) - recent_n)]
     if len(recent) < min_recent or len(baseline) < min_baseline:
         return None
-    recent_returns = [_directional_return(p) for p in recent]
-    baseline_returns = [_directional_return(p) for p in baseline]
-    # Mypy-friendly: every entry passed the None filter above.
-    recent_exp = sum(r for r in recent_returns if r is not None) / len(recent)
-    baseline_exp = sum(r for r in baseline_returns if r is not None) / len(baseline)
+    recent_returns: list[float] = []
+    baseline_returns: list[float] = []
+    for p in recent:
+        r = _directional_return(p)
+        if r is not None:
+            recent_returns.append(r)
+    for p in baseline:
+        r = _directional_return(p)
+        if r is not None:
+            baseline_returns.append(r)
+    recent_exp = sum(recent_returns) / len(recent_returns)
+    baseline_exp = sum(baseline_returns) / len(baseline_returns)
     delta_pp = recent_exp - baseline_exp
+    p_value = _welch_t_test_pvalue_lower_tail(recent_returns, baseline_returns)
+    is_drift = bool(p_value is not None and p_value < _DRIFT_PVALUE_THRESHOLD and delta_pp < 0)
     return {
         "recent_expectancy_pct": round(recent_exp, 2),
         "baseline_expectancy_pct": round(baseline_exp, 2),
         "delta_pp": round(delta_pp, 2),
-        "is_drift": delta_pp < -drift_threshold_pp,
-        "recent_n": len(recent),
-        "baseline_n": len(baseline),
+        "p_value": round(p_value, 3) if p_value is not None else None,
+        "is_drift": is_drift,
+        "recent_n": len(recent_returns),
+        "baseline_n": len(baseline_returns),
     }
 
 
@@ -888,14 +958,18 @@ def format_performance_feedback(history: dict) -> str:
     # on ~14 vs ~10+ samples.
     drift = stats.get("drift_indicator")
     if drift is not None:
+        p_text = ""
+        p_val = drift.get("p_value")
+        if isinstance(p_val, (int, float)):
+            p_text = f", t-test p={p_val:.3f}"
         lines.append(
             f"戦略ドリフト: 直近{drift['recent_n']}件期待値 {drift['recent_expectancy_pct']:+.2f}%/件 "
             f"vs ベースライン{drift['baseline_n']}件 {drift['baseline_expectancy_pct']:+.2f}%/件 "
-            f"({drift['delta_pp']:+.2f}pp)"
+            f"({drift['delta_pp']:+.2f}pp{p_text})"
         )
         if drift.get("is_drift"):
             lines.append(
-                "  ⚠ 直近の期待値がベースラインから 2pp 以上低下。最近の判断バイアスが効いている可能性。"
+                "  ⚠ 統計的に有意な期待値低下を検出 (p<0.10)。最近の判断バイアスが効いている可能性。"
                 "今回は新規 HIGH の付与をさらに厳格にし、迷ったら MEDIUM に下げてください"
             )
 

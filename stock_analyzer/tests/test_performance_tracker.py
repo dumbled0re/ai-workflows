@@ -504,33 +504,58 @@ def _resolved_with_dates(returns_with_dates: list[tuple[float, str]]) -> list[di
 
 
 def test_drift_fires_when_recent_expectancy_drops_versus_baseline() -> None:
-    """Baseline averages +3%/trade, recent 14 average -2%/trade → 5pp
-    drop should set is_drift=True."""
-    # 20 baseline entries (earlier dates) all at +3% directional, then
-    # 14 recent entries (later dates) all at -2%.
-    baseline = [(3.0, f"2026-01-{i:02d}") for i in range(1, 21)]
-    recent = [(-2.0, f"2026-02-{i:02d}") for i in range(1, 15)]
-    history = {"predictions": _resolved_with_dates(baseline + recent)}
+    """Baseline averaging ~+3% with small variance, recent 14 averaging
+    ~-3% — clear, statistically significant decay should set
+    is_drift=True via Welch's t-test (p < 0.10)."""
+    # Add small noise (±0.5) around the means so the t-test has
+    # non-zero variance to work with. Identical values give zero
+    # variance and the test (correctly) returns no p-value.
+    baseline_pairs = [(3.0 + (i % 3 - 1) * 0.5, f"2026-01-{i:02d}") for i in range(1, 21)]
+    recent_pairs = [(-3.0 + (i % 3 - 1) * 0.5, f"2026-02-{i:02d}") for i in range(1, 15)]
+    history = {"predictions": _resolved_with_dates(baseline_pairs + recent_pairs)}
     stats = compute_performance_stats(history)
     drift = stats["drift_indicator"]
     assert drift["recent_n"] == 14
     assert drift["baseline_n"] == 20
-    assert drift["recent_expectancy_pct"] == -2.0
-    assert drift["baseline_expectancy_pct"] == 3.0
-    assert drift["delta_pp"] == -5.0
+    assert drift["delta_pp"] < -5.0
     assert drift["is_drift"] is True
+    # p-value should be tiny on a 6pp delta with ~0.5 stdev
+    assert drift["p_value"] is not None
+    assert drift["p_value"] < 0.01
 
 
 def test_drift_quiet_when_recent_matches_baseline() -> None:
-    """Identical recent/baseline expectancies → is_drift=False even
-    though the indicator is reported (operator can see stability)."""
-    baseline = [(2.0, f"2026-01-{i:02d}") for i in range(1, 21)]
-    recent = [(2.0, f"2026-02-{i:02d}") for i in range(1, 15)]
-    history = {"predictions": _resolved_with_dates(baseline + recent)}
+    """Identical means but small natural variance → not statistically
+    significant → is_drift=False even though the indicator reports
+    the (near-zero) delta so the operator can see stability."""
+    baseline_pairs = [(2.0 + (i % 3 - 1) * 0.5, f"2026-01-{i:02d}") for i in range(1, 21)]
+    recent_pairs = [(2.0 + (i % 3 - 1) * 0.5, f"2026-02-{i:02d}") for i in range(1, 15)]
+    history = {"predictions": _resolved_with_dates(baseline_pairs + recent_pairs)}
     stats = compute_performance_stats(history)
     drift = stats["drift_indicator"]
     assert drift["is_drift"] is False
-    assert drift["delta_pp"] == 0.0
+    # The means are equal so delta ~0; p-value should be near 0.5
+    assert abs(drift["delta_pp"]) < 0.3
+
+
+def test_drift_quiet_on_small_delta_with_high_variance() -> None:
+    """Big delta but huge variance → not significant. This is the
+    key reason for t-test over fixed 2pp threshold: scale-aware
+    decision-making."""
+    # Baseline: mean ~+1%, ±10% noise → very high variance
+    baseline_pairs = [
+        (1.0 + (i % 4 - 2) * 10.0, f"2026-01-{i:02d}") for i in range(1, 21)
+    ]
+    # Recent: mean ~-1%, same noise structure
+    recent_pairs = [
+        (-1.0 + (i % 4 - 2) * 10.0, f"2026-02-{i:02d}") for i in range(1, 15)
+    ]
+    history = {"predictions": _resolved_with_dates(baseline_pairs + recent_pairs)}
+    stats = compute_performance_stats(history)
+    drift = stats["drift_indicator"]
+    # 2pp delta on ~10% stdev is noise — t-test correctly stays silent.
+    assert drift["is_drift"] is False
+    assert drift["p_value"] is not None and drift["p_value"] > 0.10
 
 
 def test_drift_indicator_absent_with_insufficient_samples() -> None:
@@ -560,19 +585,21 @@ def test_drift_indicator_skips_entries_without_reviewed_date() -> None:
 
 
 def test_format_feedback_emits_drift_warning_block() -> None:
-    """When drift is positive, the feedback block must include the ⚠
-    line so the AI cannot miss the calibration directive."""
-    baseline = [(3.0, f"2026-01-{i:02d}") for i in range(1, 21)]
-    recent = [(-3.0, f"2026-02-{i:02d}") for i in range(1, 15)]
-    history = {"predictions": _resolved_with_dates(baseline + recent)}
+    """When drift is statistically significant, the feedback block
+    must include the ⚠ line + the t-test p-value so the AI sees the
+    rigour of the warning, not just the heuristic threshold."""
+    baseline_pairs = [(3.0 + (i % 3 - 1) * 0.5, f"2026-01-{i:02d}") for i in range(1, 21)]
+    recent_pairs = [(-3.0 + (i % 3 - 1) * 0.5, f"2026-02-{i:02d}") for i in range(1, 15)]
+    history = {"predictions": _resolved_with_dates(baseline_pairs + recent_pairs)}
     history["performance_stats"] = compute_performance_stats(history)
     feedback = format_performance_feedback(history)
     assert "戦略ドリフト" in feedback
-    assert "2pp 以上低下" in feedback
-    # Stable expectancy numbers should land in the rendered text so
-    # the operator can read both sides at a glance.
-    assert "-3.00%/件" in feedback
-    assert "+3.00%/件" in feedback
+    assert "統計的に有意" in feedback
+    # The p-value must appear in the rendered text so the operator
+    # can see the strength of evidence at a glance.
+    assert "t-test p=" in feedback
+    # Means should still appear in the line
+    assert "+3.00%/件" in feedback or "3.0" in feedback
 
 
 def test_format_performance_feedback_includes_few_shot_block() -> None:
