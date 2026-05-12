@@ -268,10 +268,13 @@ def phase_prepare() -> None:
     else:
         logger.info("Kelly bases unavailable (insufficient samples) — falling back to heuristic")
 
+    from stock_analyzer.trailing_stop import annotate_holding as annotate_trailing_stop
+
     for s in holdings_summaries + screened_candidates:
         annotate_margin_signals(s)
         annotate_liquidity(s)
         annotate_position_size(s, kelly_bases=kelly_bases)
+        annotate_trailing_stop(s)
 
     # Earnings momentum (quarterly YoY) + surprise (PEAD) + analyst
     # consensus drift. All three are one extra HTTP per ticker so we

@@ -506,6 +506,14 @@ def _format_stock_data(summaries: list[dict]) -> str:
                 margin_line += f" | 推移: {s['margin_trend']}"
             lines.append(margin_line)
 
+        # Trailing-stop recommendation for holdings already in the
+        # green (>+3% unrealized). Pros raise the stop as positions
+        # move favourably — this surfaces the suggestion alongside
+        # the AI's own stop_loss for the operator to act on.
+        ts = s.get("trailing_stop_suggestion")
+        if isinstance(ts, dict):
+            lines.append(f"トレーリングストップ提案: {ts.get('new_stop_price', 'N/A')}円 ({ts.get('rationale', '')})")
+
         # Vol-targeted + Kelly + stop-aware position size. The
         # rendered number is the most conservative of the three —
         # always smaller than the most-aggressive single method so
