@@ -162,6 +162,21 @@ def compute_indicators(
         if rec_key is not None:
             summary["analyst_rating_key"] = str(rec_key)
 
+        # ATR-based daily volatility for position sizing. Computed
+        # from the 14-day true range over the available OHLC series;
+        # falls back to None when there's less than 15 bars.
+        try:
+            from stock_analyzer.position_sizing import compute_atr_pct
+
+            highs = [float(v) for v in df["High"].tail(20).tolist()]
+            lows = [float(v) for v in df["Low"].tail(20).tolist()]
+            closes_list = [float(v) for v in close.tail(20).tolist()]
+            atr_pct = compute_atr_pct(highs, lows, closes_list)
+            if atr_pct is not None:
+                summary["daily_atr_pct"] = round(atr_pct, 2)
+        except Exception:
+            pass
+
         # Bid / ask pass-through for the liquidity filter. signal_tags.
         # annotate_liquidity reads these alongside current_price to
         # compute the spread %. averageDailyVolume10Day is exposed for

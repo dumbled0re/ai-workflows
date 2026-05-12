@@ -473,6 +473,21 @@ def _format_stock_data(summaries: list[dict]) -> str:
                 margin_line += f" | 推移: {s['margin_trend']}"
             lines.append(margin_line)
 
+        # Vol-targeted position size suggestion (ATR-based + stop-aware).
+        # Operator-facing: scales by inverse volatility so high-vol
+        # picks don't consume disproportionate capital risk.
+        sized = s.get("suggested_position_pct")
+        if isinstance(sized, (int, float)) and sized > 0:
+            atr = s.get("daily_atr_pct")
+            stop_sized = s.get("stop_aware_position_pct")
+            extras: list[str] = []
+            if isinstance(atr, (int, float)):
+                extras.append(f"日次ボラ {atr:.1f}%")
+            if isinstance(stop_sized, (int, float)):
+                extras.append(f"stop ベース {stop_sized:.1f}%")
+            extra_text = f" ({' / '.join(extras)})" if extras else ""
+            lines.append(f"推奨ポジションサイズ: 資金の {sized:.1f}%{extra_text}")
+
         # TDnet 適時開示 — official disclosure feed, distinct from
         # general news (TOB / 業績修正 / 自己株式取得 etc. land here
         # first). Rendered above general news so the AI processes

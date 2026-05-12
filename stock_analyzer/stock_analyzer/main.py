@@ -247,6 +247,7 @@ def phase_prepare() -> None:
     # signal_components, which lets the weekly signal-efficacy report
     # surface "did margin_low_pressure / margin_overhang correlate
     # with wins?" without us having to wire margin into the pre-screen.
+    from stock_analyzer.position_sizing import annotate_summary as annotate_position_size
     from stock_analyzer.signal_tags import (
         annotate_analyst_drift,
         annotate_earnings_momentum,
@@ -259,6 +260,7 @@ def phase_prepare() -> None:
     for s in holdings_summaries + screened_candidates:
         annotate_margin_signals(s)
         annotate_liquidity(s)
+        annotate_position_size(s)
 
     # Earnings momentum (quarterly YoY) + surprise (PEAD) + analyst
     # consensus drift. All three are one extra HTTP per ticker so we
