@@ -41,6 +41,100 @@ _BASE_PCT_BY_CONFIDENCE = {
 _TARGET_DAILY_VOL_PCT = 2.0
 _DEFAULT_ACCOUNT_RISK_PCT = 1.0  # 1% of capital risked per trade — Kelly-ish conservative
 
+_KELLY_FRACTION = 0.25  # Quarter-Kelly. Full-Kelly is mathematically optimal
+# for long-run geometric growth but catastrophically volatile — most
+# professional desks run quarter or half. Quarter is the conservative
+# choice given that win_rate and avg-return estimates are themselves
+# noisy on ~100-sample history.
+_KELLY_CAP_PCT = 5.0  # Even when the math says 20%+, never allocate more
+# than 5% to one pick. Single-stock idiosyncratic risk dominates above
+# that point.
+_KELLY_MIN_SAMPLES = 8  # Below this resolved-trade count per bucket,
+# Kelly estimates are too noisy — fall back to the heuristic base.
+
+
+def compute_kelly_size(
+    win_rate: float,
+    avg_win_pct: float,
+    avg_loss_pct_abs: float,
+    fraction: float = _KELLY_FRACTION,
+    cap: float = _KELLY_CAP_PCT,
+) -> float | None:
+    """Quarter-Kelly position size from empirical win rate + R/R.
+
+    Kelly formula: f* = (b * p - q) / b, where p = win prob, q = 1-p,
+    b = avg_win / avg_loss (R:R ratio in $). Returns the fraction-
+    scaled, percentage-units, capped result. None when inputs are
+    degenerate (zero loss size, negative win rate).
+
+    Why quarter-Kelly: full-Kelly is the theoretical growth-optimal
+    fraction but has catastrophic drawdown profiles when win-rate
+    estimates are wrong (which they always are with sample <1000).
+    Quarter-Kelly trades off ~5% of growth for half the volatility.
+    """
+    if avg_loss_pct_abs <= 0 or win_rate <= 0 or win_rate >= 1:
+        return None
+    if avg_win_pct <= 0:
+        return None
+    b = avg_win_pct / avg_loss_pct_abs
+    q = 1.0 - win_rate
+    full_kelly = (b * win_rate - q) / b
+    if full_kelly <= 0:
+        return 0.0  # negative-EV bucket — recommend NO position
+    scaled = full_kelly * fraction * 100  # convert to % units
+    return round(min(scaled, cap), 2)
+
+
+def derive_kelly_bases(history: dict) -> dict[str, float] | None:
+    """Compute per-confidence Kelly sizes from predictions_history.
+
+    Returns ``{"HIGH": x, "MEDIUM": y, "LOW": z}`` where each value is
+    the quarter-Kelly position size in percent of capital. A bucket
+    with fewer than ``_KELLY_MIN_SAMPLES`` resolved trades is omitted;
+    the caller falls back to the heuristic base for that confidence.
+
+    Returns None when nothing in history is usable — also handled
+    by falling back to the heuristic bases.
+    """
+    predictions = history.get("predictions") or []
+    resolved = [p for p in predictions if p.get("status") in ("win", "loss")]
+    if not resolved:
+        return None
+    bases: dict[str, float] = {}
+    for conf in ("HIGH", "MEDIUM", "LOW"):
+        bucket = [p for p in resolved if (p.get("confidence") or "").upper() == conf]
+        if len(bucket) < _KELLY_MIN_SAMPLES:
+            continue
+        wins_in_bucket = [p for p in bucket if p["status"] == "win"]
+        losses_in_bucket = [p for p in bucket if p["status"] == "loss"]
+        if not wins_in_bucket or not losses_in_bucket:
+            # Need at least one of each to compute b.
+            continue
+        win_rate = len(wins_in_bucket) / len(bucket)
+        # Direction-aware returns so DOWN-wins count as positive gain.
+        win_returns_dir = []
+        loss_returns_dir = []
+        for p in wins_in_bucket:
+            r = p.get("actual_return_pct")
+            if r is None:
+                continue
+            dir_r = float(r) if (p.get("prediction") or "").upper() == "UP" else -float(r)
+            win_returns_dir.append(dir_r)
+        for p in losses_in_bucket:
+            r = p.get("actual_return_pct")
+            if r is None:
+                continue
+            dir_r = float(r) if (p.get("prediction") or "").upper() == "UP" else -float(r)
+            loss_returns_dir.append(dir_r)
+        if not win_returns_dir or not loss_returns_dir:
+            continue
+        avg_win = sum(win_returns_dir) / len(win_returns_dir)
+        avg_loss_abs = abs(sum(loss_returns_dir) / len(loss_returns_dir))
+        kelly = compute_kelly_size(win_rate, avg_win, avg_loss_abs)
+        if kelly is not None:
+            bases[conf] = kelly
+    return bases or None
+
 
 def compute_atr_pct(highs: list[float], lows: list[float], closes: list[float], window: int = 14) -> float | None:
     """Average True Range as a percentage of the latest close.
@@ -133,25 +227,50 @@ def stop_aware_size(
     return round(account_risk_pct / risk_pct_of_price * 100, 2)
 
 
-def annotate_summary(summary: dict, default_confidence: str = "MEDIUM") -> None:
+def annotate_summary(
+    summary: dict,
+    default_confidence: str = "MEDIUM",
+    kelly_bases: dict[str, float] | None = None,
+) -> None:
     """Mutate the summary with ``suggested_position_pct``.
 
-    Computes both vol-targeted (using ATR) and stop-aware (using
-    AI's stop_loss when present) sizes; the result is the more
-    conservative of the two so we never over-allocate. ATR is
-    pulled from the existing summary fields populated by
-    ``compute_indicators`` (we maintain the close / high / low
-    series upstream, but here we read pre-computed daily_atr_pct
-    when available, otherwise just use the confidence base).
+    Computes three candidate sizes and picks the smallest (most
+    conservative):
+    1. **Kelly** (when kelly_bases provided): empirical quarter-Kelly
+       derived from the bucket's historical win-rate × R:R. This is
+       the size a professional desk would compute from track record.
+    2. **Vol-targeted** (always): heuristic confidence-base scaled by
+       inverse daily ATR. Falls back to the confidence base when no
+       ATR data.
+    3. **Stop-aware** (when AI specified stop_loss): 1%-account-risk
+       rule combined with distance to stop.
 
-    The recommendation is appended to the per-stock prompt block
-    via ``ai_analyzer._format_stock_data`` so the AI sees a
-    concrete size suggestion alongside its own prediction.
+    Taking the minimum across all available guards against any
+    single method's over-estimation. ``kelly_bases`` is typically
+    derived once per cron via ``derive_kelly_bases(history)``.
     """
     confidence = (summary.get("confidence") or default_confidence).upper()
     atr_pct = summary.get("daily_atr_pct")
     vol_size = vol_targeted_size(confidence, atr_pct if isinstance(atr_pct, (int, float)) else None)
-    summary["suggested_position_pct"] = vol_size
+
+    # Kelly path: use the empirical base when available, otherwise the
+    # heuristic base flowed through vol_targeted. Kelly base overrides
+    # the heuristic *only when present* — never inflates if the
+    # heuristic is more conservative.
+    kelly_size: float | None = None
+    if kelly_bases and confidence in kelly_bases:
+        kelly_base = kelly_bases[confidence]
+        # Same inverse-vol scaling as vol_targeted_size, with the
+        # Kelly base substituted in.
+        if isinstance(atr_pct, (int, float)) and atr_pct > 0:
+            kelly_size = round(min(kelly_base, kelly_base * (_TARGET_DAILY_VOL_PCT / atr_pct)), 2)
+        else:
+            kelly_size = kelly_base
+        summary["kelly_base_pct"] = kelly_base
+        summary["kelly_position_pct"] = kelly_size
+
+    candidates: list[float] = [c for c in (vol_size, kelly_size) if c is not None]
+    summary["suggested_position_pct"] = min(candidates) if candidates else vol_size
     # Stop-aware size only when both entry and stop are numeric. The
     # AI's free-form strings are parsed by the existing risk_reward
     # module; we reuse that helper to keep the parsing consistent.

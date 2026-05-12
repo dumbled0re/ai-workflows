@@ -248,6 +248,7 @@ def phase_prepare() -> None:
     # surface "did margin_low_pressure / margin_overhang correlate
     # with wins?" without us having to wire margin into the pre-screen.
     from stock_analyzer.position_sizing import annotate_summary as annotate_position_size
+    from stock_analyzer.position_sizing import derive_kelly_bases
     from stock_analyzer.signal_tags import (
         annotate_analyst_drift,
         annotate_earnings_momentum,
@@ -257,10 +258,20 @@ def phase_prepare() -> None:
         annotate_margin_signals,
     )
 
+    # Empirical Kelly sizing from track record. Computed once per
+    # cron — every annotate_position_size call below threads the
+    # same per-confidence Kelly bases so position % reflects actual
+    # bucket win-rate × R:R rather than the heuristic 4/2/0.5.
+    kelly_bases = derive_kelly_bases(perf_history)
+    if kelly_bases:
+        logger.info("Kelly bases derived from history: %s", kelly_bases)
+    else:
+        logger.info("Kelly bases unavailable (insufficient samples) — falling back to heuristic")
+
     for s in holdings_summaries + screened_candidates:
         annotate_margin_signals(s)
         annotate_liquidity(s)
-        annotate_position_size(s)
+        annotate_position_size(s, kelly_bases=kelly_bases)
 
     # Earnings momentum (quarterly YoY) + surprise (PEAD) + analyst
     # consensus drift. All three are one extra HTTP per ticker so we

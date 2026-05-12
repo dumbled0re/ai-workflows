@@ -3,6 +3,8 @@ from __future__ import annotations
 from stock_analyzer.position_sizing import (
     annotate_summary,
     compute_atr_pct,
+    compute_kelly_size,
+    derive_kelly_bases,
     stop_aware_size,
     vol_targeted_size,
 )
@@ -112,3 +114,104 @@ def test_annotate_summary_no_atr_falls_back_to_base() -> None:
     summary: dict = {"confidence": "MEDIUM"}
     annotate_summary(summary)
     assert summary["suggested_position_pct"] == 2.0
+
+
+# ---------- Kelly criterion sizing ----------------------------------------
+
+
+def test_compute_kelly_size_positive_edge() -> None:
+    """60% win rate with 6%/4% R:R ratio:
+    b = 6/4 = 1.5, p = 0.6, q = 0.4
+    f* = (1.5*0.6 - 0.4) / 1.5 = 0.5/1.5 = 0.333
+    Quarter-Kelly = 0.333 * 0.25 = 0.0833 = 8.3%
+    Capped at 5% → 5%"""
+    kelly = compute_kelly_size(win_rate=0.6, avg_win_pct=6.0, avg_loss_pct_abs=4.0)
+    assert kelly == 5.0  # Hit the cap
+
+
+def test_compute_kelly_size_moderate_edge() -> None:
+    """55% win rate, even R:R (4%/4%): low edge → small position.
+    f* = (1.0*0.55 - 0.45) / 1.0 = 0.10
+    Quarter-Kelly = 2.5%"""
+    kelly = compute_kelly_size(win_rate=0.55, avg_win_pct=4.0, avg_loss_pct_abs=4.0)
+    assert kelly == 2.5
+
+
+def test_compute_kelly_size_negative_edge_returns_zero() -> None:
+    """40% win rate with even R:R → negative EV → recommend NO
+    position. This is the key safety mechanism: empirical Kelly
+    pulls capital out of buckets that don't have an edge."""
+    kelly = compute_kelly_size(win_rate=0.4, avg_win_pct=4.0, avg_loss_pct_abs=4.0)
+    assert kelly == 0.0
+
+
+def test_compute_kelly_size_degenerate_returns_none() -> None:
+    """Zero or negative inputs → None so caller falls back to base."""
+    assert compute_kelly_size(0.0, 4.0, 4.0) is None
+    assert compute_kelly_size(0.6, 0.0, 4.0) is None
+    assert compute_kelly_size(0.6, 4.0, 0.0) is None
+    assert compute_kelly_size(1.0, 4.0, 4.0) is None  # 100% win = degenerate
+
+
+def test_derive_kelly_bases_skips_low_sample_buckets() -> None:
+    """A bucket with fewer than _KELLY_MIN_SAMPLES resolved trades
+    must be omitted — Kelly on noise gives garbage. The caller then
+    falls back to the heuristic base for that confidence."""
+    # 5 HIGH + 8 MEDIUM = below threshold for HIGH, above for MEDIUM.
+    preds = []
+    for _ in range(5):
+        preds.append({"status": "win", "confidence": "HIGH", "prediction": "UP", "actual_return_pct": 6.0})
+    for _ in range(5):
+        preds.append({"status": "win", "confidence": "MEDIUM", "prediction": "UP", "actual_return_pct": 4.0})
+    for _ in range(3):
+        preds.append({"status": "loss", "confidence": "MEDIUM", "prediction": "UP", "actual_return_pct": -4.0})
+    history = {"predictions": preds}
+    bases = derive_kelly_bases(history)
+    assert bases is not None
+    assert "HIGH" not in bases  # too few samples
+    assert "MEDIUM" in bases
+
+
+def test_derive_kelly_bases_direction_aware() -> None:
+    """DOWN-wins (raw negative actual_return) must count as positive
+    Kelly returns. A DOWN prediction with -8% actual is an 8% win
+    in directional terms; if Kelly used raw, this would crash the
+    avg_win calculation."""
+    preds = []
+    # 8 wins: 4 UP +6%, 4 DOWN -6% (= +6% directional)
+    for _ in range(4):
+        preds.append({"status": "win", "confidence": "HIGH", "prediction": "UP", "actual_return_pct": 6.0})
+    for _ in range(4):
+        preds.append({"status": "win", "confidence": "HIGH", "prediction": "DOWN", "actual_return_pct": -6.0})
+    # 4 losses with similar pattern
+    for _ in range(2):
+        preds.append({"status": "loss", "confidence": "HIGH", "prediction": "UP", "actual_return_pct": -4.0})
+    for _ in range(2):
+        preds.append({"status": "loss", "confidence": "HIGH", "prediction": "DOWN", "actual_return_pct": 4.0})
+    bases = derive_kelly_bases({"predictions": preds})
+    assert bases is not None
+    assert bases["HIGH"] > 0  # positive edge → positive Kelly
+
+
+def test_annotate_summary_uses_kelly_when_provided() -> None:
+    """When kelly_bases passed, position size uses the empirical
+    base instead of the heuristic. The final number is still the
+    minimum across vol/Kelly/stop methods."""
+    kelly_bases = {"HIGH": 1.5, "MEDIUM": 0.8}  # Conservative empirical
+    summary: dict = {
+        "confidence": "HIGH",
+        "daily_atr_pct": 2.0,  # vol-target = base = 4%
+    }
+    annotate_summary(summary, kelly_bases=kelly_bases)
+    # Kelly base 1.5% is smaller than vol-target 4% → Kelly wins
+    assert summary["kelly_position_pct"] == 1.5
+    assert summary["suggested_position_pct"] == 1.5
+
+
+def test_annotate_summary_kelly_inverse_vol_scales() -> None:
+    """Kelly base also scales by inverse volatility: a 4%-vol stock
+    at Kelly base 2% gets 1% (2 * 2/4)."""
+    kelly_bases = {"HIGH": 2.0}
+    summary: dict = {"confidence": "HIGH", "daily_atr_pct": 4.0}
+    annotate_summary(summary, kelly_bases=kelly_bases)
+    assert summary["kelly_position_pct"] == 1.0

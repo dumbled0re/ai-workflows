@@ -506,16 +506,20 @@ def _format_stock_data(summaries: list[dict]) -> str:
                 margin_line += f" | 推移: {s['margin_trend']}"
             lines.append(margin_line)
 
-        # Vol-targeted position size suggestion (ATR-based + stop-aware).
-        # Operator-facing: scales by inverse volatility so high-vol
-        # picks don't consume disproportionate capital risk.
+        # Vol-targeted + Kelly + stop-aware position size. The
+        # rendered number is the most conservative of the three —
+        # always smaller than the most-aggressive single method so
+        # the operator can never accidentally over-allocate.
         sized = s.get("suggested_position_pct")
         if isinstance(sized, (int, float)) and sized > 0:
             atr = s.get("daily_atr_pct")
             stop_sized = s.get("stop_aware_position_pct")
+            kelly_sized = s.get("kelly_position_pct")
             extras: list[str] = []
             if isinstance(atr, (int, float)):
                 extras.append(f"日次ボラ {atr:.1f}%")
+            if isinstance(kelly_sized, (int, float)):
+                extras.append(f"Kelly {kelly_sized:.1f}%")
             if isinstance(stop_sized, (int, float)):
                 extras.append(f"stop ベース {stop_sized:.1f}%")
             extra_text = f" ({' / '.join(extras)})" if extras else ""
