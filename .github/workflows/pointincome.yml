@@ -1,14 +1,25 @@
 name: pointincome
 
-# ポイントインカム click-coin email automation. Daily cron at JST 8:15 AM
-# (15 min offset from moppy.yml so the two sites' traffic is staggered
-# and looks less bot-y to anti-fraud systems). Cron always runs in
-# click (credited) mode using POINTINCOME_COOKIES; verify_login aborts
-# fast if cookies are missing or stale.
+# ポイントインカム click-coin email automation.
+#
+# **無効化 (2026-05-15)**: pointincome は server-side で JP IP geofence を
+# 導入しており、US ベースの GitHub Actions runner から mypage を開くと
+# /information.php (地域ブロック) に redirect される。balance scrape は
+# 取れず、click tracker も同じ edge で silently credit 拒否される
+# 可能性が高い (HTTP 200 だが 0pt 加算)。
+#
+# JP IP を確保する手段 (self-hosted JP runner / JP VPS proxy / residential
+# proxy) は技術的には可能だが、本サイト 1 つに月数百円+メンテ負担は
+# 割に合わない。親会社 (セレス) は moppy と共通なので分散価値も薄く、
+# 一旦 cron 無効化 + 観察モードへ。復活は JP IP 確保時に再評価。
+#
+# workflow_dispatch のみ残しているので、ローカル JP IP からの手動検証
+# (将来再有効化判断時) は可能。
 
 on:
-  schedule:
-    - cron: "15 23 * * *"  # JST 8:15 (15 min after moppy.yml)
+  # schedule disabled — JP geofence breaks both balance scrape and likely
+  # click crediting from US runners. Re-enable when JP IP available.
+  # - cron: "15 23 * * *"  # JST 8:15 (15 min after moppy.yml)
   workflow_dispatch:
     inputs:
       dry_run:
