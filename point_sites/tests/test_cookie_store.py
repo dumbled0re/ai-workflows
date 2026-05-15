@@ -90,3 +90,61 @@ def test_save_creates_parent_dir(tmp_path) -> None:
     _populate_jar(jar, x="1")
     cookie_store.save_jar(jar, path)
     assert path.exists()
+
+
+def test_domain_matches_hosts_exact_match() -> None:
+    assert cookie_store.domain_matches_hosts("pc.moppy.jp", {"pc.moppy.jp"})
+
+
+def test_domain_matches_hosts_dot_domain_covers_subdomain() -> None:
+    """``.moppy.jp`` cookie should be sent to pc.moppy.jp etc."""
+    assert cookie_store.domain_matches_hosts(".moppy.jp", {"pc.moppy.jp"})
+    assert cookie_store.domain_matches_hosts(".moppy.jp", {"mail.moppy.jp"})
+
+
+def test_domain_matches_hosts_no_match_on_unrelated_third_party() -> None:
+    """Analytics / ad / tracker cookies must be filtered out."""
+    allowed = {"pc.moppy.jp", "moppy.jp"}
+    assert not cookie_store.domain_matches_hosts("googleads.com", allowed)
+    assert not cookie_store.domain_matches_hosts(".google-analytics.com", allowed)
+    assert not cookie_store.domain_matches_hosts(".doubleclick.net", allowed)
+
+
+def test_domain_matches_hosts_empty_domain_rejected() -> None:
+    """Domain-less cookies are rejected (they'd default to the request
+    host, which we can't validate here)."""
+    assert not cookie_store.domain_matches_hosts("", {"pc.moppy.jp"})
+    assert not cookie_store.domain_matches_hosts(".", {"pc.moppy.jp"})
+
+
+def test_save_jar_filters_third_party_cookies_when_allowed_hosts_set(tmp_path) -> None:
+    """Reproduce the 2026-05-15 pointtown bloat: 16 first-party +
+    322 third-party cookies → with allowed_hosts filter, only the 16
+    first-party should be persisted."""
+    path = tmp_path / "cookies.json"
+    jar = RequestsCookieJar()
+    jar.set("session", "abc", domain=".pointtown.com", path="/")
+    jar.set("user_id", "42", domain="www.pointtown.com", path="/")
+    # Bring in third-party tracker bloat — what a Playwright wizard
+    # would leave behind after visiting a page with analytics+ads.
+    jar.set("_ga", "GA1.2.x", domain=".google-analytics.com", path="/")
+    jar.set("_gid", "GA1.2.y", domain=".googleads.com", path="/")
+    jar.set("__doubleclick", "abc", domain=".doubleclick.net", path="/")
+
+    n = cookie_store.save_jar(jar, path, allowed_hosts={"pointtown.com", "www.pointtown.com"})
+    assert n == 2
+    loaded = cookie_store.load(path)
+    assert loaded is not None
+    names = {c["name"] for c in loaded}
+    assert names == {"session", "user_id"}
+
+
+def test_save_jar_keeps_everything_when_allowed_hosts_none(tmp_path) -> None:
+    """Legacy behavior preserved — passing ``None`` saves all cookies."""
+    path = tmp_path / "cookies.json"
+    jar = RequestsCookieJar()
+    jar.set("session", "abc", domain=".pointtown.com", path="/")
+    jar.set("_ga", "GA1.2.x", domain=".google-analytics.com", path="/")
+
+    n = cookie_store.save_jar(jar, path, allowed_hosts=None)
+    assert n == 2

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterable
 from pathlib import Path
 
 from requests.cookies import RequestsCookieJar
@@ -30,20 +31,56 @@ from requests.cookies import RequestsCookieJar
 logger = logging.getLogger(__name__)
 
 
-def save_jar(jar: RequestsCookieJar, path: str | Path) -> int:
+def domain_matches_hosts(cookie_domain: str, allowed_hosts: Iterable[str]) -> bool:
+    """Standard cookie domain matching — does any ``allowed_hosts`` host
+    receive a cookie with this domain?
+
+    A cookie with domain ``D`` (with or without leading dot) is sent to
+    host ``H`` if either ``D`` (stripped of any leading dot) equals
+    ``H``, or ``H`` is a subdomain of ``D``. Returns ``False`` for an
+    empty domain (which can happen for first-party non-domain cookies)
+    so that anti-bot tracker cookies don't slip through the filter.
+
+    Used by ``save_jar`` and by main.py's browser-cookie merge path to
+    keep third-party tracking cookies (analytics, ads) from
+    accumulating in the persisted jar — observed 2026-05-15 with
+    pointtown, where a Playwright login-bonus wizard ballooned the jar
+    from 16 to 338 cookies and induced 1-hour session expiry.
+    """
+    d = cookie_domain.lstrip(".")
+    if not d:
+        return False
+    return any(host == d or host.endswith("." + d) for host in allowed_hosts)
+
+
+def save_jar(
+    jar: RequestsCookieJar,
+    path: str | Path,
+    allowed_hosts: Iterable[str] | None = None,
+) -> int:
     """Write the jar to ``path`` atomically. Returns the number of cookies saved.
 
     Output shape matches the user's exported MOPPY_COOKIES so the persisted
     file and the bootstrap Secret round-trip identically through
     ``Clicker.__init__``.
+
+    When ``allowed_hosts`` is provided, cookies whose domain does not
+    cover any of those hosts are dropped before writing. This keeps
+    third-party tracking cookies — picked up by Playwright wizards on
+    pages that include analytics / ad scripts — from polluting the
+    persisted jar across runs. Pass ``None`` for the (legacy) "save
+    everything" behavior.
     """
     cookies: list[dict[str, object]] = []
     for c in jar:
+        domain = c.domain or ".moppy.jp"
+        if allowed_hosts is not None and not domain_matches_hosts(domain, allowed_hosts):
+            continue
         cookies.append(
             {
                 "name": c.name,
                 "value": c.value,
-                "domain": c.domain or ".moppy.jp",
+                "domain": domain,
                 "path": c.path or "/",
                 "secure": bool(c.secure),
             }

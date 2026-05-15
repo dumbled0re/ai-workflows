@@ -30,6 +30,7 @@ from .adapters import REGISTRY, get_adapter
 from .common.adapter import Adapter
 from .common.balance import fetch_balance
 from .common.clicker import Clicker, is_manual_url_allowed
+from .common.cookie_store import domain_matches_hosts
 from .common.cookie_store import load as load_persisted_cookies
 from .common.cookie_store import save_jar as save_cookie_jar
 from .common.discover import discover, render_report
@@ -106,9 +107,20 @@ def _persist_cookies(clicker: Clicker, cfg: Config) -> None:
     swallowed: the run already succeeded, and a state-write hiccup
     shouldn't break the user-visible result. Worst case the next run
     starts from the stale Secret again.
+
+    Cookies whose domain is not covered by ``adapter.allowed_hosts`` are
+    dropped at save time — Playwright wizards can pick up hundreds of
+    third-party tracking cookies (analytics / ads) from pages that
+    embed those scripts, and re-sending them on the next run looks
+    like an anomalous session and gets the site to invalidate it
+    (observed 2026-05-15 on pointtown).
     """
     try:
-        n = save_cookie_jar(clicker.session.cookies, cfg.cookie_store_path)
+        n = save_cookie_jar(
+            clicker.session.cookies,
+            cfg.cookie_store_path,
+            allowed_hosts=cfg.adapter.allowed_hosts,
+        )
         logger.info("persisted %d cookies to %s", n, cfg.cookie_store_path)
     except OSError as exc:
         logger.warning("failed to persist cookie jar: %s", exc)
@@ -156,22 +168,36 @@ def _jar_to_cookies(clicker: Clicker) -> list[dict[str, object]]:
     return out
 
 
-def _merge_browser_cookies(clicker: Clicker, browser_cookies: list[dict[str, object]]) -> None:
+def _merge_browser_cookies(
+    clicker: Clicker,
+    browser_cookies: list[dict[str, object]],
+    allowed_hosts: frozenset[str] | None = None,
+) -> None:
     """Merge cookies rotated by a BrowserClicker session back into Clicker.
 
     Without this the click loop and the persisted jar would lose any
     Set-Cookie updates the browser saw — and BrowserClicker is the one
     most likely to trip JS-driven anti-bot rotations. Same .set() pattern
     Clicker.__init__ uses so the cookie semantics stay identical.
+
+    When ``allowed_hosts`` is provided, only cookies whose domain
+    covers one of those hosts are merged. The rest (third-party
+    analytics / ad / tracker cookies the Playwright wizard picked up
+    incidentally) are dropped on the floor — re-sending them to the
+    site on subsequent requests bloats the cookie header and can
+    trigger anti-bot session invalidation.
     """
     for c in browser_cookies:
         name = str(c.get("name", ""))
         if not name:
             continue
+        domain = str(c.get("domain", ""))
+        if allowed_hosts is not None and not domain_matches_hosts(domain, allowed_hosts):
+            continue
         clicker.session.cookies.set(
             name,
             str(c.get("value", "")),
-            domain=str(c.get("domain", "")),
+            domain=domain,
             path=str(c.get("path", "/")),
             secure=bool(c.get("secure", True)),
         )
@@ -197,7 +223,7 @@ def _fetch_balance(clicker: Clicker, cfg: Config) -> int | None:
                     cfg.adapter.mypage_url,
                     patterns=cfg.adapter.balance_patterns,
                 )
-                _merge_browser_cookies(clicker, bc.export_cookies())
+                _merge_browser_cookies(clicker, bc.export_cookies(), allowed_hosts=cfg.adapter.allowed_hosts)
         except Exception as exc:
             logger.warning("browser balance fetch failed: %s", exc)
             return None
@@ -520,7 +546,7 @@ def cmd_run(
                             unique_hrefs.append(href)
                 finally:
                     page.close()
-                _merge_browser_cookies(clicker, bc.export_cookies())
+                _merge_browser_cookies(clicker, bc.export_cookies(), allowed_hosts=cfg.adapter.allowed_hosts)
             logger.info("discovered %d unique daily banners", len(unique_hrefs))
             for href in unique_hrefs:
                 candidate = ClickCandidate(
@@ -603,7 +629,7 @@ def cmd_run(
                         pass
                     finally:
                         page.close()
-                    _merge_browser_cookies(clicker, bc.export_cookies())
+                    _merge_browser_cookies(clicker, bc.export_cookies(), allowed_hosts=cfg.adapter.allowed_hosts)
                 logger.info(
                     "%s wizard %s",
                     wizard.name,
@@ -638,7 +664,7 @@ def cmd_run(
                 default_cookie_domain=default_domain,
             ) as bc:
                 action_results = run_browser_actions(bc, cfg.adapter.browser_actions)
-                _merge_browser_cookies(clicker, bc.export_cookies())
+                _merge_browser_cookies(clicker, bc.export_cookies(), allowed_hosts=cfg.adapter.allowed_hosts)
             for r in action_results:
                 browser_action_names.append(r.name)
                 if r.ok:
@@ -887,7 +913,7 @@ def cmd_html(cfg: Config, url: str, *, force_browser: bool = False, cap: int = 8
                 body_text = page.content()
             finally:
                 page.close()
-            _merge_browser_cookies(clicker, bc.export_cookies())
+            _merge_browser_cookies(clicker, bc.export_cookies(), allowed_hosts=cfg.adapter.allowed_hosts)
         original_len = len(body_text)
         _persist_cookies(clicker, cfg)
         print(f"=== {final_url} (browser, len={original_len}) ===")
