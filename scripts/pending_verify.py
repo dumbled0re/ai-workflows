@@ -278,9 +278,79 @@ def kind_manual(args: dict) -> VerifyResult:
     )
 
 
+def kind_recent_run_log_grep(args: dict) -> VerifyResult:
+    """Scan the latest few completed runs of each listed workflow for ``pattern``.
+
+    Does NOT trigger a new run — useful when the verification depends
+    on the system having received external input (e.g. a real click-
+    mail arriving in Gmail, which can't be forced from CI). Triggering
+    a new workflow run won't help: if no mail has arrived, the run
+    will just report 0 candidates again. Instead we passively check
+    whether the cron-scheduled runs that have ALREADY happened show
+    evidence that the awaited event occurred.
+
+    ``args``:
+      workflows: list[str] — workflow filenames to scan
+      pattern: regex — match in run log (use ``\\d`` etc. with raw-style)
+      lookback: int — recent completed runs per workflow to scan (default 5)
+      require_all: bool — if true (default) every workflow must match
+                          for success; if false, ANY match counts
+
+    Returns:
+      success — match found per the require_all rule
+      inconclusive — no match yet (re-check next cron). NOT a failure
+                     because "no mail yet" is normal during the wait.
+    """
+    workflows: list[str] = list(args.get("workflows") or [])
+    pattern = args.get("pattern")
+    lookback = int(args.get("lookback", 5))
+    require_all = bool(args.get("require_all", True))
+    if not workflows or not pattern:
+        return VerifyResult("failure", "schema invalid: workflows / pattern required")
+
+    matches: dict[str, int] = {}  # workflow → matched run id
+    for wf in workflows:
+        try:
+            proc = gh(
+                "run",
+                "list",
+                "--workflow",
+                wf,
+                "--limit",
+                str(lookback),
+                "--json",
+                "databaseId,conclusion,status",
+                check=False,
+            )
+            runs = json.loads(proc.stdout) if proc.stdout else []
+        except (subprocess.CalledProcessError, json.JSONDecodeError) as exc:
+            logger.warning("gh run list %s failed: %s", wf, exc)
+            continue
+        for run in runs:
+            if run.get("status") != "completed" or run.get("conclusion") != "success":
+                continue
+            log_proc = gh("run", "view", str(run["databaseId"]), "--log", check=False)
+            log = (log_proc.stdout or "") + (log_proc.stderr or "")
+            if re.search(pattern, log):
+                matches[wf] = run["databaseId"]
+                break
+
+    matched_count = len(matches)
+    if require_all and matched_count == len(workflows):
+        return VerifyResult("success", f"all workflows matched (runs={matches})")
+    if (not require_all) and matched_count >= 1:
+        return VerifyResult("success", f"at least one workflow matched (runs={matches})")
+    missing = [wf for wf in workflows if wf not in matches]
+    return VerifyResult(
+        "inconclusive",
+        f"awaiting event in: {missing} (matched: {list(matches.keys()) or 'none'}; lookback={lookback})",
+    )
+
+
 KIND_REGISTRY = {
     "workflow_run_grep": kind_workflow_run_grep,
     "workflow_run_no_grep": kind_workflow_run_no_grep,
+    "recent_run_log_grep": kind_recent_run_log_grep,
     "manual": kind_manual,
 }
 

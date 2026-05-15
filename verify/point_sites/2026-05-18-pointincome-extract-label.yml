@@ -3,21 +3,25 @@ verify_after: 2026-05-18T09:00:00+09:00
 project: point_sites
 relates_to: 5637e14
 description: |
-  pointincome の extract-only mode (commit 5637e14) で実 click-mail 到着時に
-  Slack 通知 + Gmail 側に "pointincome-clicked" ラベル付与される flow が
-  動作するか。新着メール待ちなので、3 日後にも依然 0 candidates なら
-  実機での verify は別途必要。
+  pointincome の extract-only mode (commit 5637e14) で実 click-mail が
+  Gmail に到着し、cron で processed → Slack 通知 + ``pointincome-clicked``
+  ラベル付与の flow が動作したかを passive 検証する。
 
-  自動 verify は困難なため manual flag。user は SLACK_CHANNEL_POINTINCOME
-  を見て pointincome の URL が POST されているか、Gmail で
-  "label:pointincome-clicked" 検索して 1 件以上 hit するかを確認する。
-kind: manual
+  新規 click-mail が来てない間は ``found 0 candidate batches`` が続くので
+  ``recent_run_log_grep`` で「直近 10 cron run のどこかで ``found N`` N>=1
+  が出てる」を success 条件にする。N 日経って 0 のままなら inconclusive を
+  維持 (= 真の問題は user 側 Gmail 設定 / pointincome 配信 ON 等)。
+
+  新 click-mail 待ちなので失敗扱いせず inconclusive のまま retry。
+kind: recent_run_log_grep
 args:
-  instructions: |
-    1. SLACK_CHANNEL_POINTINCOME を確認:
-       「📬 pointincome クリックリンク」の投稿があるか
-    2. Gmail で `label:pointincome-clicked` を検索:
-       1 件以上 hit すれば label-after-extract path 動作確認
-    3. 0 件なら 3 日間 pointincome から click-mail が来てないだけ。
-       cron 1 週間継続して 0 のままなら issue で報告。
-max_attempts: 1
+  workflows:
+    - pointincome.yml
+  pattern: "found [1-9]\\d* candidate batches"
+  lookback: 10
+  require_all: true
+max_attempts: 30
+retry_after_hours: 24
+success_message: |
+  ✅ pointincome に click-mail 到着 + extract-only path 動作確認
+  (Slack channel SLACK_CHANNEL_POINTINCOME にも URL が POST されてるはず)

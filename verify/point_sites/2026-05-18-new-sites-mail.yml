@@ -3,20 +3,25 @@ verify_after: 2026-05-18T11:00:00+09:00
 project: point_sites
 relates_to: "57588e1 a19eaf2 d14ad29"
 description: |
-  fruitmail / warau / sugutama の 3 新サイトで click-mail が到着し、
-  candidate が 1 件以上 found されたか確認。3 日経っても全部 0 candidates
-  なら登録設定 or Gmail filter の問題の可能性あり要 user 確認。
+  fruitmail / warau / sugutama の 3 新サイトで click-mail が到着し candidate
+  が 1 件以上 found されたかを passive 検証する。``recent_run_log_grep`` で
+  各サイトの直近 10 cron run を scan、3 サイト全部で ``found N`` N>=1 を見つ
+  けたら success → 自動 close。
 
-  自動化困難 (3 サイト分の cron run を順に grep する必要) なので
-  manual flag。
-kind: manual
+  ``require_all: true`` なので 3 サイト全部が必要。例えば fruitmail だけ
+  yield してて warau/sugutama が 0 のままなら inconclusive 継続 → user が
+  気付く合図 (Gmail filter / 配信 ON 確認)。一部だけ yield のまま 1 週間
+  続いたら user 側問題なので個別調査。
+kind: recent_run_log_grep
 args:
-  instructions: |
-    各サイトの最新 run log を見て "found N candidate batches" の N を確認:
-      gh run list -w fruitmail.yml -L 1 --json databaseId -q '.[0].databaseId' \
-        | xargs -I{} gh run view {} --log | grep "found.*candidate"
-      gh run list -w warau.yml -L 1 ...
-      gh run list -w sugutama.yml -L 1 ...
-    3 日経って全部 0 のままなら user に「3 サイト登録した Gmail アドレスが
-    正しいか」「メール配信設定で配信 ON か」確認。
-max_attempts: 1
+  workflows:
+    - fruitmail.yml
+    - warau.yml
+    - sugutama.yml
+  pattern: "found [1-9]\\d* candidate batches"
+  lookback: 10
+  require_all: true
+max_attempts: 30
+retry_after_hours: 24
+success_message: |
+  ✅ fruitmail / warau / sugutama すべてで click-mail を受信・処理確認
