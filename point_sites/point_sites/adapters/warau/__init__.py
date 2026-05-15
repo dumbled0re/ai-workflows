@@ -28,7 +28,7 @@ Background:
 
 **初メール後の TODO (after Secret 登録):**
 1. ``gh workflow run warau.yml -f discover=true`` で `/mail/list` の構造確認
-2. ``-f inspect_url=https://www.warau.jp/mail/list`` で inbox HTML を見て
+2. ``-f inspect_url=https://www.warau.jp/service/mail_receive/`` で inbox HTML を見て
    ``parse_inbox`` の link regex を実 HTML に合わせる
 3. 1 通目の inspect (``-f inspect_url=<message URL>``) で click-coin URL
    pattern を確定 → ``parser.py`` の regex を narrow
@@ -59,7 +59,7 @@ ADAPTER = Adapter(
     allowed_hosts=frozenset({"warau.jp", "www.warau.jp"}),
     login_keyword="ログアウト",
     source=OnsiteInboxSource(
-        inbox_url="https://www.warau.jp/mail/list",
+        inbox_url="https://www.warau.jp/service/mail_receive/",
         parse_inbox=parse_inbox,
         parse_message=parse_message,
     ),
@@ -69,6 +69,6 @@ ADAPTER = Adapter(
     balance_patterns=DEFAULT_BALANCE_PATTERNS,
     discover_seeds=(
         "https://www.warau.jp/mypage",
-        "https://www.warau.jp/mail/list",
+        "https://www.warau.jp/service/mail_receive/",
     ),
 )

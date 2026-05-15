@@ -38,7 +38,7 @@ from ...common.sources import InboxEntry
 
 logger = logging.getLogger(__name__)
 
-_INBOX_BASE = "https://www.sugutama.jp/sugutama/"
+_INBOX_BASE = "https://www.netmile.co.jp/sugutama/"
 
 # Inbox listing rows. Best-guess pattern based on recon hint
 # (`/sugutama/ads/{id}?lo=...` was suggested) and standard on-site

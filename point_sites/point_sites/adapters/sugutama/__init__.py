@@ -48,12 +48,16 @@ from .parser import parse_inbox, parse_message
 ADAPTER = Adapter(
     name="sugutama",
     site_label="すぐたま",
-    # Verified anonymously 2026-05-10: ``/sugutama/mypage`` (no .php)
-    # returns 200. The recon agent's earlier `.php` guess was wrong;
-    # /sugutama/* paths use clean URLs.
-    mypage_url="https://www.sugutama.jp/sugutama/mypage",
-    # Apex + www on sugutama.jp, plus netmile.co.jp for the SSO domain
-    # (account login spans both, similar to amefuri/i2i pattern).
+    # Auth cookies live on www.netmile.co.jp (Rails _mediafactory-user_
+    # session + X-Oc-LBS LBS sticky). Anonymous probe 2026-05-15:
+    # - www.sugutama.jp/sugutama/mypage → 404 (actual HTTP 404)
+    # - www.netmile.co.jp/sugutama/mypage → 200 (login form anonymously,
+    #   logged-in mypage with auth cookies)
+    # So all auth-required endpoints must target netmile.co.jp where
+    # cookies are scoped. sugutama.jp is now public-marketing only.
+    mypage_url="https://www.netmile.co.jp/sugutama/mypage",
+    # Apex + www on both domains (legacy sugutama.jp redirects survive
+    # for the marketing landing). Auth requests target netmile.co.jp.
     allowed_hosts=frozenset(
         {
             "sugutama.jp",
@@ -64,11 +68,11 @@ ADAPTER = Adapter(
     ),
     login_keyword="ログアウト",
     source=OnsiteInboxSource(
-        # Best-guess inbox URL — `/sugutama/mail/` and `/sugutama/mail_box/`
-        # both returned 200 anonymously. Picked `mail/` as the more
-        # standard naming; refine to `mail_box/` if first inspect shows
-        # `mail/` is something else (e.g. "send mail to friend").
-        inbox_url="https://www.sugutama.jp/sugutama/mail/",
+        # Inbox under netmile.co.jp/sugutama/. Probe-anonymous shows the
+        # same login form template as mypage (= same auth-gated app),
+        # so with the netmile session cookie this should render the
+        # actual inbox.
+        inbox_url="https://www.netmile.co.jp/sugutama/mail/",
         parse_inbox=parse_inbox,
         parse_message=parse_message,
     ),
@@ -78,8 +82,8 @@ ADAPTER = Adapter(
     # first inspect.
     balance_patterns=DEFAULT_BALANCE_PATTERNS,
     discover_seeds=(
-        "https://www.sugutama.jp/sugutama/mypage",
-        "https://www.sugutama.jp/sugutama/mail/",
-        "https://www.sugutama.jp/sugutama/everyday/",
+        "https://www.netmile.co.jp/sugutama/mypage",
+        "https://www.netmile.co.jp/sugutama/mail/",
+        "https://www.netmile.co.jp/sugutama/everyday/",
     ),
 )
