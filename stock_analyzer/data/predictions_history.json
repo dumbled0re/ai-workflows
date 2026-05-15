@@ -945,8 +945,8 @@
       "status": "pending",
       "actual_price": 1452.0,
       "actual_return_pct": 0.55,
-      "reviewed_date": "2026-05-14",
-      "days_held": 16
+      "reviewed_date": "2026-05-15",
+      "days_held": 17
     },
     {
       "id": "2026-04-28_3003.T_long_term",
@@ -1854,8 +1854,8 @@
       "status": "pending",
       "actual_price": 1452.0,
       "actual_return_pct": 1.75,
-      "reviewed_date": "2026-05-14",
-      "days_held": 14
+      "reviewed_date": "2026-05-15",
+      "days_held": 15
     },
     {
       "id": "2026-04-30_9503.T_long_term",
@@ -2101,11 +2101,11 @@
       "stop_loss": "760円以下（現値で即時損切り推奨）",
       "action": "損切り",
       "source": "holdings",
-      "status": "pending",
+      "status": "loss",
       "actual_price": 760.5,
       "actual_return_pct": 0.07,
-      "reviewed_date": "2026-05-14",
-      "days_held": 13
+      "reviewed_date": "2026-05-15",
+      "days_held": 14
     },
     {
       "id": "2026-05-01_4765.T_holdings",
@@ -2118,11 +2118,11 @@
       "stop_loss": "554円（現値602円の-8%、トレーリングストップ適用）",
       "action": "利確",
       "source": "holdings",
-      "status": "pending",
+      "status": "loss",
       "actual_price": 601.0,
       "actual_return_pct": -0.17,
-      "reviewed_date": "2026-05-14",
-      "days_held": 13
+      "reviewed_date": "2026-05-15",
+      "days_held": 14
     },
     {
       "id": "2026-05-01_7261.T_holdings",
@@ -2186,11 +2186,11 @@
       "stop_loss": "150円以下（現値で即時損切り推奨）",
       "action": "損切り",
       "source": "holdings",
-      "status": "pending",
+      "status": "win",
       "actual_price": 149.0,
       "actual_return_pct": -0.67,
-      "reviewed_date": "2026-05-14",
-      "days_held": 13
+      "reviewed_date": "2026-05-15",
+      "days_held": 14
     },
     {
       "id": "2026-05-01_8306.T_holdings",
@@ -2220,11 +2220,11 @@
       "stop_loss": "152円以下（現値で即時損切り推奨）",
       "action": "損切り",
       "source": "holdings",
-      "status": "pending",
+      "status": "win",
       "actual_price": 149.6,
       "actual_return_pct": -1.58,
-      "reviewed_date": "2026-05-14",
-      "days_held": 13
+      "reviewed_date": "2026-05-15",
+      "days_held": 14
     },
     {
       "id": "2026-05-01_9434.T_holdings",
@@ -2237,11 +2237,11 @@
       "stop_loss": "186円（取得原価、含み益+5%超のためトレーリングストップ適用）",
       "action": "保有継続",
       "source": "holdings",
-      "status": "pending",
+      "status": "win",
       "actual_price": 221.9,
       "actual_return_pct": 0.59,
-      "reviewed_date": "2026-05-14",
-      "days_held": 13
+      "reviewed_date": "2026-05-15",
+      "days_held": 14
     },
     {
       "id": "2026-05-01_9633.T_holdings",
@@ -2368,8 +2368,8 @@
       "status": "pending",
       "actual_price": 1478.0,
       "actual_return_pct": -2.57,
-      "reviewed_date": "2026-05-14",
-      "days_held": 13
+      "reviewed_date": "2026-05-15",
+      "days_held": 14
     },
     {
       "id": "2026-05-01_1518.T_long_term",
@@ -2539,8 +2539,8 @@
       "status": "pending",
       "actual_price": 760.5,
       "actual_return_pct": 0.07,
-      "reviewed_date": "2026-05-14",
-      "days_held": 10
+      "reviewed_date": "2026-05-15",
+      "days_held": 11
     },
     {
       "id": "2026-05-04_4765.T_holdings",
@@ -2556,8 +2556,8 @@
       "status": "pending",
       "actual_price": 601.0,
       "actual_return_pct": -0.17,
-      "reviewed_date": "2026-05-14",
-      "days_held": 10
+      "reviewed_date": "2026-05-15",
+      "days_held": 11
     },
     {
       "id": "2026-05-04_5129.T_holdings",
@@ -2624,8 +2624,8 @@
       "status": "pending",
       "actual_price": 1344.0,
       "actual_return_pct": -0.81,
-      "reviewed_date": "2026-05-14",
-      "days_held": 10
+      "reviewed_date": "2026-05-15",
+      "days_held": 11
     },
     {
       "id": "2026-05-04_7859.T_holdings",
@@ -2692,8 +2692,8 @@
       "status": "pending",
       "actual_price": 149.0,
       "actual_return_pct": -0.67,
-      "reviewed_date": "2026-05-14",
-      "days_held": 10
+      "reviewed_date": "2026-05-15",
+      "days_held": 11
     },
     {
       "id": "2026-05-04_8306.T_holdings",
@@ -2726,8 +2726,8 @@
       "status": "pending",
       "actual_price": 149.6,
       "actual_return_pct": -1.58,
-      "reviewed_date": "2026-05-14",
-      "days_held": 10
+      "reviewed_date": "2026-05-15",
+      "days_held": 11
     },
     {
       "id": "2026-05-04_9434.T_holdings",
@@ -2743,8 +2743,8 @@
       "status": "pending",
       "actual_price": 221.9,
       "actual_return_pct": 0.59,
-      "reviewed_date": "2026-05-14",
-      "days_held": 10
+      "reviewed_date": "2026-05-15",
+      "days_held": 11
     },
     {
       "id": "2026-05-04_9633.T_holdings",
@@ -2889,8 +2889,8 @@
       "status": "pending",
       "actual_price": 3618.0,
       "actual_return_pct": 0.19,
-      "reviewed_date": "2026-05-14",
-      "days_held": 10
+      "reviewed_date": "2026-05-15",
+      "days_held": 11
     },
     {
       "id": "2026-05-04_4768.T_long_term",
@@ -3098,8 +3098,8 @@
       "status": "pending",
       "actual_price": 760.5,
       "actual_return_pct": 0.07,
-      "reviewed_date": "2026-05-14",
-      "days_held": 8
+      "reviewed_date": "2026-05-15",
+      "days_held": 9
     },
     {
       "id": "2026-05-06_4765.T_holdings",
@@ -3115,8 +3115,8 @@
       "status": "pending",
       "actual_price": 601.0,
       "actual_return_pct": -0.17,
-      "reviewed_date": "2026-05-14",
-      "days_held": 8
+      "reviewed_date": "2026-05-15",
+      "days_held": 9
     },
     {
       "id": "2026-05-06_5129.T_holdings",
@@ -3183,8 +3183,8 @@
       "status": "pending",
       "actual_price": 1344.0,
       "actual_return_pct": -0.81,
-      "reviewed_date": "2026-05-14",
-      "days_held": 8
+      "reviewed_date": "2026-05-15",
+      "days_held": 9
     },
     {
       "id": "2026-05-06_7859.T_holdings",
@@ -3251,8 +3251,8 @@
       "status": "pending",
       "actual_price": 149.0,
       "actual_return_pct": -0.67,
-      "reviewed_date": "2026-05-14",
-      "days_held": 8
+      "reviewed_date": "2026-05-15",
+      "days_held": 9
     },
     {
       "id": "2026-05-06_8306.T_holdings",
@@ -3285,8 +3285,8 @@
       "status": "pending",
       "actual_price": 149.6,
       "actual_return_pct": -1.58,
-      "reviewed_date": "2026-05-14",
-      "days_held": 8
+      "reviewed_date": "2026-05-15",
+      "days_held": 9
     },
     {
       "id": "2026-05-06_9434.T_holdings",
@@ -3302,8 +3302,8 @@
       "status": "pending",
       "actual_price": 221.9,
       "actual_return_pct": 0.59,
-      "reviewed_date": "2026-05-14",
-      "days_held": 8
+      "reviewed_date": "2026-05-15",
+      "days_held": 9
     },
     {
       "id": "2026-05-06_9633.T_holdings",
@@ -3514,8 +3514,8 @@
       "status": "pending",
       "actual_price": 51.0,
       "actual_return_pct": -1.92,
-      "reviewed_date": "2026-05-14",
-      "days_held": 7
+      "reviewed_date": "2026-05-15",
+      "days_held": 8
     },
     {
       "id": "2026-05-07_4597.T_holdings",
@@ -3565,8 +3565,8 @@
       "status": "pending",
       "actual_price": 760.5,
       "actual_return_pct": 1.26,
-      "reviewed_date": "2026-05-14",
-      "days_held": 7
+      "reviewed_date": "2026-05-15",
+      "days_held": 8
     },
     {
       "id": "2026-05-07_4765.T_holdings",
@@ -3582,8 +3582,8 @@
       "status": "pending",
       "actual_price": 601.0,
       "actual_return_pct": 0.5,
-      "reviewed_date": "2026-05-14",
-      "days_held": 7
+      "reviewed_date": "2026-05-15",
+      "days_held": 8
     },
     {
       "id": "2026-05-07_5129.T_holdings",
@@ -3650,8 +3650,8 @@
       "status": "pending",
       "actual_price": 1344.0,
       "actual_return_pct": -1.68,
-      "reviewed_date": "2026-05-14",
-      "days_held": 7
+      "reviewed_date": "2026-05-15",
+      "days_held": 8
     },
     {
       "id": "2026-05-07_7859.T_holdings",
@@ -3718,8 +3718,8 @@
       "status": "pending",
       "actual_price": 149.0,
       "actual_return_pct": -1.32,
-      "reviewed_date": "2026-05-14",
-      "days_held": 7
+      "reviewed_date": "2026-05-15",
+      "days_held": 8
     },
     {
       "id": "2026-05-07_8306.T_holdings",
@@ -3735,8 +3735,8 @@
       "status": "pending",
       "actual_price": 2877.0,
       "actual_return_pct": 0.49,
-      "reviewed_date": "2026-05-14",
-      "days_held": 7
+      "reviewed_date": "2026-05-15",
+      "days_held": 8
     },
     {
       "id": "2026-05-07_9432.T_holdings",
@@ -3752,8 +3752,8 @@
       "status": "pending",
       "actual_price": 149.6,
       "actual_return_pct": -0.8,
-      "reviewed_date": "2026-05-14",
-      "days_held": 7
+      "reviewed_date": "2026-05-15",
+      "days_held": 8
     },
     {
       "id": "2026-05-07_9434.T_holdings",
@@ -3769,8 +3769,8 @@
       "status": "pending",
       "actual_price": 221.9,
       "actual_return_pct": 0.27,
-      "reviewed_date": "2026-05-14",
-      "days_held": 7
+      "reviewed_date": "2026-05-15",
+      "days_held": 8
     },
     {
       "id": "2026-05-07_9633.T_holdings",
@@ -3862,8 +3862,8 @@
       "status": "pending",
       "actual_price": 3618.0,
       "actual_return_pct": -1.71,
-      "reviewed_date": "2026-05-14",
-      "days_held": 7
+      "reviewed_date": "2026-05-15",
+      "days_held": 8
     },
     {
       "id": "2026-05-07_6544.T_short_term",
@@ -3917,8 +3917,8 @@
       "status": "pending",
       "actual_price": 1884.0,
       "actual_return_pct": -1.59,
-      "reviewed_date": "2026-05-14",
-      "days_held": 7
+      "reviewed_date": "2026-05-15",
+      "days_held": 8
     },
     {
       "id": "2026-05-07_3003.T_long_term",
@@ -4073,8 +4073,8 @@
       "status": "pending",
       "actual_price": 51.0,
       "actual_return_pct": -1.92,
-      "reviewed_date": "2026-05-14",
-      "days_held": 6
+      "reviewed_date": "2026-05-15",
+      "days_held": 7
     },
     {
       "id": "2026-05-08_4597.T_holdings",
@@ -4124,8 +4124,8 @@
       "status": "pending",
       "actual_price": 760.5,
       "actual_return_pct": 1.26,
-      "reviewed_date": "2026-05-14",
-      "days_held": 6
+      "reviewed_date": "2026-05-15",
+      "days_held": 7
     },
     {
       "id": "2026-05-08_4765.T_holdings",
@@ -4141,8 +4141,8 @@
       "status": "pending",
       "actual_price": 601.0,
       "actual_return_pct": 0.5,
-      "reviewed_date": "2026-05-14",
-      "days_held": 6
+      "reviewed_date": "2026-05-15",
+      "days_held": 7
     },
     {
       "id": "2026-05-08_5129.T_holdings",
@@ -4209,8 +4209,8 @@
       "status": "pending",
       "actual_price": 1344.0,
       "actual_return_pct": -1.68,
-      "reviewed_date": "2026-05-14",
-      "days_held": 6
+      "reviewed_date": "2026-05-15",
+      "days_held": 7
     },
     {
       "id": "2026-05-08_7859.T_holdings",
@@ -4260,8 +4260,8 @@
       "status": "pending",
       "actual_price": 2955.0,
       "actual_return_pct": -1.5,
-      "reviewed_date": "2026-05-14",
-      "days_held": 6
+      "reviewed_date": "2026-05-15",
+      "days_held": 7
     },
     {
       "id": "2026-05-08_8202.T_holdings",
@@ -4277,8 +4277,8 @@
       "status": "pending",
       "actual_price": 149.0,
       "actual_return_pct": -1.32,
-      "reviewed_date": "2026-05-14",
-      "days_held": 6
+      "reviewed_date": "2026-05-15",
+      "days_held": 7
     },
     {
       "id": "2026-05-08_8306.T_holdings",
@@ -4294,8 +4294,8 @@
       "status": "pending",
       "actual_price": 2877.0,
       "actual_return_pct": 0.49,
-      "reviewed_date": "2026-05-14",
-      "days_held": 6
+      "reviewed_date": "2026-05-15",
+      "days_held": 7
     },
     {
       "id": "2026-05-08_9432.T_holdings",
@@ -4311,8 +4311,8 @@
       "status": "pending",
       "actual_price": 149.6,
       "actual_return_pct": -0.8,
-      "reviewed_date": "2026-05-14",
-      "days_held": 6
+      "reviewed_date": "2026-05-15",
+      "days_held": 7
     },
     {
       "id": "2026-05-08_9434.T_holdings",
@@ -4328,8 +4328,8 @@
       "status": "pending",
       "actual_price": 221.9,
       "actual_return_pct": 0.27,
-      "reviewed_date": "2026-05-14",
-      "days_held": 6
+      "reviewed_date": "2026-05-15",
+      "days_held": 7
     },
     {
       "id": "2026-05-08_9633.T_holdings",
@@ -4457,8 +4457,8 @@
       "status": "pending",
       "actual_price": 3618.0,
       "actual_return_pct": -1.71,
-      "reviewed_date": "2026-05-14",
-      "days_held": 6
+      "reviewed_date": "2026-05-15",
+      "days_held": 7
     },
     {
       "id": "2026-05-08_2181.T_long_term",
@@ -4605,8 +4605,8 @@
       "status": "pending",
       "actual_price": 1884.0,
       "actual_return_pct": -1.82,
-      "reviewed_date": "2026-05-14",
-      "days_held": 6
+      "reviewed_date": "2026-05-15",
+      "days_held": 7
     },
     {
       "id": "2026-05-08_4503.T_long_term",
@@ -4673,11 +4673,11 @@
       "stop_loss": "181円（現在値、即時損切り推奨）",
       "action": "損切り",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "status": "win",
+      "actual_price": 171.0,
+      "actual_return_pct": -5.52,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_3070.T_holdings",
@@ -4690,11 +4690,11 @@
       "stop_loss": "93円（現在値、即時損切り推奨）",
       "action": "損切り",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "status": "win",
+      "actual_price": 89.0,
+      "actual_return_pct": -4.3,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_3133.T_holdings",
@@ -4707,11 +4707,11 @@
       "stop_loss": "249円（現在値、即時損切り推奨）",
       "action": "損切り",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "status": "win",
+      "actual_price": 210.0,
+      "actual_return_pct": -15.66,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_3350.T_holdings",
@@ -4724,11 +4724,11 @@
       "stop_loss": "313円（取得単価、トレーリングストップ適用）",
       "action": "保有継続",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "status": "loss",
+      "actual_price": 309.0,
+      "actual_return_pct": -10.17,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_3777.T_holdings",
@@ -4741,11 +4741,11 @@
       "stop_loss": "59円（現在値、損切り推奨）",
       "action": "損切り",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "status": "win",
+      "actual_price": 57.0,
+      "actual_return_pct": -3.39,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_4563.T_holdings",
@@ -4758,11 +4758,11 @@
       "stop_loss": "53円（現在値、損切り推奨）",
       "action": "損切り",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "status": "win",
+      "actual_price": 51.0,
+      "actual_return_pct": -3.77,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_4597.T_holdings",
@@ -4775,11 +4775,11 @@
       "stop_loss": "32円（現在値、損切り推奨）",
       "action": "損切り",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "status": "win",
+      "actual_price": 30.0,
+      "actual_return_pct": -6.25,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_4661.T_holdings",
@@ -4792,11 +4792,11 @@
       "stop_loss": "2241円（現在値、即時損切り推奨）",
       "action": "損切り",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "status": "win",
+      "actual_price": 2149.0,
+      "actual_return_pct": -4.13,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_4755.T_holdings",
@@ -4810,10 +4810,10 @@
       "action": "損切り",
       "source": "holdings",
       "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "actual_price": 760.5,
+      "actual_return_pct": 1.68,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_4765.T_holdings",
@@ -4827,10 +4827,10 @@
       "action": "一部利確",
       "source": "holdings",
       "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "actual_price": 601.0,
+      "actual_return_pct": -0.17,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_5129.T_holdings",
@@ -4843,11 +4843,11 @@
       "stop_loss": "374円（現在値、即時損切り推奨）",
       "action": "損切り",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "status": "win",
+      "actual_price": 337.0,
+      "actual_return_pct": -9.89,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_5721.T_holdings",
@@ -4860,11 +4860,11 @@
       "stop_loss": "97円（現在値、損切り推奨）",
       "action": "損切り",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "status": "win",
+      "actual_price": 91.0,
+      "actual_return_pct": -6.19,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_7261.T_holdings",
@@ -4877,11 +4877,11 @@
       "stop_loss": "932円（取得単価981円の-5%）",
       "action": "保有継続",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "status": "loss",
+      "actual_price": 1068.5,
+      "actual_return_pct": 7.83,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_7638.T_holdings",
@@ -4895,10 +4895,10 @@
       "action": "損切り",
       "source": "holdings",
       "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "actual_price": 1344.0,
+      "actual_return_pct": -1.03,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_7859.T_holdings",
@@ -4912,10 +4912,10 @@
       "action": "利確",
       "source": "holdings",
       "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "actual_price": 271.0,
+      "actual_return_pct": -2.52,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_7974.T_holdings",
@@ -4928,11 +4928,11 @@
       "stop_loss": "7154円（取得単価7530円の-5%）",
       "action": "保有継続",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "status": "win",
+      "actual_price": 6864.0,
+      "actual_return_pct": -10.47,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_8173.T_holdings",
@@ -4946,10 +4946,10 @@
       "action": "保有継続",
       "source": "holdings",
       "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "actual_price": 2955.0,
+      "actual_return_pct": 1.16,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_8202.T_holdings",
@@ -4963,10 +4963,10 @@
       "action": "損切り",
       "source": "holdings",
       "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "actual_price": 149.0,
+      "actual_return_pct": -0.67,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_8306.T_holdings",
@@ -4980,10 +4980,10 @@
       "action": "一部利確",
       "source": "holdings",
       "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "actual_price": 2877.0,
+      "actual_return_pct": 2.51,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_9432.T_holdings",
@@ -4997,10 +4997,10 @@
       "action": "損切り",
       "source": "holdings",
       "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "actual_price": 149.6,
+      "actual_return_pct": -0.4,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_9434.T_holdings",
@@ -5014,10 +5014,10 @@
       "action": "利確",
       "source": "holdings",
       "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "actual_price": 221.9,
+      "actual_return_pct": 0.68,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_9633.T_holdings",
@@ -5030,11 +5030,11 @@
       "stop_loss": "1500円（現在値の-5%）",
       "action": "利確",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "status": "loss",
+      "actual_price": 1636.0,
+      "actual_return_pct": 3.61,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_6448.T_short_term",
@@ -5068,11 +5068,11 @@
       "target_price": "6,100〜6,300円",
       "entry_strategy": "現値5,679円付近で成行または指値5,650円エントリー（60%）。上昇継続を確認後に追加購入（40%）。SMA25割れは即損切り。",
       "source": "short_term",
-      "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "status": "loss",
+      "actual_price": 5301.0,
+      "actual_return_pct": -6.66,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_8919.T_short_term",
@@ -5125,11 +5125,11 @@
       "target_price": "3,100〜3,200円",
       "entry_strategy": "2,900円を割り込まないことを確認してから指値2,880〜2,920円で少量エントリー（30%のみ）。MACDヒストグラムの収束（底打ちの兆候）が出てから追加。5銘柄中最もリスクが高いため、ポジションサイズは最小限に抑える。",
       "source": "short_term",
-      "status": "pending",
-      "actual_price": null,
-      "actual_return_pct": null,
-      "reviewed_date": null,
-      "days_held": null
+      "status": "win",
+      "actual_price": 3008.0,
+      "actual_return_pct": 3.26,
+      "reviewed_date": "2026-05-15",
+      "days_held": 5
     },
     {
       "id": "2026-05-10_3092.T_long_term",
@@ -7873,65 +7873,608 @@
         "revenue_growth": true,
         "volume_trend_up": true
       }
+    },
+    {
+      "id": "2026-05-15_2321.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "2321.T",
+      "name": "ソフトフロントH",
+      "prediction": "DOWN",
+      "confidence": "MEDIUM",
+      "entry_price": 171.0,
+      "stop_loss": "162円（現在値-5%）",
+      "action": "損切り",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_3070.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "3070.T",
+      "name": "ジェリービーンズ",
+      "prediction": "DOWN",
+      "confidence": "MEDIUM",
+      "entry_price": 89.0,
+      "stop_loss": "85円（BB下限84.55円付近）",
+      "action": "損切り",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_3133.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "3133.T",
+      "name": "海帆",
+      "prediction": "DOWN",
+      "confidence": "MEDIUM",
+      "entry_price": 210.0,
+      "stop_loss": "200円（BB下限203.16円付近）",
+      "action": "損切り",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_3350.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "3350.T",
+      "name": "メタプラネット",
+      "prediction": "DOWN",
+      "confidence": "LOW",
+      "entry_price": 309.0,
+      "stop_loss": "294円（現在値-5%）",
+      "action": "保有継続",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_3777.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "3777.T",
+      "name": "環境フレンドリー",
+      "prediction": "DOWN",
+      "confidence": "MEDIUM",
+      "entry_price": 57.0,
+      "stop_loss": "54円（BB下限55.39円付近）",
+      "action": "損切り",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_4563.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "4563.T",
+      "name": "アンジェス",
+      "prediction": "DOWN",
+      "confidence": "MEDIUM",
+      "entry_price": 51.0,
+      "stop_loss": "49円（52週安値51円を割り込んだら即損切り）",
+      "action": "保有継続",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_4597.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "4597.T",
+      "name": "ソレイジア",
+      "prediction": "DOWN",
+      "confidence": "MEDIUM",
+      "entry_price": 30.0,
+      "stop_loss": "28円（BB下限27.93円付近）",
+      "action": "損切り",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_4661.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "4661.T",
+      "name": "OLC",
+      "prediction": "DOWN",
+      "confidence": "LOW",
+      "entry_price": 2149.0,
+      "stop_loss": "2042円（BB下限2031.31円付近）",
+      "action": "損切り",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_4755.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "4755.T",
+      "name": "楽天グループ",
+      "prediction": "DOWN",
+      "confidence": "LOW",
+      "entry_price": 760.5,
+      "stop_loss": "722円（BB下限728.8円付近）",
+      "action": "損切り",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_4765.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "4765.T",
+      "name": "SBIGアセットM",
+      "prediction": "UP",
+      "confidence": "MEDIUM",
+      "entry_price": 601.0,
+      "stop_loss": "526円（トレーリングストップ提案水準）",
+      "action": "利確",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_5129.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "5129.T",
+      "name": "FIXER",
+      "prediction": "DOWN",
+      "confidence": "MEDIUM",
+      "entry_price": 337.0,
+      "stop_loss": "320円（現在値-5%水準）",
+      "action": "損切り",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_5721.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "5721.T",
+      "name": "エスクリプトエナジー",
+      "prediction": "DOWN",
+      "confidence": "MEDIUM",
+      "entry_price": 91.0,
+      "stop_loss": "87円（現在値-5%水準）",
+      "action": "損切り",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_7261.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "7261.T",
+      "name": "マツダ",
+      "prediction": "UP",
+      "confidence": "MEDIUM",
+      "entry_price": 1068.5,
+      "stop_loss": "981円（建値トレーリングストップ、含み益を保護）",
+      "action": "保有継続",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_7638.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "7638.T",
+      "name": "NEW ART",
+      "prediction": "DOWN",
+      "confidence": "MEDIUM",
+      "entry_price": 1344.0,
+      "stop_loss": "1277円（現在値-5%水準、BB下限1336.13より下）",
+      "action": "保有継続",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_7859.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "7859.T",
+      "name": "アルメディオ",
+      "prediction": "DOWN",
+      "confidence": "MEDIUM",
+      "entry_price": 271.0,
+      "stop_loss": "229円（トレーリングストップ提案水準）",
+      "action": "利確",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_7974.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "7974.T",
+      "name": "任天堂",
+      "prediction": "DOWN",
+      "confidence": "MEDIUM",
+      "entry_price": 6864.0,
+      "stop_loss": "6521円（現在値-5%水準）",
+      "action": "保有継続",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_8173.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "8173.T",
+      "name": "Joshin",
+      "prediction": "UP",
+      "confidence": "MEDIUM",
+      "entry_price": 2955.0,
+      "stop_loss": "2810円（現在値-5%水準）",
+      "action": "保有継続",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_8202.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "8202.T",
+      "name": "ラオックスHD",
+      "prediction": "DOWN",
+      "confidence": "MEDIUM",
+      "entry_price": 149.0,
+      "stop_loss": "142円（現在値-5%水準）",
+      "action": "損切り",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_8306.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "8306.T",
+      "name": "三菱UFJ",
+      "prediction": "UP",
+      "confidence": "MEDIUM",
+      "entry_price": 2877.0,
+      "stop_loss": "1591円（トレーリングストップ提案水準、含み益の大半を保護）",
+      "action": "利確",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_9432.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "9432.T",
+      "name": "NTT",
+      "prediction": "DOWN",
+      "confidence": "LOW",
+      "entry_price": 149.6,
+      "stop_loss": "142円（建値170円の-15%水準付近、BB下限148.57も参考）",
+      "action": "保有継続",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_9434.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "9434.T",
+      "name": "ソフトバンク",
+      "prediction": "UP",
+      "confidence": "LOW",
+      "entry_price": 221.9,
+      "stop_loss": "195円（トレーリングストップ提案水準、含み益の半分を確定）",
+      "action": "保有継続",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_9633.T_holdings",
+      "date": "2026-05-15",
+      "ticker": "9633.T",
+      "name": "テアトル",
+      "prediction": "DOWN",
+      "confidence": "MEDIUM",
+      "entry_price": 1636.0,
+      "stop_loss": "1134円（トレーリングストップ提案水準）",
+      "action": "利確",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {}
+    },
+    {
+      "id": "2026-05-15_1332.T_short_term",
+      "date": "2026-05-15",
+      "ticker": "1332.T",
+      "name": "日本水産",
+      "prediction": "UP",
+      "confidence": "MEDIUM",
+      "entry_price": 1315.5,
+      "expected_move": "+8%〜+15% (2-3週間)",
+      "stop_loss": "1235円（エントリー比-5%、またはSMA25=1277円を終値で下回った場合に即撤退）",
+      "target_price": "1450〜1550円（52週高値1553円付近、+10〜18%水準）",
+      "entry_strategy": "急騰翌日は寄り付き追随を避け、SMA25(1277円)付近への押し目を指値で待機。1-2日調整後に出来高を伴う陽線確認後に分割購入。調整なく強い場合は資金の半量のみ成行で追随",
+      "source": "short_term",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {
+        "rsi_healthy_momentum": true,
+        "volume_spike": true,
+        "sma25_breakout": true,
+        "macd_crossover": true,
+        "per_value": true,
+        "roe_profitable": true,
+        "revenue_growth": true,
+        "analyst_target_upside": true,
+        "analyst_consensus_buy": true,
+        "volume_trend_up": true
+      }
+    },
+    {
+      "id": "2026-05-15_4208.T_short_term",
+      "date": "2026-05-15",
+      "ticker": "4208.T",
+      "name": "UBE",
+      "prediction": "UP",
+      "confidence": "MEDIUM",
+      "entry_price": 2459.0,
+      "expected_move": "+7%〜+12% (2-3週間)",
+      "stop_loss": "2310円（エントリー比約-5%、またはSMA25=2406円を終値で割り込んだ場合に撤退）",
+      "target_price": "2650〜2760円（アナリスト目標2760円、+8〜12%水準）",
+      "entry_strategy": "本日の強い陽線・大出来高を確認済みのため、翌日寄り付き2430〜2450円の指値で購入。上昇継続なら追加購入は不要で、利確はRSI70超え＋出来高減少を確認してから",
+      "source": "short_term",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {
+        "rsi_healthy_momentum": true,
+        "volume_spike": true,
+        "sma25_breakout": true,
+        "per_value": true,
+        "pbr_undervalued": true,
+        "dividend_yield": true,
+        "analyst_consensus_buy": true,
+        "volume_trend_up": true
+      }
+    },
+    {
+      "id": "2026-05-15_5929.T_short_term",
+      "date": "2026-05-15",
+      "ticker": "5929.T",
+      "name": "三和ホールディングス",
+      "prediction": "UP",
+      "confidence": "MEDIUM",
+      "entry_price": 3646.0,
+      "expected_move": "+6%〜+10% (2-3週間)",
+      "stop_loss": "3460円（エントリー比約-5%、またはSMA25=3629円を終値で明確に割り込んだ場合）",
+      "target_price": "3900〜4050円（52週高値4088円方向、+7〜11%水準）",
+      "entry_strategy": "SMA25ブレイクアウト翌日に3620〜3650円の指値で購入。SMA25を再度割り込んだ場合は偽ブレイクとして即損切り。翌日以降も SMA25上方維持を確認しながら保有継続",
+      "source": "short_term",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {
+        "rsi_healthy_momentum": true,
+        "volume_spike": true,
+        "sma25_breakout": true,
+        "per_value": true,
+        "roe_profitable": true,
+        "dividend_yield": true,
+        "analyst_target_upside": true,
+        "volume_trend_up": true
+      }
+    },
+    {
+      "id": "2026-05-15_7701.T_short_term",
+      "date": "2026-05-15",
+      "ticker": "7701.T",
+      "name": "島津製作所",
+      "prediction": "UP",
+      "confidence": "MEDIUM",
+      "entry_price": 3490.0,
+      "expected_move": "+6%〜+10% (2-3週間)",
+      "stop_loss": "3310円（エントリー比約-5%）",
+      "target_price": "3720〜3830円（SMA25=3732円の回復、+7〜10%水準）",
+      "entry_strategy": "翌日の陽線転換（前日比プラス）を確認してから3460〜3490円の指値で購入。下落継続の場合は見送り。分割購入推奨（第1回50%→確認後残り50%）",
+      "source": "short_term",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {
+        "rsi_oversold_recovery": true,
+        "volume_spike": true,
+        "bollinger_lower": true,
+        "roe_profitable": true,
+        "analyst_target_upside": true,
+        "analyst_consensus_buy": true,
+        "low_peg_ratio": true,
+        "volume_trend_up": true,
+        "earnings_consistent_beat": true
+      }
+    },
+    {
+      "id": "2026-05-15_2897.T_short_term",
+      "date": "2026-05-15",
+      "ticker": "2897.T",
+      "name": "日清食品ホールディングス",
+      "prediction": "UP",
+      "confidence": "MEDIUM",
+      "entry_price": 2632.0,
+      "expected_move": "+6%〜+10% (2-3週間)",
+      "stop_loss": "2500円（エントリー比約-5%、直近安値割れ）",
+      "target_price": "2820〜2960円（SMA25=2905円の方向、+7〜10%水準）",
+      "entry_strategy": "本日の陽線転換を確認済みのため翌日2600〜2640円の指値で購入。反発継続確認後に買い増し。SMA25(2905円)接近でいったん利確を検討し、RSI50回復を再エントリーの目安とする",
+      "source": "short_term",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {
+        "volume_spike": true,
+        "bollinger_lower": true,
+        "roe_profitable": true,
+        "analyst_target_upside": true,
+        "analyst_consensus_buy": true,
+        "low_peg_ratio": true,
+        "volume_trend_up": true
+      }
     }
   ],
   "performance_stats": {
-    "total_predictions": 424,
-    "wins": 95,
-    "losses": 85,
-    "pending": 244,
-    "accuracy_pct": 52.8,
-    "avg_return_wins": 4.43,
-    "avg_return_losses": -4.02,
-    "mean_return_per_trade_pct": 0.44,
-    "return_stdev_pct": 5.03,
-    "sharpe_like_per_trade": 0.09,
-    "expectancy_per_trade_pct": 0.44,
-    "profit_factor": 1.23,
+    "total_predictions": 451,
+    "wins": 109,
+    "losses": 91,
+    "pending": 251,
+    "accuracy_pct": 54.5,
+    "avg_return_wins": 4.56,
+    "avg_return_losses": -4.07,
+    "mean_return_per_trade_pct": 0.63,
+    "return_stdev_pct": 5.18,
+    "sharpe_like_per_trade": 0.12,
+    "expectancy_per_trade_pct": 0.63,
+    "profit_factor": 1.34,
     "max_drawdown_pct": 73.95,
-    "current_drawdown_pct": 53.38,
+    "current_drawdown_pct": 28.51,
     "by_confidence": {
       "HIGH": {
-        "total": 48,
-        "wins": 27,
-        "accuracy_pct": 56.2
+        "total": 53,
+        "wins": 30,
+        "accuracy_pct": 56.6
       },
       "MEDIUM": {
-        "total": 112,
-        "wins": 56,
-        "accuracy_pct": 50.0
+        "total": 126,
+        "wins": 67,
+        "accuracy_pct": 53.2
       },
       "LOW": {
-        "total": 20,
+        "total": 21,
         "wins": 12,
-        "accuracy_pct": 60.0
+        "accuracy_pct": 57.1
       }
     },
     "by_confidence_direction": {
       "HIGH_UP": {
-        "total": 10,
+        "total": 11,
         "wins": 5,
-        "accuracy_pct": 50.0
+        "accuracy_pct": 45.5
       },
       "HIGH_DOWN": {
-        "total": 38,
-        "wins": 22,
-        "accuracy_pct": 57.9
+        "total": 42,
+        "wins": 25,
+        "accuracy_pct": 59.5
       },
       "MEDIUM_UP": {
-        "total": 53,
-        "wins": 26,
-        "accuracy_pct": 49.1
+        "total": 56,
+        "wins": 28,
+        "accuracy_pct": 50.0
       },
       "MEDIUM_DOWN": {
-        "total": 59,
-        "wins": 30,
-        "accuracy_pct": 50.8
+        "total": 70,
+        "wins": 39,
+        "accuracy_pct": 55.7
       },
       "LOW_UP": {
-        "total": 9,
+        "total": 10,
         "wins": 3,
-        "accuracy_pct": 33.3
+        "accuracy_pct": 30.0
       },
       "LOW_DOWN": {
         "total": 11,
@@ -7939,18 +8482,18 @@
         "accuracy_pct": 81.8
       }
     },
-    "holdings_accuracy_pct": 55.0,
-    "short_term_accuracy_pct": 38.5,
+    "holdings_accuracy_pct": 57.0,
+    "short_term_accuracy_pct": 40.0,
     "long_term_accuracy_pct": 54.2,
     "recent_accuracy_pct": 100.0,
     "drift_indicator": {
-      "recent_expectancy_pct": -2.66,
-      "baseline_expectancy_pct": 0.7,
-      "delta_pp": -3.36,
-      "p_value": 0.009,
-      "is_drift": true,
+      "recent_expectancy_pct": 1.35,
+      "baseline_expectancy_pct": 0.58,
+      "delta_pp": 0.77,
+      "p_value": 0.669,
+      "is_drift": false,
       "recent_n": 14,
-      "baseline_n": 166
+      "baseline_n": 186
     },
     "best_prediction": {
       "ticker": "3350.T",
