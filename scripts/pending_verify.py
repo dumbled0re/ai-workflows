@@ -358,21 +358,22 @@ KIND_REGISTRY = {
 # ---------- Slack notification ----------------------------------------------
 
 
-def slack_notify(channel_env: str, text: str) -> None:
-    """Post ``text`` to the channel referenced by ``channel_env``.
+def slack_notify(text: str) -> None:
+    """Post ``text`` to ``SLACK_CHANNEL_VERIFY``.
 
-    Failures are logged and swallowed — Slack delivery hiccups should
-    never break the verify loop itself.
+    All pending-verify alerts share a single dedicated channel so they
+    don't mix with per-site operational alerts (cookie failure,
+    degradation, etc.). Failures are logged and swallowed — Slack
+    delivery hiccups should never break the verify loop itself.
     """
     import urllib.error
     import urllib.request
 
     token = os.environ.get("SLACK_BOT_TOKEN")
-    channel = os.environ.get(channel_env)
+    channel = os.environ.get("SLACK_CHANNEL_VERIFY")
     if not token or not channel:
         logger.warning(
-            "Slack notify skipped — SLACK_BOT_TOKEN / %s missing",
-            channel_env,
+            "Slack notify skipped — SLACK_BOT_TOKEN / SLACK_CHANNEL_VERIFY missing",
         )
         return
     payload = json.dumps({"channel": channel, "text": text}).encode("utf-8")
@@ -439,17 +440,6 @@ def run_one(schema: dict) -> VerifyResult:
     return fn(args)
 
 
-def project_channel_env(project: str) -> str:
-    """Map ``project`` field to the SLACK_CHANNEL_<NAME> env var name.
-
-    e.g. ``point_sites`` → ``SLACK_CHANNEL_POINT_SITES``. Falls back to
-    ``SLACK_CHANNEL_DEFAULT`` for unknown projects so we never silently
-    drop alerts.
-    """
-    name = (project or "default").upper().replace("-", "_")
-    return f"SLACK_CHANNEL_{name}"
-
-
 def process_issue(issue: dict, *, dry_run: bool) -> dict | None:
     """Process a single issue and return failure context on hard failure.
 
@@ -510,7 +500,7 @@ def process_issue(issue: dict, *, dry_run: bool) -> dict | None:
             f"detail: {result.detail}\n"
             f"relates_to: {schema.get('relates_to', 'n/a')}"
         )
-        slack_notify(project_channel_env(schema.get("project", "default")), slack_text)
+        slack_notify(slack_text)
         comment_on_issue(
             number,
             f"❌ verify 失敗 (attempt {attempt + 1}/{max_attempts}) — user 介入待ち\n\n```\n{result.detail}\n```",

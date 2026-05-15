@@ -51,8 +51,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL_POINT_SITES: ${{ secrets.SLACK_CHANNEL_MOPPY }}
-          SLACK_CHANNEL_DEFAULT: ${{ secrets.SLACK_CHANNEL_MOPPY }}
+          # Dedicated channel for pending-verify alerts so they stay
+          # separate from per-site operational alerts (moppy / pointtown
+          # / etc). Set this secret to the Slack channel ID (e.g.
+          # ``C0123ABC456``) of the verify-alerts channel and invite
+          # the bot. Until the secret is set, slack notifications are
+          # skipped with a warning.
+          SLACK_CHANNEL_VERIFY: ${{ secrets.SLACK_CHANNEL_VERIFY }}
           VERIFY_FAILURES_PATH: verify_failures.json
         run: |
           set -e
