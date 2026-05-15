@@ -50,15 +50,17 @@ def check_sector_concentration(
     ticker_info: dict[str, dict],
     max_per_sector: int = MAX_PER_SECTOR,
 ) -> list[RiskFinding]:
-    """Flag sectors holding more than ``max_per_sector`` recommendations.
+    """Flag sectors with more than ``max_per_sector`` NEW picks.
 
-    ``recommendations`` is a flat list of dicts with at least ``ticker``
-    set; ``ticker_info`` maps ticker → ``{"sector": "..."}`` from
-    ``yfinance``. Tickers with unknown sector are grouped under "不明"
-    and excluded from the concentration check (would otherwise pile up
-    spuriously). The default ``max_per_sector=1`` matches the
-    investment-rules.json "同セクター2銘柄以上は避ける" wording (= max 1
-    per sector is the target).
+    Scope: ``recommendations`` here should be **forward entries only**
+    (short_term + long_term picks), not the user's existing holdings —
+    holdings cluster is a rebalance signal handled by
+    ``check_holdings_sector_concentration``. The default
+    ``max_per_sector=1`` matches investment_rules.json "同セクター2銘柄
+    以上は避ける" (= one new entry per sector is the cap).
+
+    Tickers with unknown sector are grouped under "不明" and excluded
+    from the check so they don't pile up spuriously.
     """
     findings: list[RiskFinding] = []
     sector_map: dict[str, list[str]] = {}
@@ -78,9 +80,56 @@ def check_sector_concentration(
                     severity="warning",
                     kind="sector_concentration",
                     message=(
-                        f"セクター「{sector}」に {len(tickers)} 銘柄推奨 "
+                        f"新規推奨でセクター「{sector}」に {len(tickers)} 銘柄 "
                         f"(上限 {max_per_sector}): 相関リスクで分散効果が薄れます。"
                         "信頼度の高い 1 銘柄に絞るか、別セクターへ振替えてください"
+                    ),
+                    affected_tickers=tuple(tickers),
+                )
+            )
+    return findings
+
+
+# Threshold for the holdings-side concentration signal. Holdings can
+# legitimately accumulate in one sector over time (especially after
+# loss-positions stack up before the user cuts them), so we use a
+# looser cap than the new-pick limit and flag as "info" rather than
+# "warning" — it's a rebalance signal, not a "don't do this" rule.
+MAX_PER_SECTOR_HOLDINGS = 3
+
+
+def check_holdings_sector_concentration(
+    holdings: list[dict],
+    ticker_info: dict[str, dict],
+    max_per_sector: int = MAX_PER_SECTOR_HOLDINGS,
+) -> list[RiskFinding]:
+    """Flag sector clusters in already-held positions (informational).
+
+    Different from ``check_sector_concentration`` (which targets the
+    forward-entry cap of 1): held positions can't be unconcentrated by
+    tomorrow, so this is purely a rebalance / loss-cut prompt. Reported
+    at ``info`` severity so the Slack render uses the softer 🟡 icon.
+    """
+    findings: list[RiskFinding] = []
+    sector_map: dict[str, list[str]] = {}
+    for h in holdings:
+        ticker = h.get("ticker")
+        if not ticker:
+            continue
+        info = ticker_info.get(ticker, {}) or {}
+        sector = info.get("sector") or "不明"
+        if sector == "不明":
+            continue
+        sector_map.setdefault(sector, []).append(ticker)
+    for sector, tickers in sector_map.items():
+        if len(tickers) > max_per_sector:
+            findings.append(
+                RiskFinding(
+                    severity="info",
+                    kind="holdings_sector_concentration",
+                    message=(
+                        f"保有銘柄でセクター「{sector}」に {len(tickers)} 銘柄集中 "
+                        f"(目安 {max_per_sector} 以下): rebalance / 損切り検討の余地あり"
                     ),
                     affected_tickers=tuple(tickers),
                 )
@@ -92,7 +141,13 @@ def check_total_recommendations(
     recommendations: list[dict],
     max_count: int = MAX_RECOMMENDATIONS,
 ) -> list[RiskFinding]:
-    """Flag when total recommendations exceed the configured cap."""
+    """Flag when **new-pick** total exceeds the cap.
+
+    Scope: ``recommendations`` here should be forward entries only.
+    Holdings analysis count is informational and handled separately
+    (each holding always gets a loss-cut / hold / take-profit advisory
+    — that's not a "decision overload" signal, just the daily report).
+    """
     count = sum(1 for r in recommendations if r.get("ticker"))
     if count > max_count:
         return [
@@ -100,7 +155,7 @@ def check_total_recommendations(
                 severity="warning",
                 kind="total_count",
                 message=(
-                    f"推奨銘柄 {count} 件が上限 {max_count} を超過。"
+                    f"新規推奨銘柄 {count} 件が上限 {max_count} を超過。"
                     f"集中度を下げる + ポジション管理の観点で {max_count} 件以下に絞ってください"
                 ),
             )
@@ -277,16 +332,51 @@ def check_all(
     recommendations: list[dict],
     ticker_info: dict[str, dict] | None = None,
     price_data: dict[str, object] | None = None,
+    *,
+    new_picks: list[dict] | None = None,
+    holdings: list[dict] | None = None,
 ) -> list[RiskFinding]:
-    """Run every available check and return findings sorted by severity."""
+    """Run every available check and return findings sorted by severity.
+
+    Preferred call style separates ``new_picks`` from ``holdings`` so
+    each check applies to its appropriate scope:
+
+    - count / sector cap → forward entries only (caps are entry rules,
+      can't be applied retroactively to held positions)
+    - holdings-side sector concentration → informational rebalance
+      signal at "info" severity
+    - per-ticker checks (risk_reward, stop_loss, correlation) → run on
+      ``new_picks ∪ holdings`` since they're ticker-level hygiene
+
+    Legacy callers passing only ``recommendations`` (combined list)
+    get the old behaviour where caps apply to the combined bucket —
+    deprecated and emits a noisy warning text but stays functional so
+    we don't break anything mid-deploy.
+    """
     findings: list[RiskFinding] = []
-    findings.extend(check_total_recommendations(recommendations))
-    if ticker_info is not None:
-        findings.extend(check_sector_concentration(recommendations, ticker_info))
-    if price_data is not None:
-        findings.extend(check_pairwise_correlation(recommendations, price_data))
-    findings.extend(check_risk_reward(recommendations))
-    findings.extend(check_stop_loss_consistency(recommendations))
+
+    if new_picks is not None or holdings is not None:
+        new_picks = new_picks or []
+        holdings = holdings or []
+        combined = [*holdings, *new_picks]
+        findings.extend(check_total_recommendations(new_picks))
+        if ticker_info is not None:
+            findings.extend(check_sector_concentration(new_picks, ticker_info))
+            findings.extend(check_holdings_sector_concentration(holdings, ticker_info))
+        if price_data is not None:
+            findings.extend(check_pairwise_correlation(combined, price_data))
+        findings.extend(check_risk_reward(combined))
+        findings.extend(check_stop_loss_consistency(combined))
+    else:
+        # Legacy path: treats holdings + new_picks as one bucket.
+        findings.extend(check_total_recommendations(recommendations))
+        if ticker_info is not None:
+            findings.extend(check_sector_concentration(recommendations, ticker_info))
+        if price_data is not None:
+            findings.extend(check_pairwise_correlation(recommendations, price_data))
+        findings.extend(check_risk_reward(recommendations))
+        findings.extend(check_stop_loss_consistency(recommendations))
+
     # Stable order: warnings before info, then by kind for determinism
     severity_rank = {"warning": 0, "info": 1}
     findings.sort(key=lambda f: (severity_rank.get(f.severity, 2), f.kind))

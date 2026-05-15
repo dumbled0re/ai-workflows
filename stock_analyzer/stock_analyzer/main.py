@@ -702,6 +702,7 @@ def phase_critique() -> None:
     portfolio_findings_text = ""
     try:
         from stock_analyzer.portfolio_risk import (
+            check_holdings_sector_concentration,
             check_pairwise_correlation,
             check_risk_reward,
             check_sector_concentration,
@@ -710,14 +711,15 @@ def phase_critique() -> None:
             format_findings_for_prompt,
         )
 
-        recommendations: list[dict] = []
-        for h in holdings_result.get("holdings_analysis", []) or []:
-            if h.get("prediction") in ("UP", "DOWN"):
-                recommendations.append(h)
+        holdings_list_pre: list[dict] = [
+            h for h in (holdings_result.get("holdings_analysis", []) or []) if h.get("prediction") in ("UP", "DOWN")
+        ]
+        new_picks_list_pre: list[dict] = []
         for key in ("short_term_picks", "long_term_picks", "recommended_stocks"):
             for r in discovery_result.get(key, []) or []:
                 if r.get("prediction") in ("UP", "DOWN"):
-                    recommendations.append(r)
+                    new_picks_list_pre.append(r)
+        recommendations = [*holdings_list_pre, *new_picks_list_pre]
 
         aux_path = _DATA_DIR / "portfolio_aux.json"
         ticker_info: dict = {}
@@ -731,9 +733,14 @@ def phase_critique() -> None:
             close_history = aux.get("close_history") or {}
             price_data = {t: _ClosesShim(closes) for t, closes in close_history.items()}
 
+        # New-pick caps + holdings-side concentration are surfaced to
+        # the critic so its rubric can reject violators. Per-ticker
+        # checks (risk_reward, stop_loss, correlation) run on the
+        # combined list because they're ticker-level hygiene.
         pre_findings = []
-        pre_findings.extend(check_total_recommendations(recommendations))
-        pre_findings.extend(check_sector_concentration(recommendations, ticker_info))
+        pre_findings.extend(check_total_recommendations(new_picks_list_pre))
+        pre_findings.extend(check_sector_concentration(new_picks_list_pre, ticker_info))
+        pre_findings.extend(check_holdings_sector_concentration(holdings_list_pre, ticker_info))
         pre_findings.extend(check_pairwise_correlation(recommendations, price_data))
         pre_findings.extend(check_risk_reward(recommendations))
         pre_findings.extend(check_stop_loss_consistency(recommendations))
@@ -902,15 +909,22 @@ def phase_notify() -> None:
             # works without pulling pandas into Phase 3. The shim is
             # minimal: only ``df["Close"].tail(N).iloc[i]`` is used.
             price_data: dict[str, object] = {t: _ClosesShim(closes) for t, closes in close_history.items()}
-            recommendations: list[dict] = []
-            for h in holdings_result.get("holdings_analysis", []) or []:
-                if h.get("prediction") in ("UP", "DOWN"):
-                    recommendations.append(h)
+            holdings_list: list[dict] = [
+                h for h in (holdings_result.get("holdings_analysis", []) or []) if h.get("prediction") in ("UP", "DOWN")
+            ]
+            new_picks_list: list[dict] = []
             for key in ("short_term_picks", "long_term_picks", "recommended_stocks"):
                 for r in discovery_result.get(key, []) or []:
                     if r.get("prediction") in ("UP", "DOWN"):
-                        recommendations.append(r)
-            findings = check_all(recommendations, ticker_info=ticker_info, price_data=price_data)
+                        new_picks_list.append(r)
+            recommendations = [*holdings_list, *new_picks_list]
+            findings = check_all(
+                recommendations,
+                ticker_info=ticker_info,
+                price_data=price_data,
+                new_picks=new_picks_list,
+                holdings=holdings_list,
+            )
             portfolio_findings_text = format_findings_for_slack(findings)
 
             # Factor exposure aggregate + concentration warning. The
