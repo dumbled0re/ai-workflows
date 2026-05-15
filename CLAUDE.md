@@ -62,11 +62,24 @@ uv run mypy point_sites          # point_sites のみ
 - 検証層自体が壊れた場合 (HTML 変更等) も本処理は止めず「検証失敗」として通知
 - 自動 fallback はコード変更不要で revert できる経路 (env var / GitHub Variable) を用意
 
-## Deferred verification (pending-verify) 仕組み
+## 後日に持ち越す task は GitHub issue に積む
 
-今 session 内で確認できない検証 (cron 1 ラウンド後 / N 日後 / 外部 event 待ち等) は **イシュー + verify YAML** で予約しておくと、毎朝 07:30 JST cron が due な検証を実行 → success で auto-close、failure 時は Claude Code Action で自動修正を試行 → ダメなら Slack 通知。
+session 内で完結しない / 翌日以降に持ち越す task は **必ず GitHub issue に登録する**。口頭・memory だけだと session 跨ぎで存在を忘れる。`/todo` skill は廃止予定なので使わない。memory は補助として書いて OK だが、**user-facing reminder としては必ず issue を主にする**。
 
-これは **monorepo 全 project 横断の共通基盤**。新しく追加した任意の project でそのまま使える。
+### 該当する task タイプと運用
+
+| タイプ | 例 | 仕組み | label |
+|---|---|---|---|
+| **機械検証** | cron 1 ラウンド後の log grep、N 日後の状態確認、外部 event 待ち | pending-verify system (下記) で毎朝 07:30 JST 自動実行 | `pending-verify` |
+| **改善 / 後回し実装** | codex review 指摘の段階実装、観察期間後に着手する refactor | 人手 (= 次 session の Claude) で着手。issue body に依存 / 期限 / 参照 commit を書く | `enhancement` |
+| **user に確認依頼** | 「user に X を確認してもらって結果を Claude に伝える」など人手介在 task | issue で予約 + body に「user がやること / 結果をどう伝えるか」を明記。気付き手段は **gh issue list (open) を session 開始時に Claude が確認** または開いた issue の Slack 通知 | 適宜 (`question` 等) |
+| **観察 follow-up** | 効果測定中の経過確認、長期 metric 評価 | issue body に期限を書く + 必要なら別途 pending-verify で機械確認を併用 | `enhancement` 等 |
+
+**ルール**: 「あとでやる」「明日確認」「来週着手」が出たら **即 `gh issue create`**。memory に書いて満足しない。issue body には: 関連 commit hash / 関連 memory file / 依存する他 issue 番号 / 期限 (あれば) を残し、次 session の Claude が context 引ける状態にする。
+
+### Deferred verification (pending-verify) 仕組み
+
+機械的に確認できる検証 task は pending-verify system に積む。**monorepo 全 project 横断の共通基盤**で、新しく追加した任意の project でそのまま使える。
 
 新しい deferred check を登録する手順:
 
@@ -85,9 +98,7 @@ uv run mypy point_sites          # point_sites のみ
 - `verify/**/*.yml` — 検証 schema 群
 - 詳細は `scripts/pending_verify.py` の module docstring 参照
 
-通知: `SLACK_CHANNEL_VERIFY` Secret 指定 channel に全イベント (success / inconclusive / failure) を流す。issue にもコメントが残るので Slack ロスト時の冗長性あり。
-
-**ルール**: 「あとで確認」要件が出たら必ずこの仕組みに積むこと。口頭・memory だけに頼ると session 跨ぎで消える。
+通知: `SLACK_CHANNEL_VERIFY` Secret 指定 channel に全イベント (success / inconclusive / failure) を流す。issue にもコメントが残るので Slack ロスト時の冗長性あり。pending-verify の `kind` 登録は機械検証用なので、`enhancement` 等の人手 task issue には `pending-verify` label を **付けないこと** (cron が拾って混乱の元になる)。
 
 ## Git 運用ポリシー
 
