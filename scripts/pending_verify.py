@@ -450,14 +450,20 @@ def project_channel_env(project: str) -> str:
     return f"SLACK_CHANNEL_{name}"
 
 
-def process_issue(issue: dict, *, dry_run: bool) -> None:
+def process_issue(issue: dict, *, dry_run: bool) -> dict | None:
+    """Process a single issue and return failure context on hard failure.
+
+    Returns a structured dict on ``failure`` so ``main`` can hand the
+    list to the auto-fix step. ``None`` on success / inconclusive /
+    skip — those need no downstream action.
+    """
     number = issue["number"]
     title = issue.get("title", f"#{number}")
     body = issue.get("body") or ""
     fm = parse_issue_front_matter(body)
     if not fm or "verify_id" not in fm:
         logger.warning("issue %s missing verify_id front-matter; skipping", number)
-        return
+        return None
     verify_id = str(fm["verify_id"])
     schema = load_verify_schema(verify_id)
     if schema is None:
@@ -465,10 +471,10 @@ def process_issue(issue: dict, *, dry_run: bool) -> None:
         logger.warning("schema not found: %s", verify_id)
         if not dry_run:
             comment_on_issue(number, msg)
-        return
+        return None
     if not is_due(schema):
         logger.info("issue %s (%s): not yet due", number, verify_id)
-        return
+        return None
 
     attempt = issue_attempt_count(issue.get("labels", []))
     max_attempts = int(schema.get("max_attempts", DEFAULT_MAX_ATTEMPTS))
@@ -476,7 +482,7 @@ def process_issue(issue: dict, *, dry_run: bool) -> None:
 
     if dry_run:
         logger.info("DRY RUN — would execute kind=%s args=%s", schema["kind"], schema.get("args"))
-        return
+        return None
 
     bump_attempt_label(number, attempt)
     result = run_one(schema)
@@ -486,14 +492,14 @@ def process_issue(issue: dict, *, dry_run: bool) -> None:
         success_msg = schema.get("success_message") or "✅ 自動検証 OK"
         comment_on_issue(number, f"{success_msg}\n\n```\n{result.detail}\n```")
         close_issue(number)
-        return
+        return None
 
     if result.is_inconclusive:
         comment_on_issue(
             number,
             f"🟡 inconclusive (再試行は {schema.get('retry_after_hours', DEFAULT_RETRY_AFTER_HOURS)}h 後)\n\n```\n{result.detail}\n```",
         )
-        return
+        return None
 
     # Hard failure.
     if attempt + 1 >= max_attempts:
@@ -509,11 +515,28 @@ def process_issue(issue: dict, *, dry_run: bool) -> None:
             number,
             f"❌ verify 失敗 (attempt {attempt + 1}/{max_attempts}) — user 介入待ち\n\n```\n{result.detail}\n```",
         )
-        return
-    comment_on_issue(
-        number,
-        f"❌ attempt {attempt + 1}/{max_attempts} 失敗。次回 cron で再試行。\n\n```\n{result.detail}\n```",
-    )
+    else:
+        comment_on_issue(
+            number,
+            f"❌ attempt {attempt + 1}/{max_attempts} 失敗。Claude 自動修正を試行 (失敗ならまた次回 cron)\n\n```\n{result.detail}\n```",
+        )
+
+    # Always emit failure context so the auto-fix step can pick it up.
+    # The auto-fix workflow respects ``max_attempts`` upstream by reading
+    # the same label, so we don't gate here.
+    return {
+        "issue_number": number,
+        "title": title,
+        "verify_id": verify_id,
+        "project": schema.get("project", "default"),
+        "kind": schema.get("kind"),
+        "args": schema.get("args"),
+        "relates_to": schema.get("relates_to"),
+        "description": schema.get("description"),
+        "detail": result.detail,
+        "attempt": attempt + 1,
+        "max_attempts": max_attempts,
+    }
 
 
 def main() -> int:
@@ -528,11 +551,28 @@ def main() -> int:
 
     issues = list_pending_issues()
     logger.info("found %d open pending-verify issue(s)", len(issues))
+    failures: list[dict] = []
     for issue in issues:
         try:
-            process_issue(issue, dry_run=args.dry_run)
+            failure = process_issue(issue, dry_run=args.dry_run)
+            if failure is not None:
+                failures.append(failure)
         except Exception:
             logger.exception("issue %s processing failed", issue.get("number"))
+
+    # Hand-off to the auto-fix step in the workflow. The workflow reads
+    # ``has_failures=true`` to gate the Claude Code Action invocation, and
+    # ``failures.json`` is the prompt context. dry-run never emits these
+    # so a manual smoke run doesn't accidentally trigger an auto-fix.
+    if failures and not args.dry_run:
+        out_path = Path(os.environ.get("VERIFY_FAILURES_PATH", "verify_failures.json"))
+        out_path.write_text(json.dumps(failures, ensure_ascii=False, indent=2), encoding="utf-8")
+        logger.info("emitted %d failure(s) to %s", len(failures), out_path)
+        gh_output = os.environ.get("GITHUB_OUTPUT")
+        if gh_output:
+            with open(gh_output, "a", encoding="utf-8") as fh:
+                fh.write("has_failures=true\n")
+                fh.write(f"failures_path={out_path}\n")
     return 0
 
 

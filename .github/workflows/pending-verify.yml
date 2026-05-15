@@ -8,8 +8,16 @@ name: pending-verify
 # sessions — the issue closes itself when the system can confirm the
 # fix landed.
 #
-# Schema + execution are decoupled (issue = state, repo YAML =
-# execution plan) per the codex consult 2026-05-15.
+# Two-stage pipeline (codex consult 2026-05-15):
+#   1. ``Run pending verifications`` — Python runner reads issues +
+#      ``verify/*.yml``, executes the declared kind, comments back.
+#      Hard failures are written to ``verify_failures.json``.
+#   2. ``Auto-fix with Claude`` — if stage 1 produced any failures,
+#      invoke Claude Code Action with the failures.json as context.
+#      Claude reads the related issue / verify YAML / commits / logs;
+#      if it identifies a confident code regression, it edits + tests
+#      + commits + pushes. Otherwise it leaves a "needs human" comment
+#      on the issue. Existing Slack notification still fires upstream.
 
 on:
   schedule:
@@ -17,14 +25,14 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "do not trigger workflows / comment on issues"
+        description: "do not trigger workflows / comment on issues / invoke claude"
         type: boolean
         default: false
 
 permissions:
-  contents: read
+  contents: write   # claude auto-fix commits + pushes
   issues: write
-  actions: write  # triggers other workflows via gh workflow run
+  actions: write    # triggers other workflows via gh workflow run
 
 jobs:
   verify:
@@ -38,18 +46,81 @@ jobs:
           enable-cache: true
 
       - name: Run pending verifications
+        id: verify
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_POINT_SITES: ${{ secrets.SLACK_CHANNEL_MOPPY }}
           SLACK_CHANNEL_DEFAULT: ${{ secrets.SLACK_CHANNEL_MOPPY }}
+          VERIFY_FAILURES_PATH: verify_failures.json
         run: |
           set -e
           DRY=""
           if [[ "${{ inputs.dry_run }}" == "true" ]]; then
             DRY="--dry-run"
           fi
-          # ``uv run --with`` materializes an ephemeral venv with the
-          # listed deps so we don't need the ubuntu runner's system
-          # Python (PEP 668 externally-managed).
           uv run --with pyyaml python scripts/pending_verify.py $DRY
+
+      - name: Auto-fix with Claude
+        if: steps.verify.outputs.has_failures == 'true' && inputs.dry_run != true
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--allowedTools "Read,Write,Edit,Bash,Glob,Grep" --max-turns 30'
+          prompt: |
+            あなたは ai-workflows repo の pending-verify 自動修正担当 Claude です。
+            以下の verify が failure を返しました。``verify_failures.json`` に
+            詳細が入っています:
+
+            ```bash
+            cat verify_failures.json
+            ```
+
+            各 failure について以下の手順で対処:
+
+            1. **コンテキストを読む**
+               - ``gh issue view <issue_number> --comments`` で issue 履歴
+               - ``verify/<verify_id>.yml`` で検証定義
+               - ``git log --oneline -10 -- <relates_to の周辺ファイル>`` で
+                 関連 commit
+               - 必要なら ``gh run view <run_id> --log`` で実 cron の log
+
+            2. **真の原因を特定**
+               - failure の detail を字面通り信じず、何が起きてるか考える
+               - 「pattern 不一致」なら: 実行された workflow log と pattern
+                 を比較。pattern が brittle なら verify YAML を refine、
+                 コードが regression なら src を修正
+               - 「workflow run failed」なら: 該当 workflow log を読んで
+                 source の bug か外部要因か判断
+
+            3. **修正できるなら修正**
+               - 該当 file を Edit
+               - 修正対象が point_sites/ 配下なら必ず:
+                 ``cd point_sites && uv run ruff check . && uv run ruff format --check . && uv run mypy point_sites && uv run pytest -q``
+                 全て pass を確認
+               - その他 (stock_analyzer 等) も同様に lint+test pass を確認
+               - ``git add`` + ``git commit`` + ``git push origin master``
+               - commit message は 1 行目に変更要約 + Co-Authored-By 行
+               - 最後に ``gh issue comment <issue_number> --body "..."``
+                 で「auto-fix attempted: commit <sha> — 翌朝の cron で
+                 再検証されます」と報告
+
+            4. **修正できない / 自信がない / 物理アクションが必要なら**
+               - Cookie 失効 / Gmail 設定 / Secret 更新等 user 操作が必要
+               - 原因不明 / 推測の修正で regression を生む懸念
+               - ``gh issue comment <issue_number> --body "❌ auto-fix
+                 not applicable: <理由>\n必要なアクション: <user 操作>"``
+                 でコメント
+               - **絶対に推測の修正は push しない** (regression を生む)
+
+            重要な制約:
+            - lint/test 失敗の状態では push しない
+            - 1 failure につき 1 commit (複数試行で grow しない)
+            - 自分が直すべきか迷ったら **修正しない方を選ぶ** — 人間が
+              対応する方が安全。 cron は明日も走るので焦らない
+            - .gitignore 対象 (data/, .venv/, secrets/) は触らない
+            - secrets / credentials を含むファイルは絶対 commit しない
+
+            終わったらこの session は終了で OK。
