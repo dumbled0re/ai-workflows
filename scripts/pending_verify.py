@@ -468,13 +468,17 @@ def process_issue(issue: dict, *, dry_run: bool) -> dict | None:
 
     attempt = issue_attempt_count(issue.get("labels", []))
     max_attempts = int(schema.get("max_attempts", DEFAULT_MAX_ATTEMPTS))
-    logger.info("issue %s (%s): running attempt %d/%d", number, verify_id, attempt + 1, max_attempts)
+    logger.info("issue %s (%s): current attempt counter %d/%d", number, verify_id, attempt, max_attempts)
 
     if dry_run:
         logger.info("DRY RUN — would execute kind=%s args=%s", schema["kind"], schema.get("args"))
         return None
 
-    bump_attempt_label(number, attempt)
+    # NOTE: ``verify-attempt:N`` is bumped **only on hard failure**.
+    # success and inconclusive don't consume attempts, so canary
+    # (always-inconclusive heartbeat) doesn't accumulate labels in
+    # the repo, and oscillating inconclusive→failure→inconclusive
+    # only counts the failures toward max_attempts.
     result = run_one(schema)
     logger.info("issue %s result: %s — %s", number, result.status, result.detail)
 
@@ -506,7 +510,10 @@ def process_issue(issue: dict, *, dry_run: bool) -> dict | None:
         )
         return None
 
-    # Hard failure.
+    # Hard failure — this counts as an attempt. Bump the counter label
+    # so subsequent runs see the updated state.
+    bump_attempt_label(number, attempt)
+
     if attempt + 1 >= max_attempts:
         slack_notify(
             f":rotating_light: verify FAILED (final attempt) — {issue_url} {title}\n"
