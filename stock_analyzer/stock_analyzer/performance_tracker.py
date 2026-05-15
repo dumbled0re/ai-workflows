@@ -31,6 +31,26 @@ _DEFAULT_REVIEW_WINDOW_DAYS = 14
 # noisy to drive Claude's self-improvement decisions.
 _MIN_BUCKET_N = 5
 
+# Predictions whose ``prediction`` field equals one of these are
+# considered "no directional bet" — the AI explicitly declined to call
+# a direction. They never enter the history (no future price comparison
+# can resolve a non-directional pick win/loss) and they never count
+# against the AI's hit rate. Codex review (2026-05-15) flagged that
+# forcing UP/DOWN on every holding was the structural driver of the
+# 46.8% UP-prediction hit rate.
+_NO_DIRECTION_PREDICTIONS = {"NO_TRADE", "NEUTRAL"}
+
+# UP-gate configuration. When the AI's recent UP predictions are
+# winning less than this fraction, phase_prepare prepends a hard
+# directive blocking new short_term UP picks. Threshold is 50% because
+# UP/DOWN is a binary choice — below random implies real bias rather
+# than noise. ``_UP_GATE_MIN_SAMPLES`` is the minimum recent UP count
+# we require before trusting the rate (12 samples × 50% = 6 wins;
+# below this a single coin-flip swings the gate).
+_UP_GATE_THRESHOLD_PCT = 50.0
+_UP_GATE_RECENT_N = 20
+_UP_GATE_MIN_SAMPLES = 12
+
 
 def _directional_return(p: dict) -> float | None:
     """Return the realised return signed so that "predicting correctly" is positive.
@@ -183,8 +203,13 @@ def save_new_predictions(
         ticker = h.get("ticker", "")
         if not ticker:
             continue
-        # Only track actionable predictions
+        # Only track directional bets. ``NO_TRADE`` / ``NEUTRAL`` are
+        # the AI's explicit "no directional view this run" output —
+        # there's nothing to verify against a future price, and
+        # counting them dilutes the calibration sample.
         prediction = h.get("prediction")
+        if prediction in _NO_DIRECTION_PREDICTIONS:
+            continue
         if prediction not in ("UP", "DOWN"):
             continue
 
@@ -228,6 +253,8 @@ def save_new_predictions(
         if not ticker:
             continue
         prediction = r.get("prediction")
+        if prediction in _NO_DIRECTION_PREDICTIONS:
+            continue
         if prediction not in ("UP", "DOWN"):
             continue
 
@@ -269,6 +296,8 @@ def save_new_predictions(
         if not ticker:
             continue
         prediction = r.get("prediction")
+        if prediction in _NO_DIRECTION_PREDICTIONS:
+            continue
         if prediction not in ("UP", "DOWN"):
             continue
 
@@ -452,6 +481,16 @@ def compute_performance_stats(history: dict) -> dict:
         recent_wins = sum(1 for p in recent if p["status"] == "win")
         stats["recent_accuracy_pct"] = round(recent_wins / len(recent) * 100, 1)
 
+    # Recent UP hit rate — feeds the prompt-level UP gate. The AI's
+    # long-only bias (codex review 2026-05-15: UP predictions hitting
+    # 46.8% on 77 samples) only becomes a corrective signal when we
+    # measure it on the *recent* sample, since the older window may
+    # reflect a different prompt era. Trigger gating off this stat
+    # downstream, not off the all-time accuracy.
+    up_stat = compute_recent_up_hit_rate(history, recent_n=_UP_GATE_RECENT_N)
+    if up_stat is not None:
+        stats["recent_up_hit_rate"] = up_stat
+
     # Strategy drift: compare expectancy on the last 14 resolved trades
     # against the older baseline. A negative delta means today's
     # selection logic / prompt has decayed relative to whatever it
@@ -482,6 +521,92 @@ def compute_performance_stats(history: dict) -> dict:
         }
 
     return stats
+
+
+def compute_recent_up_hit_rate(history: dict, recent_n: int = _UP_GATE_RECENT_N) -> dict | None:
+    """Win rate of the most-recent ``recent_n`` resolved UP predictions.
+
+    "Recent" is sample-based, not calendar-based, so a slow week still
+    yields the same N data points. Returns ``None`` when the resolved
+    UP sample is below ``_UP_GATE_MIN_SAMPLES`` — at that point the
+    rate is a coin-flip on a few trades and shouldn't gate anything.
+
+    Returned dict:
+        {
+          "recent_n": <actual sample used>,
+          "wins": <wins among that sample>,
+          "hit_rate_pct": <wins / total * 100>,
+          "threshold_pct": <_UP_GATE_THRESHOLD_PCT>,
+          "below_threshold": <bool>,
+        }
+
+    Below-threshold is the trigger the prompt-side helper consumes;
+    surfacing it here keeps the threshold definition in one place.
+    """
+    resolved_up = [
+        p for p in history.get("predictions", []) if p.get("status") in ("win", "loss") and p.get("prediction") == "UP"
+    ]
+    if len(resolved_up) < _UP_GATE_MIN_SAMPLES:
+        return None
+    # Chronological: most recent first by reviewed_date (the moment we
+    # judged the outcome), fall back to entry date if missing.
+    chrono = sorted(
+        resolved_up,
+        key=lambda p: p.get("reviewed_date") or p.get("date", ""),
+        reverse=True,
+    )
+    sample = chrono[:recent_n]
+    if len(sample) < _UP_GATE_MIN_SAMPLES:
+        return None
+    wins = sum(1 for p in sample if p["status"] == "win")
+    hit_rate = wins / len(sample) * 100
+    return {
+        "recent_n": len(sample),
+        "wins": wins,
+        "hit_rate_pct": round(hit_rate, 1),
+        "threshold_pct": _UP_GATE_THRESHOLD_PCT,
+        "below_threshold": hit_rate < _UP_GATE_THRESHOLD_PCT,
+    }
+
+
+def build_up_gate_directive(stats: dict) -> str:
+    """Render the UP-gate prompt block when the recent UP hit rate is
+    below threshold. Empty string when the gate is inactive (= no
+    block in the prompt) so phase_prepare can unconditionally
+    concatenate it.
+
+    The directive does two things at the prompt level:
+    1. Forbids new short_term UP picks for this run.
+    2. Asks the AI to use ``NO_TRADE`` as the prediction for holdings
+       where it would otherwise default to UP without strong
+       multi-layer evidence.
+
+    Why prompt-level not code-level: the AI has rich per-ticker
+    context (news, calendar, sector); a blanket code filter would
+    drop legitimately strong UP setups. The directive nudges the
+    *selection* logic while leaving room for high-conviction outliers
+    that pass the documented bar. We still rely on later layers
+    (critic, portfolio_risk, NO_TRADE skipping in save_new_predictions)
+    to absorb anything the AI insists on against the gate.
+    """
+    up_stat = stats.get("recent_up_hit_rate") if isinstance(stats, dict) else None
+    if not isinstance(up_stat, dict) or not up_stat.get("below_threshold"):
+        return ""
+    return (
+        "=== UP予測ゲート (本日有効) ===\n"
+        f"直近 {up_stat['recent_n']} 件の UP 予測勝率が "
+        f"{up_stat['hit_rate_pct']}% (< {up_stat['threshold_pct']:.0f}%) です。"
+        "楽観バイアスの兆候があるため、今回の cron では以下のルールが強制適用されます:\n"
+        "1. **discovery short_term_picks の UP 推奨は原則禁止** — "
+        "テクニカル(SMA/MACD/RSI 全部) + ファンダ(成長 or 割安) + 強いカタリスト の "
+        "3 層すべてが UP 方向で揃っている銘柄のみ可。揃わなければ short_term_picks に入れない。\n"
+        "2. **holdings の UP 予測は厳格化** — 同じ 3 層基準を満たさない場合、"
+        '``prediction`` を `"NO_TRADE"` として short_summary に '
+        "「方向不明 — action 単独判断」と記載し、action フィールドだけで保有継続/利確/損切りを判定してください。\n"
+        "3. long_term_picks (3-12ヶ月) はゲート対象外、通常通り選定 OK。\n"
+        "このゲートは UP 予測勝率が回復するまで継続します。守れない場合の理由を critic / "
+        "performance_feedback に残してください。"
+    )
 
 
 def compute_signal_efficacy(history: dict, min_samples: int = 5) -> dict[str, dict]:
@@ -947,6 +1072,19 @@ def format_performance_feedback(history: dict) -> str:
             lines.append(f"直近トレンド: 改善中（直近{recent_acc}% vs 通算{overall_acc}%）")
         elif recent_acc < overall_acc - 5:
             lines.append(f"直近トレンド: 悪化中（直近{recent_acc}% vs 通算{overall_acc}%）")
+
+    # Recent UP hit rate — surfaced regardless of gate state so the AI
+    # can self-correct on the trajectory (recovering above threshold)
+    # without waiting for an explicit gate flip. The actual gating
+    # text is prepended outside this function via
+    # ``build_up_gate_directive`` when below_threshold is true.
+    up_stat = stats.get("recent_up_hit_rate")
+    if isinstance(up_stat, dict):
+        marker = " ⚠" if up_stat.get("below_threshold") else ""
+        lines.append(
+            f"直近 UP 予測勝率: {up_stat['hit_rate_pct']}% "
+            f"({up_stat['wins']}/{up_stat['recent_n']}件, 閾値 {up_stat['threshold_pct']:.0f}%){marker}"
+        )
 
     # Strategy-drift early warning. Expectancy (not accuracy) is the
     # right metric here: a strategy can stay 55% accurate but bleed

@@ -108,6 +108,7 @@ def phase_prepare() -> None:
 
     # Performance tracking: load history and prepare for review
     from stock_analyzer.performance_tracker import (
+        build_up_gate_directive,
         format_performance_feedback,
         load_history,
         review_predictions,
@@ -469,6 +470,19 @@ def phase_prepare() -> None:
 
     perf_history = review_predictions(perf_history, current_prices, date_str)
     performance_feedback = format_performance_feedback(perf_history)
+
+    # UP-gate directive: when the recent UP-prediction hit rate is below
+    # threshold, prepend a hard directive that restricts new short_term
+    # UP picks and tells the AI it can use ``NO_TRADE`` for holdings
+    # where the directional view isn't strongly supported. Codex review
+    # (2026-05-15) flagged long-only / UP-by-default as the structural
+    # driver of the 46.8% UP hit rate; this gate is the prompt-side
+    # correction.
+    up_gate_text = build_up_gate_directive(perf_history.get("performance_stats", {}))
+    if up_gate_text:
+        performance_feedback = (up_gate_text + "\n\n" + performance_feedback).strip()
+        logger.info("UP gate active — directive injected into prompt")
+
     save_history(perf_history)
     logger.info("Performance review complete")
 

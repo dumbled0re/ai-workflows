@@ -13,11 +13,14 @@ from __future__ import annotations
 
 from stock_analyzer.performance_tracker import (
     _directional_return,
+    build_up_gate_directive,
     compute_performance_stats,
+    compute_recent_up_hit_rate,
     extract_few_shot_examples,
     format_few_shot_for_prompt,
     format_performance_feedback,
     review_predictions,
+    save_new_predictions,
 )
 
 
@@ -596,6 +599,187 @@ def test_format_feedback_emits_drift_warning_block() -> None:
     assert "t-test p=" in feedback
     # Means should still appear in the line
     assert "+3.00%/件" in feedback or "3.0" in feedback
+
+
+# ---------- NO_TRADE / UP gate ---------------------------------------------
+
+
+def test_save_new_predictions_skips_no_trade_holdings() -> None:
+    """holdings entries with prediction='NO_TRADE' (and the legacy
+    NEUTRAL spelling) must not enter the history — there is no
+    directional bet to verify and including them dilutes calibration."""
+    history: dict = {"predictions": []}
+    holdings_result = {
+        "holdings_analysis": [
+            {"ticker": "A.T", "name": "A", "prediction": "NO_TRADE", "confidence": "MEDIUM"},
+            {"ticker": "B.T", "name": "B", "prediction": "NEUTRAL", "confidence": "LOW"},
+            {"ticker": "C.T", "name": "C", "prediction": "UP", "confidence": "HIGH"},
+        ]
+    }
+    save_new_predictions(
+        history,
+        holdings_result,
+        {"short_term_picks": [], "long_term_picks": []},
+        current_prices={"A.T": 100.0, "B.T": 100.0, "C.T": 100.0},
+        today="2026-05-15",
+    )
+    tickers = [p["ticker"] for p in history["predictions"]]
+    # Only the UP holding is tracked.
+    assert tickers == ["C.T"]
+
+
+def test_save_new_predictions_skips_no_trade_discovery() -> None:
+    """short_term_picks / long_term_picks NO_TRADE entries also skipped."""
+    history: dict = {"predictions": []}
+    discovery = {
+        "short_term_picks": [
+            {"ticker": "A.T", "name": "A", "prediction": "NO_TRADE", "confidence": "MEDIUM"},
+            {"ticker": "B.T", "name": "B", "prediction": "UP", "confidence": "HIGH"},
+        ],
+        "long_term_picks": [
+            {"ticker": "C.T", "name": "C", "prediction": "NO_TRADE", "confidence": "LOW"},
+        ],
+    }
+    save_new_predictions(
+        history,
+        {"holdings_analysis": []},
+        discovery,
+        current_prices={"A.T": 100.0, "B.T": 100.0, "C.T": 100.0},
+        today="2026-05-15",
+    )
+    tickers = [(p["ticker"], p["source"]) for p in history["predictions"]]
+    assert tickers == [("B.T", "short_term")]
+
+
+def _up_pred(status: str, reviewed_date: str, raw: float = 5.0) -> dict:
+    """Build a resolved UP prediction with a reviewed_date for ordering."""
+    p = _pred(status, "UP", raw, date="2026-01-01", reviewed_date=reviewed_date)
+    return p
+
+
+def test_compute_recent_up_hit_rate_none_below_min_samples() -> None:
+    """Below the configured min sample (12) the function returns None
+    so a tiny coin-flip sample doesn't gate anything."""
+    history = {"predictions": [_up_pred("win", f"2026-02-{i:02d}") for i in range(1, 8)]}
+    assert compute_recent_up_hit_rate(history) is None
+
+
+def test_compute_recent_up_hit_rate_returns_stat_above_threshold() -> None:
+    """20 UP predictions, 14 wins → 70% hit rate, above threshold so
+    below_threshold=False. recent_n reflects the actual sample used."""
+    preds = [_up_pred("win", f"2026-02-{i:02d}") for i in range(1, 15)]
+    preds += [_up_pred("loss", f"2026-02-{i:02d}", -5.0) for i in range(15, 21)]
+    history = {"predictions": preds}
+    stat = compute_recent_up_hit_rate(history)
+    assert stat is not None
+    assert stat["recent_n"] == 20
+    assert stat["wins"] == 14
+    assert stat["hit_rate_pct"] == 70.0
+    assert stat["below_threshold"] is False
+
+
+def test_compute_recent_up_hit_rate_flags_below_threshold() -> None:
+    """A 40% (8/20) UP hit rate sits below the 50% threshold and the
+    flag must be true so the gate downstream knows to fire."""
+    preds = [_up_pred("win", f"2026-02-{i:02d}") for i in range(1, 9)]
+    preds += [_up_pred("loss", f"2026-02-{i:02d}", -5.0) for i in range(9, 21)]
+    history = {"predictions": preds}
+    stat = compute_recent_up_hit_rate(history)
+    assert stat is not None
+    assert stat["hit_rate_pct"] == 40.0
+    assert stat["below_threshold"] is True
+
+
+def test_compute_recent_up_hit_rate_takes_most_recent_only() -> None:
+    """When the sample exceeds recent_n, the function trims to the
+    *most recent* UP predictions (sorted by reviewed_date desc) — old
+    wins shouldn't mask a recent losing streak."""
+    # 12 old wins, 12 recent losses → if we took everything we'd see
+    # 50%, but the trimmed-to-recent_n=20 view should show much worse.
+    old_wins = [_up_pred("win", f"2026-01-{i:02d}") for i in range(1, 13)]
+    recent_losses = [_up_pred("loss", f"2026-03-{i:02d}", -5.0) for i in range(1, 13)]
+    history = {"predictions": old_wins + recent_losses}
+    stat = compute_recent_up_hit_rate(history, recent_n=20)
+    # Most-recent 20 = 12 losses + 8 old wins → 8/20 = 40%
+    assert stat is not None
+    assert stat["recent_n"] == 20
+    assert stat["wins"] == 8
+
+
+def test_build_up_gate_directive_silent_when_above_threshold() -> None:
+    """Gate text is empty when hit rate is above threshold so phase_prepare
+    can unconditionally concatenate without polluting the prompt."""
+    stats = {
+        "recent_up_hit_rate": {
+            "recent_n": 20,
+            "wins": 14,
+            "hit_rate_pct": 70.0,
+            "threshold_pct": 50.0,
+            "below_threshold": False,
+        }
+    }
+    assert build_up_gate_directive(stats) == ""
+
+
+def test_build_up_gate_directive_emits_block_when_below_threshold() -> None:
+    """Below-threshold stat → directive includes the hit-rate number,
+    the ban on short_term UP, and the NO_TRADE option for holdings."""
+    stats = {
+        "recent_up_hit_rate": {
+            "recent_n": 20,
+            "wins": 8,
+            "hit_rate_pct": 40.0,
+            "threshold_pct": 50.0,
+            "below_threshold": True,
+        }
+    }
+    text = build_up_gate_directive(stats)
+    assert text != ""
+    # Headline metric is visible
+    assert "40.0%" in text
+    assert "20 件" in text
+    # The gate's two core directives are present (pin to catch refactors
+    # that silently drop one rule).
+    assert "short_term_picks の UP 推奨は原則禁止" in text
+    assert "NO_TRADE" in text
+    # long_term remains exempt
+    assert "long_term_picks" in text
+
+
+def test_build_up_gate_directive_silent_when_no_stat() -> None:
+    """Missing stat (e.g. brand-new history) → no directive. The gate
+    must not fire on insufficient data."""
+    assert build_up_gate_directive({}) == ""
+    assert build_up_gate_directive({"recent_up_hit_rate": None}) == ""
+
+
+def test_format_performance_feedback_includes_recent_up_hit_rate() -> None:
+    """Once enough UP samples exist, format_performance_feedback emits
+    the recent UP rate line regardless of gate state — the AI sees the
+    trajectory even when above threshold so it can self-monitor."""
+    preds = [_up_pred("win", f"2026-02-{i:02d}") for i in range(1, 15)]
+    preds += [_up_pred("loss", f"2026-02-{i:02d}", -5.0) for i in range(15, 21)]
+    history = {"predictions": preds}
+    history["performance_stats"] = compute_performance_stats(history)
+    feedback = format_performance_feedback(history)
+    assert "直近 UP 予測勝率" in feedback
+    assert "70.0%" in feedback
+    # The ⚠ marker is reserved for below-threshold; this rate is OK
+    # so the marker must not appear on the UP-rate line.
+    up_line = next(line for line in feedback.splitlines() if "直近 UP 予測勝率" in line)
+    assert "⚠" not in up_line
+
+
+def test_format_performance_feedback_marks_below_threshold_up_rate() -> None:
+    """Below-threshold UP rate gets the ⚠ marker on the rate line so
+    the AI can see at a glance which metrics need correction."""
+    preds = [_up_pred("loss", f"2026-02-{i:02d}", -5.0) for i in range(1, 16)]
+    preds += [_up_pred("win", f"2026-02-{i:02d}") for i in range(16, 21)]
+    history = {"predictions": preds}
+    history["performance_stats"] = compute_performance_stats(history)
+    feedback = format_performance_feedback(history)
+    up_line = next(line for line in feedback.splitlines() if "直近 UP 予測勝率" in line)
+    assert "⚠" in up_line
 
 
 def test_format_performance_feedback_includes_few_shot_block() -> None:
