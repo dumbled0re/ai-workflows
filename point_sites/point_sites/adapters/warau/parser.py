@@ -152,9 +152,12 @@ def parse(body: str, is_html: bool = False) -> tuple[list[ClickCandidate], list[
         candidates.append(candidate)
 
     anomalies: list[str] = []
-    # Pure non-click-coin messages (callout check skipped everything)
-    # are legitimate — let mark_no_credit handle them silently.
-    if not candidates and not skipped_no_callout and len(text) > 800:
+    # Only escalate "0 URL matches" as an anomaly when the body looks
+    # like a click-mail in the first place (i.e. carries a ``クリックでNPt``
+    # callout somewhere). Welcome / registration / newsletter mails
+    # legitimately carry zero click URLs and would otherwise raise
+    # false positives every time — they silently go to no_coins instead.
+    if not candidates and not skipped_no_callout and len(text) > 800 and _CALLOUT_RE.search(callout_text):
         anomalies.append(
             "no click-coin URLs matched message regex (HTML may have changed — refine _CLICK_COIN_URL_RE after inspect)"
         )

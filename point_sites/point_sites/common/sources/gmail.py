@@ -78,16 +78,6 @@ class GmailSource:
             assert parsed.html_body is not None  # has_body guarantees one or the other
             body, is_html = parsed.html_body, True
         candidates, anomalies = self._parse_email(body, is_html)
-        if anomalies:
-            import logging as _l
-
-            _l.getLogger(__name__).warning(
-                "DEBUG anomalous body uid=%s subj=%r is_html=%s head=%r",
-                state_key,
-                parsed.subject,
-                is_html,
-                body[:1500],
-            )
         return ClickBatch(
             state_key=state_key,
             label=parsed.subject,
