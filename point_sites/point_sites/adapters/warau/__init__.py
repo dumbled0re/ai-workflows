@@ -62,7 +62,5 @@ ADAPTER = Adapter(
     no_coins_label="warau-no-coins",
     source=GmailSource(parse_email=parse_email),
     balance_patterns=DEFAULT_BALANCE_PATTERNS,
-    discover_seeds=(
-        "https://www.warau.jp/mypage",
-    ),
+    discover_seeds=("https://www.warau.jp/mypage",),
 )
