@@ -38,6 +38,7 @@ from .common.models import ClickCandidate, RunSummary
 from .common.notifier import Notifier
 from .common.outcome_tracker import OutcomeTracker, make_outcome
 from .common.redaction import host_only, redact_subject, redact_url
+from .common.sources.base import ClickBatch
 from .common.state_store import StateStore
 from .config import Config, ConfigError
 
@@ -306,6 +307,12 @@ def cmd_run(
     estimated_pt_total = 0
     dry_run_view: list[tuple[str, str, list[str]]] = []
     extract_view: list[tuple[str, str, list[str]]] = []
+    # Batches that fed extract_view, in the same order — so after a
+    # successful Slack delivery we can label them on the source side
+    # and they won't be re-posted on the next cron run. Without this
+    # the same click-mail would surface every day until ``newer_than``
+    # in the Gmail query naturally prunes it.
+    extract_batches: list[ClickBatch] = []
 
     # Build the Clicker when (a) we'll actually click, or (b) cookies are
     # present and the source might need an authenticated http_session for
@@ -444,6 +451,7 @@ def cmd_run(
                         [str(c.url) for c in batch.candidates],
                     )
                 )
+                extract_batches.append(batch)
                 continue
 
             if not new_candidates:
@@ -707,6 +715,32 @@ def cmd_run(
                     "extract-links Slack delivery failed; the run will exit non-zero "
                     "so the workflow surfaces the failure"
                 )
+            elif extract_batches:
+                # Slack delivery succeeded — reopen the source briefly to
+                # mark each extracted batch as complete so the same
+                # click-mails don't keep surfacing on the next cron run.
+                # Uses ``clicked_label`` because semantically the run has
+                # finished its work on the mail; the user does the actual
+                # clicking in their browser. Without this, ``newer_than:Nd``
+                # in the Gmail query would cause daily re-posting.
+                try:
+                    source.start(effective_cfg, http_session=http_session)
+                    for extracted_batch in extract_batches:
+                        try:
+                            source.mark_complete(extracted_batch)
+                        except Exception:
+                            logger.exception(
+                                "failed to mark extracted batch %s complete; URL may re-surface on next run",
+                                extracted_batch.state_key,
+                            )
+                except GmailAuthError as exc:
+                    logger.warning(
+                        "could not reopen source for extract-mode labeling: %s; "
+                        "extracted URLs may re-surface on next run",
+                        exc,
+                    )
+                finally:
+                    source.close()
         else:
             notifier.send_summary(
                 summary,
