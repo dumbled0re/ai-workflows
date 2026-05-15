@@ -576,9 +576,7 @@ def format_signal_efficacy(efficacy: dict[str, dict]) -> str:
     return "\n".join(lines)
 
 
-def _welch_t_test_pvalue_lower_tail(
-    recent_returns: list[float], baseline_returns: list[float]
-) -> float | None:
+def _welch_t_test_pvalue_lower_tail(recent_returns: list[float], baseline_returns: list[float]) -> float | None:
     """Welch's t-test for "recent mean < baseline mean", one-tailed.
 
     Returns the lower-tail p-value (probability that we'd see a

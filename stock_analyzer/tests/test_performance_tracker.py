@@ -543,13 +543,9 @@ def test_drift_quiet_on_small_delta_with_high_variance() -> None:
     key reason for t-test over fixed 2pp threshold: scale-aware
     decision-making."""
     # Baseline: mean ~+1%, ±10% noise → very high variance
-    baseline_pairs = [
-        (1.0 + (i % 4 - 2) * 10.0, f"2026-01-{i:02d}") for i in range(1, 21)
-    ]
+    baseline_pairs = [(1.0 + (i % 4 - 2) * 10.0, f"2026-01-{i:02d}") for i in range(1, 21)]
     # Recent: mean ~-1%, same noise structure
-    recent_pairs = [
-        (-1.0 + (i % 4 - 2) * 10.0, f"2026-02-{i:02d}") for i in range(1, 15)
-    ]
+    recent_pairs = [(-1.0 + (i % 4 - 2) * 10.0, f"2026-02-{i:02d}") for i in range(1, 15)]
     history = {"predictions": _resolved_with_dates(baseline_pairs + recent_pairs)}
     stats = compute_performance_stats(history)
     drift = stats["drift_indicator"]
