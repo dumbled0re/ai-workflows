@@ -1,5 +1,5 @@
 verify_id: point_sites/2026-05-18-pointincome-extract-label
-verify_after: 2026-05-18T09:00:00+09:00
+verify_after: 2026-05-15T00:00:00+09:00
 project: point_sites
 relates_to: 5637e14
 description: |
