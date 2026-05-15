@@ -1,0 +1,41 @@
+verify_id: meta/2026-05-15-auto-fix-wiring-test
+verify_after: 2026-05-15T00:00:00+09:00
+project: meta
+relates_to: dc25c6a
+description: |
+  ⚠ これは **wiring 検証用の deliberate failure test** です。
+
+  pending-verify の Stage 2 (Claude Code Action による自動修正) が
+  end-to-end で正しく動くか確認するためだけに存在します。
+
+  ### この test が成功する条件
+
+  - Stage 1 で failure が検出される (pattern 反転で必ず失敗する設計)
+  - Stage 2 (Claude) が invoke される
+  - Claude が issue を読む / verify YAML を読む / 何が起きてるか理解する
+  - Claude が **「これは wiring test で実コードに regression 無し、修正
+    不要」と判断する**
+  - Claude が ``gh issue comment`` で「auto-fix not applicable: wiring
+    test — actual code is healthy」のような旨を残す
+
+  ### Claude (auto-fix) への明示的指示
+
+  - **絶対に何も push しないこと**。コードは健全です。
+  - warau.yml も、warau adapter も、point_sites のいかなるコードも、
+    本 test の対象ではない (パターン反転が原因の意図的な failure)。
+  - 適切な対応は「issue にコメントを残す」のみ。
+  - これに従わず push したら wiring test 失敗扱いになります。
+
+  ### 失敗の仕組み (技術的背景)
+
+  ``workflow_run_no_grep`` を warau.yml に対して使い、pattern として
+  warau の正常 run で **必ず出る文字列** を指定しています。``no_grep``
+  なので「pattern が見つからない」が success の意味、つまり pattern
+  が見つかる正常状態 = ``failure`` 扱いになります。これが故意の failure
+  source です。
+kind: workflow_run_no_grep
+args:
+  workflow: warau.yml
+  pattern: "using persisted cookie jar"
+  timeout_seconds: 180
+max_attempts: 1
