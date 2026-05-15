@@ -33,6 +33,7 @@ permissions:
   contents: write   # claude auto-fix commits + pushes
   issues: write
   actions: write    # triggers other workflows via gh workflow run
+  id-token: write   # required by anthropics/claude-code-action@v1 OIDC
 
 jobs:
   verify:
