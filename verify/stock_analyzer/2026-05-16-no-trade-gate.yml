@@ -1,0 +1,45 @@
+verify_id: stock_analyzer/2026-05-16-no-trade-gate
+verify_after: 2026-05-16T07:30:00+09:00
+project: stock_analyzer
+relates_to: 698643b
+description: |
+  NO_TRADE option + UP-prediction hard gate (commit 698643b) の effect
+  確認。codex review (2026-05-15) で UP 予測 hit rate 46.8% / HIGH_UP
+  45.5% が判明、long-only 設計が主因と特定。NO_TRADE 受入 + UP gate
+  で UP false positive 抑制を狙う。
+
+  確認内容: 次の朝 cron で UP gate が発火するか。直近 UP 予測勝率
+  46.8% (77 件) は閾値 50% 未満かつ samples 12+ 条件を満たすので、
+  performance_stats.recent_up_hit_rate が下限割れになり phase_prepare
+  の build_up_gate_directive が "UP gate active — directive injected
+  into prompt" を log 出力するはず。これが見えれば:
+
+  - compute_recent_up_hit_rate が data 上で正しく動いてる
+  - phase_prepare が新しい directive を prompt に injection してる
+  - AI 側は次の cron 以降 prediction=NO_TRADE を holdings に出し始める
+    (これは log には出ない、Slack 出力で観察)
+
+  workflow_run_grep の方が即時起動できるが、現状 stock-analysis は
+  cron-scheduled でしか走らない (workflow_dispatch 未対応の可能性)
+  ので、recent_run_log_grep で次の朝 (5/16 07:30 JST 以降) の
+  cron 結果を passive 確認する。
+
+  inconclusive (= gate fired but log line not yet present) 時は次の
+  pending-verify cron で retry。max_attempts=3 で 3 日観察。それでも
+  発火が見えない場合は実装バグの可能性が高く、Slack に hard failure
+  通知される。
+kind: recent_run_log_grep
+args:
+  workflows:
+    - stock-analysis.yml
+  pattern: "UP gate active"
+  lookback: 4
+  require_all: true
+max_attempts: 3
+retry_after_hours: 24
+success_message: |
+  ✅ stock_analyzer: UP-gate directive が cron log に出力されたことを確認。
+  NO_TRADE / UP gate 機構 (commit 698643b) が production で発火している。
+  次のステップ: 1 週間程度 history を蓄積し、UP 予測 hit rate が 50%
+  超に回復するか / NO_TRADE holdings 出現有無 / HIGH/MEDIUM の差が
+  5pp 以上に開くか を観察。
