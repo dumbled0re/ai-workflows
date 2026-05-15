@@ -117,10 +117,17 @@ def parse_message(body: str, is_html: bool = False) -> tuple[list[ClickCandidate
 
     Per ポイントタウン FAQ: only one click per message credits — clicking
     additional URLs in the same message is wasted (and looks aggressive).
-    So we keep just the first valid match and drop the rest. If extra
-    matches existed, an anomaly is emitted so the operator can verify
-    that the first match is actually the credited one (heuristic =
-    document order; refine if discover shows otherwise).
+    So we keep just the first valid match and drop the rest.
+
+    Note: pointtown click-mails routinely contain **duplicate CTAs**
+    (the same ``▼…に登録する 【コイン付】 <url>`` block repeated, with
+    different ``t=<token>`` tracking values but the same ``u=`` user
+    hash — verified 2026-05-15 on msg 4512). All variants redirect to
+    the same credit-grant endpoint, so keeping the first and dropping
+    the rest is correct and silent. We do NOT raise an anomaly for
+    this case — the parser previously did, which routed every such
+    mail to ``anomaly_ids`` and the runner's ``continue`` then skipped
+    clicking entirely, silently swallowing real credits.
     """
     if not body.strip():
         return [], ["empty message body"]
@@ -171,9 +178,13 @@ def parse_message(body: str, is_html: bool = False) -> tuple[list[ClickCandidate
     if not candidates and len(text) > 800:
         anomalies.append("no click-coin URLs matched message regex (HTML may have changed)")
     if extra_match_count:
-        anomalies.append(
-            f"message had {extra_match_count + 1} click-coin URL(s); only first kept "
-            "(per FAQ only one credits — verify discover output if heuristic looks wrong)"
+        # Don't escalate as anomaly — pointtown mails routinely have
+        # 2+ duplicate CTAs pointing at the same credit endpoint, and
+        # an anomaly here would block the click via the runner's
+        # ``continue``. Log informationally for debugging only.
+        logger.info(
+            "pointtown message had %d click-coin URL(s); first kept (duplicate CTA pattern)",
+            extra_match_count + 1,
         )
     return candidates, anomalies
 
