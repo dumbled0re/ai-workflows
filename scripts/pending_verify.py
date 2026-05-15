@@ -478,34 +478,54 @@ def process_issue(issue: dict, *, dry_run: bool) -> dict | None:
     result = run_one(schema)
     logger.info("issue %s result: %s — %s", number, result.status, result.detail)
 
+    issue_url = f"<https://github.com/dumbled0re/ai-workflows/issues/{number}|#{number}>"
+
     if result.is_success:
         success_msg = schema.get("success_message") or "✅ 自動検証 OK"
         comment_on_issue(number, f"{success_msg}\n\n```\n{result.detail}\n```")
         close_issue(number)
+        slack_notify(
+            f":white_check_mark: verify success — {issue_url} {title}\n"
+            f"verify_id: `{verify_id}`\n"
+            f"detail: {result.detail}\n"
+            f"issue 自動 close 済"
+        )
         return None
 
     if result.is_inconclusive:
+        retry_h = schema.get("retry_after_hours", DEFAULT_RETRY_AFTER_HOURS)
         comment_on_issue(
             number,
-            f"🟡 inconclusive (再試行は {schema.get('retry_after_hours', DEFAULT_RETRY_AFTER_HOURS)}h 後)\n\n```\n{result.detail}\n```",
+            f"🟡 inconclusive (再試行は {retry_h}h 後)\n\n```\n{result.detail}\n```",
+        )
+        slack_notify(
+            f":hourglass_flowing_sand: verify inconclusive — {issue_url} {title}\n"
+            f"verify_id: `{verify_id}`\n"
+            f"detail: {result.detail}\n"
+            f"次回 cron で再試行"
         )
         return None
 
     # Hard failure.
     if attempt + 1 >= max_attempts:
-        slack_text = (
-            f":rotating_light: pending-verify FAILED (final attempt) — "
-            f"issue #{number} {title}\n"
+        slack_notify(
+            f":rotating_light: verify FAILED (final attempt) — {issue_url} {title}\n"
             f"verify_id: `{verify_id}`\n"
             f"detail: {result.detail}\n"
-            f"relates_to: {schema.get('relates_to', 'n/a')}"
+            f"relates_to: {schema.get('relates_to', 'n/a')}\n"
+            f"Stage 2 (Claude 自動修正) が動いた後の状態を issue で確認してください"
         )
-        slack_notify(slack_text)
         comment_on_issue(
             number,
             f"❌ verify 失敗 (attempt {attempt + 1}/{max_attempts}) — user 介入待ち\n\n```\n{result.detail}\n```",
         )
     else:
+        slack_notify(
+            f":x: verify failed (attempt {attempt + 1}/{max_attempts}) — {issue_url} {title}\n"
+            f"verify_id: `{verify_id}`\n"
+            f"detail: {result.detail}\n"
+            f"Stage 2 (Claude) が自動修正を試行中"
+        )
         comment_on_issue(
             number,
             f"❌ attempt {attempt + 1}/{max_attempts} 失敗。Claude 自動修正を試行 (失敗ならまた次回 cron)\n\n```\n{result.detail}\n```",
