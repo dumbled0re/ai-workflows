@@ -1,14 +1,14 @@
-"""Warau on-site Webメール inbox parser.
+"""Warau Gmail click-mail parser.
 
-Two parsers used by ``OnsiteInboxSource``:
+Single ``parse(body, is_html)`` entry point used by ``GmailSource``:
+extracts click-coin URLs from one mail body (plaintext or HTML).
+The on-site inbox approach was abandoned 2026-05-15 after live
+probing showed warau ships click-mails to external email only —
+see ``__init__.py`` for the rationale.
 
-- ``parse_inbox`` enumerates message-detail links in the inbox listing
-  at ``/mail/list``.
-- ``parse_message`` extracts click-coin URLs from one message detail
-  page.
-
-⚠ All regexes are best-guess until the first authenticated inspect.
-Refine after seeing a real inbox row + a real click-mail body.
+⚠ URL regex + callout patterns are best-guess until the first real
+click-mail is observed via ``-f extract_links=true`` and the actual
+shape is confirmed against Slack output.
 
 **ad-fraud 隔離方針 (絶対):**
 ワラウは独自運営のゲーム (``/games/auth/*``, ``/contents/jankenClover``,
@@ -30,23 +30,12 @@ from __future__ import annotations
 import html as _html
 import logging
 import re
-from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
 from ...common.models import ClickCandidate
-from ...common.sources import InboxEntry
 
 logger = logging.getLogger(__name__)
-
-_INBOX_BASE = "https://www.warau.jp/"
-
-# Inbox listing rows. Pattern best-guess based on industry-standard
-# on-site mailbox shapes (pointtown uses /mypage/mail/<id>; warau likely
-# uses /mail/show/<id> or /mail/<id>). Refine after first inspect.
-_MESSAGE_LINK_RE = re.compile(
-    r"^/mail/(?:show/|view/|read/|detail/|)(\d+)/?(?:\?[^#]*)?$",
-)
 
 # Best-guess click-coin URL pattern. Apex + www subdomain; click /
 # tracking endpoints typically live under one of these paths. Tighten
@@ -103,47 +92,8 @@ EXCLUSION_URL_RE = re.compile(
 )
 
 
-def parse_inbox(html: str) -> tuple[list[InboxEntry], list[str]]:
-    """Extract message-link rows from the inbox listing HTML.
-
-    Returns (entries, anomalies). Empty entries with no anomalies =
-    legitimate empty inbox; empty entries with non-empty HTML triggers
-    an anomaly so a parser breakage surfaces loudly.
-    """
-    if not html.strip():
-        return [], ["empty inbox HTML"]
-    soup = BeautifulSoup(html, "html.parser")
-    entries: list[InboxEntry] = []
-    seen_keys: set[str] = set()
-    for a in soup.find_all("a", href=True):
-        href = str(a["href"])
-        m = _MESSAGE_LINK_RE.match(href)
-        if not m:
-            continue
-        msg_id = m.group(1)
-        state_key = urljoin(_INBOX_BASE, href)
-        if state_key in seen_keys:
-            continue
-        seen_keys.add(state_key)
-        label = a.get_text(strip=True) or f"mail-{msg_id}"
-        entries.append(
-            InboxEntry(
-                state_key=state_key,
-                message_url=state_key,
-                label=label[:120],
-            )
-        )
-
-    anomalies: list[str] = []
-    if not entries and len(html) > 1500:
-        anomalies.append(
-            "no message links matched inbox-list regex (HTML may have changed — refine _MESSAGE_LINK_RE after inspect)"
-        )
-    return entries, anomalies
-
-
-def parse_message(body: str, is_html: bool = False) -> tuple[list[ClickCandidate], list[str]]:
-    """Extract click-coin URL(s) from a single message detail page.
+def parse(body: str, is_html: bool = False) -> tuple[list[ClickCandidate], list[str]]:
+    """Extract click-coin URL(s) from a single Gmail click-mail body.
 
     Multi-defence against ad-fraud:
     1. ``EXCLUSION_URL_RE`` drops game / gacha / lottery URLs immediately.
