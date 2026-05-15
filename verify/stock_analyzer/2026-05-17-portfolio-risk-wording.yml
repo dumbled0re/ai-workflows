@@ -1,0 +1,32 @@
+verify_id: stock_analyzer/2026-05-17-portfolio-risk-wording
+verify_after: 2026-05-17T07:30:00+09:00
+project: stock_analyzer
+relates_to: 76b1287
+description: |
+  portfolio_risk の new-picks vs holdings 分離 refactor (commit 76b1287)
+  の効果を翌朝の stock-analysis cron 出力で確認する。
+
+  本日 2026-05-15 まで Slack 警告が「推奨銘柄 27 件 / セクター 4 銘柄推奨」
+  のように holdings + new picks を混ぜた count を出してた。refactor 後は:
+
+  - 「新規推奨銘柄 N 件」 (new picks only count)
+  - 「保有銘柄でセクター X に N 銘柄集中」 (informational holdings concentration)
+
+  と分けて表示するので、Slack 出力に「新規推奨」 もしくは
+  「保有銘柄でセクター」 のいずれかの文言が出てるかを直近 3 stock-analysis
+  run の log で確認する (passive 観察)。
+
+  注意: 出ない場合 = warnings が現状不発生 (= 過剰集中なし) であって
+  正常な状態の可能性もある。1 週間 (= 14 runs ≒ lookback) 観察しても
+  発火がなければ user 判断で close する。
+kind: recent_run_log_grep
+args:
+  workflows:
+    - stock-analysis.yml
+  pattern: "新規推奨銘柄|保有銘柄でセクター"
+  lookback: 14
+  require_all: true
+max_attempts: 7
+retry_after_hours: 24
+success_message: |
+  ✅ stock_analyzer の portfolio_risk 警告で「新規推奨 / 保有」分離表記を確認
