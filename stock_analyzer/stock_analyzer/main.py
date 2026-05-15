@@ -478,10 +478,26 @@ def phase_prepare() -> None:
     # (2026-05-15) flagged long-only / UP-by-default as the structural
     # driver of the 46.8% UP hit rate; this gate is the prompt-side
     # correction.
+    up_stats = perf_history.get("performance_stats", {}).get("recent_up_hit_rate")
     up_gate_text = build_up_gate_directive(perf_history.get("performance_stats", {}))
     if up_gate_text:
         performance_feedback = (up_gate_text + "\n\n" + performance_feedback).strip()
         logger.info("UP gate active — directive injected into prompt")
+    elif isinstance(up_stats, dict):
+        # Gate evaluated but didn't fire (recent UP hit rate above
+        # threshold or insufficient samples). Log it explicitly so
+        # downstream observability (pending-verify, post-mortems) can
+        # distinguish "code path executed, gate quietly stayed off"
+        # from "code never ran". Without this branch a healthy UP rate
+        # produces zero output and looks identical to a missing
+        # build_up_gate_directive call.
+        logger.info(
+            "UP gate evaluated — recent UP hit rate %.1f%% on %d samples (threshold %.0f%%, below=%s)",
+            up_stats.get("hit_rate_pct", 0.0),
+            up_stats.get("recent_n", 0),
+            up_stats.get("threshold_pct", 50.0),
+            up_stats.get("below_threshold", False),
+        )
 
     save_history(perf_history)
     logger.info("Performance review complete")

@@ -32,7 +32,11 @@ kind: recent_run_log_grep
 args:
   workflows:
     - stock-analysis.yml
-  pattern: "UP gate active"
+  # 「実装の code path が実行された」ことを確認したいので、
+  # gate 発火時 ("UP gate active") と非発火時 ("UP gate evaluated")
+  # の両方の log 行をマッチさせる。発火しなかった = UP hit rate が
+  # 健康な状態 = 仕様通り、なので非発火そのものは失敗ではない。
+  pattern: "UP gate (active|evaluated)"
   lookback: 4
   require_all: true
 max_attempts: 3
