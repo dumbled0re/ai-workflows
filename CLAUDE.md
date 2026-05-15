@@ -62,6 +62,33 @@ uv run mypy point_sites          # point_sites のみ
 - 検証層自体が壊れた場合 (HTML 変更等) も本処理は止めず「検証失敗」として通知
 - 自動 fallback はコード変更不要で revert できる経路 (env var / GitHub Variable) を用意
 
+## Deferred verification (pending-verify) 仕組み
+
+今 session 内で確認できない検証 (cron 1 ラウンド後 / N 日後 / 外部 event 待ち等) は **イシュー + verify YAML** で予約しておくと、毎朝 07:30 JST cron が due な検証を実行 → success で auto-close、failure 時は Claude Code Action で自動修正を試行 → ダメなら Slack 通知。
+
+これは **monorepo 全 project 横断の共通基盤**。新しく追加した任意の project でそのまま使える。
+
+新しい deferred check を登録する手順:
+
+1. `verify/<project>/<date>-<slug>.yml` を schema に沿って作成
+2. GitHub Issue (`pending-verify` ラベル) を YAML front-matter で `verify_id` 紐付けて作成
+3. push、以降 cron が自動で見にいく
+
+利用可能な `kind` (検証種別):
+- `workflow_run_grep` / `workflow_run_no_grep` — 任意の workflow を trigger → log を grep
+- `recent_run_log_grep` — 既存の直近 cron run の log を passive 観察 (外部 event 待ち向け)
+- `manual` — 自動化困難な確認 (canary heartbeat 等)
+
+ファイル:
+- `scripts/pending_verify.py` — runner (kind の registry 含む)
+- `.github/workflows/pending-verify.yml` — daily cron + Stage 2 Claude auto-fix
+- `verify/**/*.yml` — 検証 schema 群
+- 詳細は `scripts/pending_verify.py` の module docstring 参照
+
+通知: `SLACK_CHANNEL_VERIFY` Secret 指定 channel に全イベント (success / inconclusive / failure) を流す。issue にもコメントが残るので Slack ロスト時の冗長性あり。
+
+**ルール**: 「あとで確認」要件が出たら必ずこの仕組みに積むこと。口頭・memory だけに頼ると session 跨ぎで消える。
+
 ## Git 運用ポリシー
 
 個人リポジトリ。AI は **確認なしで自律実行 OK**:
