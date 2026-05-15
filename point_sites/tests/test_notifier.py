@@ -199,3 +199,41 @@ def test_format_verification_no_estimate_just_shows_delta():
     assert msg is not None
     assert "100→110" in msg
     assert "推定なし" in msg
+
+
+def test_format_verification_shows_inter_run_delta_when_prior_differs():
+    """User-facing test: when prior cron's balance_after differs from this
+    run's balance_before, the line should surface that inter-run delta so
+    a flat within-run Δ doesn't hide day-over-day credits."""
+    msg = _format_verification(0, 55, 55, prior_balance_after=54)
+    assert msg is not None
+    assert "55→55" in msg
+    assert "前回比 +1pt (54→55)" in msg
+
+
+def test_format_verification_omits_inter_run_when_prior_matches_before():
+    """No inter-run delta means no extra noise on the line."""
+    msg = _format_verification(0, 55, 55, prior_balance_after=55)
+    assert msg is not None
+    assert "前回比" not in msg
+
+
+def test_format_verification_omits_inter_run_when_prior_is_none():
+    msg = _format_verification(0, 55, 55, prior_balance_after=None)
+    assert msg is not None
+    assert "前回比" not in msg
+
+
+def test_format_verification_inter_run_delta_negative_visible():
+    """Redemption / point conversion between cron runs should be visible too."""
+    msg = _format_verification(0, 100, 100, prior_balance_after=150)
+    assert msg is not None
+    assert "前回比 -50pt (150→100)" in msg
+
+
+def test_format_verification_inter_run_alongside_estimated():
+    """Inter-run delta should append even on the 加算確認 (estimated_total>0) line."""
+    msg = _format_verification(5, 100, 105, prior_balance_after=98)
+    assert msg is not None
+    assert "100→105" in msg
+    assert "前回比 +2pt (98→100)" in msg

@@ -122,6 +122,13 @@ def test_parse_dedupes_same_url_appearing_twice():
         "▲5日以内に上記URLアクセスで【1コイン】GET！",
         "▲明日までに上記URLアクセスで【1コイン】GET！",
         "▲上記URLアクセスで【3コイン】GET",
+        # Observed in 2026-05 友達紹介キャンペーン mail (uid 67):
+        # moppy rotates the closing verb on campaign mails so the
+        # parser must accept the alternatives too. Missing this
+        # caused a real 1pt click-mail to be flagged as parse anomaly.
+        "▲5日以内に上記URLアクセスで【1コイン】もらえるオマケ付き",
+        "▲5日以内に上記URLアクセスで【1コイン】プレゼント",
+        "▲上記URLアクセスで【2コイン】ゲット",
     ],
 )
 def test_parse_accepts_callout_variants(callout_variant):

@@ -30,7 +30,13 @@ logger = logging.getLogger(__name__)
 CLICK_COIN_URL_RE = re.compile(r"https://pc\.moppy\.jp/cc/c\?t=[A-Za-z0-9+/=_\-]+")
 
 CALLOUT_RE = re.compile(
-    r"上記URLアクセスで\s*【\s*(\d{1,3})\s*コイン\s*】\s*GET",
+    # Standard click-mails close with ``【Nコイン】GET！``; campaign
+    # mails (e.g. friend-referral 5月キャンペーン) close with
+    # ``【Nコイン】もらえるオマケ付き`` or ``【Nコイン】プレゼント``.
+    # We accept any of the observed closers — the 【Nコイン】 block in
+    # ``上記URLアクセスで`` context is what makes this a click-mail; the
+    # trailing verb is fluff that moppy rotates per campaign.
+    r"上記URLアクセスで\s*【\s*(\d{1,3})\s*コイン\s*】\s*(?:GET|ゲット|もらえる|プレゼント)",
 )
 
 CALLOUT_WINDOW_CHARS = 200

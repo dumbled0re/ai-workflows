@@ -43,12 +43,21 @@ def _format_verification(
     estimated_total_pt: int,
     balance_before: int | None,
     balance_after: int | None,
+    prior_balance_after: int | None = None,
 ) -> str | None:
     """Render the post-click balance verification line.
 
     Returns ``None`` when there's nothing meaningful to say (e.g. nothing
     was clicked and we never tried to read the balance). The summary
     looks weird if we add a "✓ 加算確認" line on a no-op run.
+
+    ``prior_balance_after`` is the ``balance_after`` from the most recent
+    previous click run (read from outcomes.jsonl). When supplied AND it
+    differs from this run's ``balance_before``, we render an inter-run
+    delta — that's the user's clearest signal that points were credited
+    between cron runs (e.g. delayed pointsite crediting or other manual
+    activity), since a within-run Δ of 0 looks alarming on its own when
+    balance is actually growing day-over-day.
     """
     has_both = balance_before is not None and balance_after is not None
     if not has_both:
@@ -57,13 +66,19 @@ def _format_verification(
         return None
     assert balance_before is not None and balance_after is not None  # for type checker
     delta = balance_after - balance_before
+
+    inter_suffix = ""
+    if prior_balance_after is not None and prior_balance_after != balance_before:
+        inter_delta = balance_before - prior_balance_after
+        inter_suffix = f" / 前回比 {inter_delta:+}pt ({prior_balance_after}→{balance_before})"
+
     if estimated_total_pt <= 0:
-        return f"✓ 残高: {balance_before}→{balance_after} (Δ{delta:+}pt, 推定なし)"
+        return f"✓ 残高: {balance_before}→{balance_after} (Δ{delta:+}pt, 推定なし){inter_suffix}"
     ratio = delta / estimated_total_pt
     flag = " ⚠加算が想定より少ない" if ratio < 0.5 else ""
     return (
         f"✓ 加算確認: {balance_before}→{balance_after} "
-        f"(Δ{delta:+}pt / 推定{estimated_total_pt}pt, 比率 {ratio:.0%}){flag}"
+        f"(Δ{delta:+}pt / 推定{estimated_total_pt}pt, 比率 {ratio:.0%}){flag}{inter_suffix}"
     )
 
 
@@ -109,6 +124,7 @@ class Notifier:
         *,
         balance_before: int | None = None,
         balance_after: int | None = None,
+        prior_balance_after: int | None = None,
         degradation: DegradationAlert | None = None,
     ) -> None:
         failed = [r for r in results if r.final_status != "success"]
@@ -116,7 +132,7 @@ class Notifier:
             f"[point_sites] {summary.started_at:%Y-%m-%d %H:%M} 完了",
             f"✅ 成功: {summary.success_count}件 / 推定獲得: {estimated_total_pt}pt",
         ]
-        verification = _format_verification(estimated_total_pt, balance_before, balance_after)
+        verification = _format_verification(estimated_total_pt, balance_before, balance_after, prior_balance_after)
         if verification:
             lines.append(verification)
         lines.extend(

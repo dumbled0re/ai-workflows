@@ -678,8 +678,19 @@ def cmd_run(
     # real click path produces a meaningful outcome; dry/extract runs are
     # skipped so they don't muddy the time series.
     degradation = None
+    prior_balance_after: int | None = None
     if not dry_run and not extract_links:
         tracker = OutcomeTracker(cfg.outcome_path)
+        # Look up the most recent prior outcome with a recorded
+        # ``balance_after`` so the Slack summary can show inter-run
+        # delta (= credits landed between the previous cron and this
+        # one). Done BEFORE appending today's outcome so we don't pick
+        # up the row we're about to write.
+        for prior in reversed(tracker.recent(20)):
+            prior_after = prior.get("balance_after")
+            if isinstance(prior_after, int):
+                prior_balance_after = prior_after
+                break
         outcome = make_outcome(
             mode="click",
             messages_found=len(state_keys),
@@ -748,6 +759,7 @@ def cmd_run(
                 estimated_pt_total,
                 balance_before=balance_before,
                 balance_after=balance_after,
+                prior_balance_after=prior_balance_after,
                 degradation=degradation,
             )
         if parse_failure_ids:
