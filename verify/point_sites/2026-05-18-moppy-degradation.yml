@@ -1,0 +1,19 @@
+verify_id: point_sites/2026-05-18-moppy-degradation
+verify_after: 2026-05-18T09:00:00+09:00
+project: point_sites
+relates_to: "012707e fa0666f"
+description: |
+  moppy の credit-ratio degradation alert は履歴 3 連続 0% の運転で出ていた。
+  cookie 復活 + callout regex 拡張 (012707e) で credit が landing し始めれば
+  3 日後の cron 完了時には自然収束しているはず。
+  次回 cron run の log に "credit-ratio degradation detected" が **無い**
+  ことを確認する。
+kind: workflow_run_no_grep
+args:
+  workflow: moppy.yml
+  pattern: "credit-ratio degradation detected"
+  timeout_seconds: 300
+max_attempts: 2
+retry_after_hours: 24
+success_message: |
+  ✅ moppy degradation alert 自然収束確認 — 健全 click 履歴が累積された

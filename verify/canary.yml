@@ -1,0 +1,16 @@
+verify_id: canary
+verify_after: 2026-01-01T00:00:00+00:00
+project: meta
+description: |
+  pending-verify 仕組み自身の動作確認。常に inconclusive を返し、
+  issue にコメントが付いていれば cron 自体は生きている証拠になる。
+  user は週次でこの issue が「直近 24h 以内にコメント」されているか
+  確認するだけで watchdog 代わりになる。
+kind: manual
+args:
+  instructions: |
+    canary: このコメントが日付付きで毎日 (07:30 JST) 出ていれば
+    pending-verify workflow は生きています。コメントが 24h 以上
+    途絶えたら GitHub Actions tab で pending-verify workflow を確認。
+max_attempts: 9999
+retry_after_hours: 24

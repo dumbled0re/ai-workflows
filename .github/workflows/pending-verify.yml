@@ -1,0 +1,54 @@
+name: pending-verify
+
+# Daily verify-by-date runner. Picks up open ``pending-verify`` issues
+# whose ``verify_id`` references a ``verify/<id>.yml`` schema in the
+# repo, and (when ``verify_after`` has passed) executes the schema's
+# declared ``kind``. Designed so that "fix pushed today, effect only
+# observable tomorrow" tasks don't need user mental memory across
+# sessions — the issue closes itself when the system can confirm the
+# fix landed.
+#
+# Schema + execution are decoupled (issue = state, repo YAML =
+# execution plan) per the codex consult 2026-05-15.
+
+on:
+  schedule:
+    - cron: "30 22 * * *"  # 07:30 JST daily
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "do not trigger workflows / comment on issues"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+  actions: write  # triggers other workflows via gh workflow run
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Run pending verifications
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_POINT_SITES: ${{ secrets.SLACK_CHANNEL_MOPPY }}
+          SLACK_CHANNEL_DEFAULT: ${{ secrets.SLACK_CHANNEL_MOPPY }}
+        run: |
+          set -e
+          # Single-shot dep install; PyYAML is the only external requirement.
+          uv pip install --system pyyaml
+          DRY=""
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            DRY="--dry-run"
+          fi
+          python scripts/pending_verify.py $DRY

@@ -1,0 +1,18 @@
+verify_id: point_sites/2026-05-16-pointtown-cookie
+verify_after: 2026-05-16T22:00:00+09:00
+project: point_sites
+relates_to: fa0666f
+description: |
+  pointtown の third-party cookie filter (commit fa0666f) で session 寿命が
+  素の ~20h に戻ったか確認。22:00 JST 過ぎに pointtown.yml を re-trigger
+  して login 成功 + persisted cookie 数 < 100 を確認する。
+kind: workflow_run_grep
+args:
+  workflow: pointtown.yml
+  pattern: "ポイントタウン login verified"
+  timeout_seconds: 300
+max_attempts: 2
+retry_after_hours: 12
+success_message: |
+  ✅ pointtown cookie filter の寿命確認 OK
+  login verified + cookie count は logs を直接見て < 100 を確認のこと

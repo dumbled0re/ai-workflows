@@ -1,0 +1,470 @@
+"""Pending-verify runner.
+
+Reads ``verify/**/<id>.yml`` schemas referenced from GitHub issues
+labeled ``pending-verify``, executes the verification when its
+``verify_after`` has passed, and reports outcomes back to the issue
+(comment + close on success, comment + retry on failure, Slack alert
+on hard failure).
+
+Design rationale (codex consult 2026-05-15):
+- Issues hold *state* (open / comments / labels). Repo YAML holds
+  the *execution plan* (declarative, reviewable, schema-validated).
+- No ``bash -c`` from issue body — verify YAML can only invoke a
+  small registered set of ``kind``s, each of which has a vetted
+  Python implementation. New verifications can ship a new YAML
+  without touching the runner.
+- Distinguishes ``inconclusive`` (transient: network / regex / run
+  still in flight) from ``failure`` (regression). Only failure
+  triggers Slack noise.
+- Per-issue ``max_attempts`` + ``retry_after_hours`` keep brittle
+  verifications from spamming the channel.
+
+Schema (single verify file, one kind per file):
+
+    verify_id: point_sites/2026-05-16-pointtown-cookie
+    verify_after: 2026-05-16T22:00:00+09:00
+    project: point_sites
+    description: 自由記述、issue にも転記される
+    kind: workflow_run_grep      # or workflow_run_no_grep / manual
+    args:
+      workflow: pointtown.yml
+      pattern: "login verified"
+      timeout_seconds: 300        # optional, default 300
+    max_attempts: 3               # optional, default 3
+    retry_after_hours: 24         # optional, default 24
+    relates_to: fa0666f           # optional, free-form
+    success_message: "..."        # optional, shown on issue close
+
+Issue body must contain a YAML front matter with at minimum
+``verify_id`` matching the repo YAML's ``verify_id``:
+
+    ---
+    verify_id: point_sites/2026-05-16-pointtown-cookie
+    ---
+    pointtown cookie filter (commit fa0666f) の 16h 寿命確認。
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import os
+import re
+import subprocess
+import sys
+import time
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import yaml
+
+logger = logging.getLogger("pending_verify")
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+VERIFY_DIR = REPO_ROOT / "verify"
+LABEL = "pending-verify"
+ATTEMPT_LABEL_PREFIX = "verify-attempt:"
+DEFAULT_MAX_ATTEMPTS = 3
+DEFAULT_RETRY_AFTER_HOURS = 24
+DEFAULT_TIMEOUT_SECONDS = 300
+SLACK_POST_URL = "https://slack.com/api/chat.postMessage"
+
+# ---------- Result types ----------------------------------------------------
+
+
+@dataclass(frozen=True)
+class VerifyResult:
+    status: str  # "success" | "failure" | "inconclusive" | "not_due"
+    detail: str
+
+    @property
+    def is_success(self) -> bool:
+        return self.status == "success"
+
+    @property
+    def is_failure(self) -> bool:
+        return self.status == "failure"
+
+    @property
+    def is_inconclusive(self) -> bool:
+        return self.status == "inconclusive"
+
+
+# ---------- gh CLI helpers --------------------------------------------------
+
+
+def gh(*args: str, check: bool = True, capture: bool = True) -> subprocess.CompletedProcess[str]:
+    """Run a ``gh`` subcommand and return the completed process.
+
+    ``GH_TOKEN`` is expected in the environment (provided by GitHub
+    Actions). Returns stdout as ``str`` when ``capture=True``.
+    """
+    cmd = ["gh", *args]
+    logger.debug("$ %s", " ".join(cmd))
+    return subprocess.run(cmd, check=check, capture_output=capture, text=True)
+
+
+def list_pending_issues() -> list[dict]:
+    """List open issues with the pending-verify label."""
+    proc = gh(
+        "issue",
+        "list",
+        "--label",
+        LABEL,
+        "--state",
+        "open",
+        "--json",
+        "number,title,body,labels,createdAt",
+        "--limit",
+        "100",
+    )
+    return json.loads(proc.stdout)
+
+
+def parse_issue_front_matter(body: str) -> dict | None:
+    """Extract the front-matter YAML block from an issue body.
+
+    Front matter is the first ``---`` ... ``---`` block. Returns the
+    parsed YAML dict or ``None`` if the block is absent / malformed.
+    """
+    match = re.match(r"^---\s*\n(.+?)\n---\s*\n", body, re.DOTALL)
+    if match is None:
+        return None
+    try:
+        data = yaml.safe_load(match.group(1))
+    except yaml.YAMLError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def issue_attempt_count(labels: list[dict]) -> int:
+    """Count of past verify attempts encoded in issue labels.
+
+    We store the attempt counter as a label ``verify-attempt:N`` so it
+    survives across runs without needing a separate state file. Returns
+    0 if no such label exists yet.
+    """
+    for lbl in labels:
+        name = lbl.get("name", "")
+        if name.startswith(ATTEMPT_LABEL_PREFIX):
+            try:
+                return int(name[len(ATTEMPT_LABEL_PREFIX) :])
+            except ValueError:
+                continue
+    return 0
+
+
+def bump_attempt_label(issue_number: int, current: int) -> None:
+    """Replace ``verify-attempt:N`` with ``verify-attempt:N+1``."""
+    if current > 0:
+        gh(
+            "issue",
+            "edit",
+            str(issue_number),
+            "--remove-label",
+            f"{ATTEMPT_LABEL_PREFIX}{current}",
+            check=False,
+        )
+    new_label = f"{ATTEMPT_LABEL_PREFIX}{current + 1}"
+    # Create the label if absent (idempotent).
+    gh(
+        "label",
+        "create",
+        new_label,
+        "--description",
+        f"verify run attempt {current + 1}",
+        "--color",
+        "ededed",
+        check=False,
+    )
+    gh("issue", "edit", str(issue_number), "--add-label", new_label, check=False)
+
+
+def comment_on_issue(issue_number: int, body: str) -> None:
+    gh("issue", "comment", str(issue_number), "--body", body, check=False)
+
+
+def close_issue(issue_number: int, reason: str = "completed") -> None:
+    gh("issue", "close", str(issue_number), "--reason", reason, check=False)
+
+
+# ---------- Verify "kind" implementations -----------------------------------
+
+
+def _wait_for_run_completion(workflow_basename: str, before_ts: str, timeout_seconds: int) -> dict | None:
+    """Wait for a new run of ``workflow_basename`` (created after ``before_ts``) to complete.
+
+    Returns the run dict or ``None`` on timeout. ``before_ts`` should
+    be an ISO 8601 timestamp captured *before* triggering the
+    workflow so we don't pick up an unrelated earlier run.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        proc = gh(
+            "run",
+            "list",
+            "--workflow",
+            workflow_basename,
+            "--limit",
+            "1",
+            "--json",
+            "databaseId,status,conclusion,createdAt",
+        )
+        runs = json.loads(proc.stdout)
+        if runs:
+            run = runs[0]
+            if run.get("createdAt", "") > before_ts:
+                if run.get("status") == "completed":
+                    return run
+        time.sleep(15)
+    return None
+
+
+def kind_workflow_run_grep(args: dict, *, negate: bool = False) -> VerifyResult:
+    """Trigger ``args.workflow`` and grep the resulting log for ``args.pattern``.
+
+    Without ``negate``: success = pattern found.
+    With ``negate=True``: success = pattern NOT found (used for
+    "verify the warning has stopped firing").
+    """
+    workflow = args.get("workflow")
+    pattern = args.get("pattern")
+    timeout_s = int(args.get("timeout_seconds", DEFAULT_TIMEOUT_SECONDS))
+    if not workflow or not pattern:
+        return VerifyResult("failure", "schema invalid: workflow / pattern required")
+
+    before = datetime.now(UTC).isoformat()
+    try:
+        gh("workflow", "run", workflow, "--ref", "master")
+    except subprocess.CalledProcessError as exc:
+        return VerifyResult("inconclusive", f"gh workflow run failed: {exc}")
+    # Give GH a few seconds to register the run before we start polling.
+    time.sleep(5)
+    run = _wait_for_run_completion(workflow, before, timeout_s)
+    if run is None:
+        return VerifyResult("inconclusive", f"timed out waiting for {workflow} to complete")
+    if run.get("conclusion") not in {"success", "failure"}:
+        return VerifyResult("inconclusive", f"unexpected conclusion: {run.get('conclusion')}")
+
+    log_proc = gh("run", "view", str(run["databaseId"]), "--log", check=False)
+    log = (log_proc.stdout or "") + (log_proc.stderr or "")
+    found = re.search(pattern, log) is not None
+    if negate:
+        if not found:
+            return VerifyResult("success", f"pattern absent as expected (run {run['databaseId']})")
+        return VerifyResult("failure", f"pattern still present (run {run['databaseId']}): {pattern!r}")
+    if found:
+        return VerifyResult("success", f"pattern matched (run {run['databaseId']})")
+    return VerifyResult("failure", f"pattern not found (run {run['databaseId']}): {pattern!r}")
+
+
+def kind_workflow_run_no_grep(args: dict) -> VerifyResult:
+    return kind_workflow_run_grep(args, negate=True)
+
+
+def kind_manual(args: dict) -> VerifyResult:
+    """Always inconclusive — flags the issue for human review.
+
+    Used when the verification can't be automated (e.g. requires
+    eyeballing a Slack screenshot). The issue gets a comment with the
+    instructions; the human flips the label / closes manually.
+    """
+    instructions = args.get("instructions", "no instructions")
+    return VerifyResult(
+        "inconclusive",
+        f"manual verification required — please check:\n{instructions}",
+    )
+
+
+KIND_REGISTRY = {
+    "workflow_run_grep": kind_workflow_run_grep,
+    "workflow_run_no_grep": kind_workflow_run_no_grep,
+    "manual": kind_manual,
+}
+
+
+# ---------- Slack notification ----------------------------------------------
+
+
+def slack_notify(channel_env: str, text: str) -> None:
+    """Post ``text`` to the channel referenced by ``channel_env``.
+
+    Failures are logged and swallowed — Slack delivery hiccups should
+    never break the verify loop itself.
+    """
+    import urllib.error
+    import urllib.request
+
+    token = os.environ.get("SLACK_BOT_TOKEN")
+    channel = os.environ.get(channel_env)
+    if not token or not channel:
+        logger.warning(
+            "Slack notify skipped — SLACK_BOT_TOKEN / %s missing",
+            channel_env,
+        )
+        return
+    payload = json.dumps({"channel": channel, "text": text}).encode("utf-8")
+    req = urllib.request.Request(
+        SLACK_POST_URL,
+        data=payload,
+        headers={
+            "Content-Type": "application/json; charset=utf-8",
+            "Authorization": f"Bearer {token}",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            response = json.loads(resp.read().decode("utf-8"))
+            if not response.get("ok"):
+                logger.warning("Slack post failed: %s", response.get("error"))
+    except (urllib.error.URLError, TimeoutError) as exc:
+        logger.warning("Slack post failed: %s", exc)
+
+
+# ---------- Main loop -------------------------------------------------------
+
+
+def load_verify_schema(verify_id: str) -> dict | None:
+    """Load and basic-validate a verify YAML by id."""
+    path = VERIFY_DIR / f"{verify_id}.yml"
+    if not path.exists():
+        return None
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        logger.error("verify YAML parse failed: %s: %s", path, exc)
+        return None
+    if not isinstance(data, dict):
+        return None
+    if data.get("verify_id") != verify_id:
+        logger.error("verify_id mismatch in %s: file says %s", path, data.get("verify_id"))
+        return None
+    if data.get("kind") not in KIND_REGISTRY:
+        logger.error("unknown kind %r in %s", data.get("kind"), path)
+        return None
+    return data
+
+
+def is_due(schema: dict, *, now: datetime | None = None) -> bool:
+    raw = schema.get("verify_after")
+    if not raw:
+        return True  # missing == always due
+    now = now or datetime.now(UTC)
+    try:
+        due = datetime.fromisoformat(str(raw))
+    except ValueError:
+        logger.warning("verify_after not ISO 8601: %r in %s", raw, schema.get("verify_id"))
+        return True
+    if due.tzinfo is None:
+        due = due.replace(tzinfo=UTC)
+    return now >= due
+
+
+def run_one(schema: dict) -> VerifyResult:
+    fn = KIND_REGISTRY[schema["kind"]]
+    args = schema.get("args", {}) or {}
+    return fn(args)
+
+
+def project_channel_env(project: str) -> str:
+    """Map ``project`` field to the SLACK_CHANNEL_<NAME> env var name.
+
+    e.g. ``point_sites`` → ``SLACK_CHANNEL_POINT_SITES``. Falls back to
+    ``SLACK_CHANNEL_DEFAULT`` for unknown projects so we never silently
+    drop alerts.
+    """
+    name = (project or "default").upper().replace("-", "_")
+    return f"SLACK_CHANNEL_{name}"
+
+
+def process_issue(issue: dict, *, dry_run: bool) -> None:
+    number = issue["number"]
+    title = issue.get("title", f"#{number}")
+    body = issue.get("body") or ""
+    fm = parse_issue_front_matter(body)
+    if not fm or "verify_id" not in fm:
+        logger.warning("issue %s missing verify_id front-matter; skipping", number)
+        return
+    verify_id = str(fm["verify_id"])
+    schema = load_verify_schema(verify_id)
+    if schema is None:
+        msg = f"⚠ verify_id ``{verify_id}`` の schema が見つからない / 不正です。"
+        logger.warning("schema not found: %s", verify_id)
+        if not dry_run:
+            comment_on_issue(number, msg)
+        return
+    if not is_due(schema):
+        logger.info("issue %s (%s): not yet due", number, verify_id)
+        return
+
+    attempt = issue_attempt_count(issue.get("labels", []))
+    max_attempts = int(schema.get("max_attempts", DEFAULT_MAX_ATTEMPTS))
+    logger.info("issue %s (%s): running attempt %d/%d", number, verify_id, attempt + 1, max_attempts)
+
+    if dry_run:
+        logger.info("DRY RUN — would execute kind=%s args=%s", schema["kind"], schema.get("args"))
+        return
+
+    bump_attempt_label(number, attempt)
+    result = run_one(schema)
+    logger.info("issue %s result: %s — %s", number, result.status, result.detail)
+
+    if result.is_success:
+        success_msg = schema.get("success_message") or "✅ 自動検証 OK"
+        comment_on_issue(number, f"{success_msg}\n\n```\n{result.detail}\n```")
+        close_issue(number)
+        return
+
+    if result.is_inconclusive:
+        comment_on_issue(
+            number,
+            f"🟡 inconclusive (再試行は {schema.get('retry_after_hours', DEFAULT_RETRY_AFTER_HOURS)}h 後)\n\n```\n{result.detail}\n```",
+        )
+        return
+
+    # Hard failure.
+    if attempt + 1 >= max_attempts:
+        slack_text = (
+            f":rotating_light: pending-verify FAILED (final attempt) — "
+            f"issue #{number} {title}\n"
+            f"verify_id: `{verify_id}`\n"
+            f"detail: {result.detail}\n"
+            f"relates_to: {schema.get('relates_to', 'n/a')}"
+        )
+        slack_notify(project_channel_env(schema.get("project", "default")), slack_text)
+        comment_on_issue(
+            number,
+            f"❌ verify 失敗 (attempt {attempt + 1}/{max_attempts}) — user 介入待ち\n\n```\n{result.detail}\n```",
+        )
+        return
+    comment_on_issue(
+        number,
+        f"❌ attempt {attempt + 1}/{max_attempts} 失敗。次回 cron で再試行。\n\n```\n{result.detail}\n```",
+    )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Run pending verifications")
+    parser.add_argument("--dry-run", action="store_true", help="don't trigger workflows or comment")
+    parser.add_argument("--log-level", default="INFO")
+    args = parser.parse_args()
+    logging.basicConfig(
+        level=getattr(logging, args.log_level, logging.INFO),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+
+    issues = list_pending_issues()
+    logger.info("found %d open pending-verify issue(s)", len(issues))
+    for issue in issues:
+        try:
+            process_issue(issue, dry_run=args.dry_run)
+        except Exception:
+            logger.exception("issue %s processing failed", issue.get("number"))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

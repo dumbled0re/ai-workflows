@@ -1,0 +1,17 @@
+verify_id: point_sites/2026-05-16-slack-delta-points
+verify_after: 2026-05-16T09:00:00+09:00
+project: point_sites
+relates_to: 012707e
+description: |
+  Slack summary に「前回比 +Npt」の inter-run delta 表示 (commit 012707e) が
+  実際に発火するか。次回 moppy cron で balance が変わってれば自動的に
+  「前回比 ...pt」suffix が出るはず。
+kind: workflow_run_grep
+args:
+  workflow: moppy.yml
+  pattern: "前回比"
+  timeout_seconds: 300
+max_attempts: 3
+retry_after_hours: 24
+success_message: |
+  ✅ inter-run delta 表示が moppy run log に出現 — Slack 表示も同様

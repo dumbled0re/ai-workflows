@@ -1,0 +1,23 @@
+verify_id: point_sites/2026-05-18-pointincome-extract-label
+verify_after: 2026-05-18T09:00:00+09:00
+project: point_sites
+relates_to: 5637e14
+description: |
+  pointincome の extract-only mode (commit 5637e14) で実 click-mail 到着時に
+  Slack 通知 + Gmail 側に "pointincome-clicked" ラベル付与される flow が
+  動作するか。新着メール待ちなので、3 日後にも依然 0 candidates なら
+  実機での verify は別途必要。
+
+  自動 verify は困難なため manual flag。user は SLACK_CHANNEL_POINTINCOME
+  を見て pointincome の URL が POST されているか、Gmail で
+  "label:pointincome-clicked" 検索して 1 件以上 hit するかを確認する。
+kind: manual
+args:
+  instructions: |
+    1. SLACK_CHANNEL_POINTINCOME を確認:
+       「📬 pointincome クリックリンク」の投稿があるか
+    2. Gmail で `label:pointincome-clicked` を検索:
+       1 件以上 hit すれば label-after-extract path 動作確認
+    3. 0 件なら 3 日間 pointincome から click-mail が来てないだけ。
+       cron 1 週間継続して 0 のままなら issue で報告。
+max_attempts: 1
