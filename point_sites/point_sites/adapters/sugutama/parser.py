@@ -1,25 +1,22 @@
-"""Sugutama on-site Webメール inbox parser.
+"""Sugutama Gmail click-mail parser.
 
-Two parsers used by ``OnsiteInboxSource``:
+Single ``parse(body, is_html)`` entry point used by ``GmailSource``:
+extracts click-coin URLs from one mail body (plaintext or HTML).
+The on-site inbox approach was abandoned 2026-05-15 after live probing
+showed sugutama ships click-mails to external email only — see
+``__init__.py`` for the rationale.
 
-- ``parse_inbox`` enumerates message-detail links in the inbox listing
-  at ``/sugutama/mail/`` (or ``/sugutama/mail_box/`` if the first inspect
-  shows that's the canonical path).
-- ``parse_message`` extracts click-coin URLs from one message detail
-  page.
+⚠ URL regex + callout patterns are best-guess until the first real
+click-mail is observed via ``-f extract_links=true`` and the actual
+shape is confirmed against Slack output.
 
-⚠ All regexes are best-guess until the first authenticated inspect.
-The recon agent (2026-05-10) suggested ``/sugutama/ads/{id}?lo=...`` as
-a candidate message URL shape, but that was based on indirect signals
-and may not match. Refine after seeing real inbox + real click-mail.
-
-**ad-fraud 隔離 (絶対):**
+**ad-fraud 隔離方針 (絶対):**
 ネットマイル系は無料ガチャ・スロットを持つことが recon で確認済み。
 ガチャ系 path がメール本文に混ざるリスクに備えて 3 層防御:
 
 1. ``allowed_hosts`` は sugutama.jp / netmile.co.jp 系のみ (adapter 側)
 2. ``EXCLUSION_URL_RE`` で game / gacha / slot / lottery / kuji
-   / regist / login 等を弾く
+   / garapon / regist / login 等を弾く
 3. callout (``クリックでXmile`` or ``クリックでXpt``) が無い URL は drop
    (= getmoney/warau の防御パターン)
 """
@@ -29,24 +26,12 @@ from __future__ import annotations
 import html as _html
 import logging
 import re
-from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
 from ...common.models import ClickCandidate
-from ...common.sources import InboxEntry
 
 logger = logging.getLogger(__name__)
-
-_INBOX_BASE = "https://www.netmile.co.jp/sugutama/"
-
-# Inbox listing rows. Best-guess pattern based on recon hint
-# (`/sugutama/ads/{id}?lo=...` was suggested) and standard on-site
-# mailbox shapes. Cover both `/ads/<id>` and `/mail/<id>` shapes;
-# narrow after inspect.
-_MESSAGE_LINK_RE = re.compile(
-    r"^(?:/sugutama)?/(?:ads|mail|message)/(?:show/|view/|read/)?(\d+)(?:\?[^#]*)?$",
-)
 
 # Best-guess click-coin URL pattern. Apex sugutama.jp + netmile click
 # tracker. Tighten to actual shape after inspect.
@@ -98,45 +83,14 @@ EXCLUSION_URL_RE = re.compile(
 )
 
 
-def parse_inbox(html: str) -> tuple[list[InboxEntry], list[str]]:
-    """Extract message-link rows from the inbox listing HTML."""
-    if not html.strip():
-        return [], ["empty inbox HTML"]
-    soup = BeautifulSoup(html, "html.parser")
-    entries: list[InboxEntry] = []
-    seen_keys: set[str] = set()
-    for a in soup.find_all("a", href=True):
-        href = str(a["href"])
-        m = _MESSAGE_LINK_RE.match(href)
-        if not m:
-            continue
-        msg_id = m.group(1)
-        state_key = urljoin(_INBOX_BASE, href)
-        if state_key in seen_keys:
-            continue
-        seen_keys.add(state_key)
-        label = a.get_text(strip=True) or f"mail-{msg_id}"
-        entries.append(
-            InboxEntry(
-                state_key=state_key,
-                message_url=state_key,
-                label=label[:120],
-            )
-        )
+def parse(body: str, is_html: bool = False) -> tuple[list[ClickCandidate], list[str]]:
+    """Extract click-coin URL(s) from a single Gmail click-mail body.
 
-    anomalies: list[str] = []
-    if not entries and len(html) > 1500:
-        anomalies.append(
-            "no message links matched inbox-list regex (HTML may have changed — refine _MESSAGE_LINK_RE after inspect)"
-        )
-    return entries, anomalies
-
-
-def parse_message(body: str, is_html: bool = False) -> tuple[list[ClickCandidate], list[str]]:
-    """Extract click-coin URL(s) from a single message detail page.
-
-    Same multi-defence model as warau/getmoney: exclusion regex first,
-    callout required, only first valid candidate kept.
+    Multi-defence against ad-fraud:
+    1. ``EXCLUSION_URL_RE`` drops game / gacha / lottery URLs immediately.
+    2. ``CALLOUT_RE`` is required — URLs without ``クリックでN(mile|Pt)``
+       callout are dropped (= getmoney/warau survey-URL defence).
+    3. Only the first valid candidate per message is kept.
     """
     if not body.strip():
         return [], ["empty message body"]
@@ -185,7 +139,12 @@ def parse_message(body: str, is_html: bool = False) -> tuple[list[ClickCandidate
         candidates.append(candidate)
 
     anomalies: list[str] = []
-    if not candidates and not skipped_no_callout and len(text) > 800:
+    # Only escalate "0 URL matches" when the body looks like a click-mail
+    # (carries a ``クリックでN(mile|Pt)`` callout). Welcome / registration
+    # / newsletter mails legitimately have zero click URLs and would
+    # otherwise raise false positives every run — they silently go to
+    # no_coins instead.
+    if not candidates and not skipped_no_callout and len(text) > 800 and _CALLOUT_RE.search(callout_text):
         anomalies.append(
             "no click-coin URLs matched message regex (HTML may have changed — refine _CLICK_COIN_URL_RE after inspect)"
         )
