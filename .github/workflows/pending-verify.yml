@@ -45,10 +45,11 @@ jobs:
           SLACK_CHANNEL_DEFAULT: ${{ secrets.SLACK_CHANNEL_MOPPY }}
         run: |
           set -e
-          # Single-shot dep install; PyYAML is the only external requirement.
-          uv pip install --system pyyaml
           DRY=""
           if [[ "${{ inputs.dry_run }}" == "true" ]]; then
             DRY="--dry-run"
           fi
-          python scripts/pending_verify.py $DRY
+          # ``uv run --with`` materializes an ephemeral venv with the
+          # listed deps so we don't need the ubuntu runner's system
+          # Python (PEP 668 externally-managed).
+          uv run --with pyyaml python scripts/pending_verify.py $DRY
