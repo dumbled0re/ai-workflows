@@ -92,4 +92,10 @@ ADAPTER = Adapter(
     source=GmailSource(parse_email=parse_email),
     balance_patterns=_SUGUTAMA_BALANCE_PATTERNS,
     discover_seeds=("https://www.netmile.co.jp/sugutama/mypage",),
+    # mypage は ``js-user_point`` を JS で後埋め (HTTP GET の生 HTML は
+    # placeholder のみ)。Playwright で page.content() を取れば JS render
+    # 後の数値が含まれる。``balance_uses_browser=True`` で BrowserClicker
+    # 経由の balance 取得に切替、``_SUGUTAMA_BALANCE_PATTERNS`` が hydration
+    # 完了後の数値を pick up する。
+    balance_uses_browser=True,
 )
