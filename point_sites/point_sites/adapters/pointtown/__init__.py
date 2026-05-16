@@ -91,18 +91,20 @@ ADAPTER = Adapter(
     # に redirect される。Playwright で /login に goto すると自動で SSO
     # form 画面まで進むので、login_url は /login に設定すれば足りる。
     #
-    # SSO form fields:
-    #   email   input[type="email"][name="LoginForm[email]"]
-    #   pass    input[name="LoginForm[pass]"]
+    # SSO form fields (id ベースが安定。``LoginForm[email]`` の name attr は
+    # 角括弧を含むため Playwright CSS selector で escape 問題が起きる
+    # — run 25954125691 で確認、type-based selector で回避):
+    #   email   #login-form input[type="email"]
+    #   pass    #login-form input[type="password"]
     #   submit  button.Btn__primary[type="submit"]
     #
     # ckey は SSO URL の query で session 都度生成されるが、/login 経由
     # で自動 redirect するため login_url 側で静的に固定可能。
     password_login=PasswordLoginConfig(
         login_url="https://www.pointtown.com/login",
-        username_selector='input[name="LoginForm[email]"]',
-        password_selector='input[name="LoginForm[pass]"]',
-        submit_selector="button.Btn__primary",
+        username_selector='#login-form input[type="email"]',
+        password_selector='#login-form input[type="password"]',
+        submit_selector="#login-form button.Btn__primary",
         success_marker="ログアウト",
     ),
 )
