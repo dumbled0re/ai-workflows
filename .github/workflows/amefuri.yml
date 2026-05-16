@@ -44,6 +44,10 @@ on:
         description: "skip cookie loading and login verification (login form inspect)"
         type: boolean
         default: false
+      inspect_capture_network:
+        description: "browser mode only: log all network requests (for SPA API discovery)"
+        type: boolean
+        default: false
       force_fresh_cookies:
         description: "delete persisted cookie jar before run, forcing re-bootstrap from Secret (use after rotating <SITE>_COOKIES)"
         type: boolean
@@ -70,6 +74,7 @@ jobs:
       inspect_cap: ${{ inputs.inspect_cap }}
       inspect_wait_selector: ${{ inputs.inspect_wait_selector }}
       inspect_anonymous: ${{ inputs.inspect_anonymous == true }}
+      inspect_capture_network: ${{ inputs.inspect_capture_network == true }}
       force_fresh_cookies: ${{ inputs.force_fresh_cookies == true }}
       force_password_login_test: ${{ inputs.force_password_login_test == true }}
     secrets:

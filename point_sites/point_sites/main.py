@@ -162,9 +162,7 @@ def _verify_login(clicker: Clicker, cfg: Config) -> bool:
         if clicker.verify_login(cfg.adapter.mypage_url, cfg.adapter.login_keyword):
             return True
     else:
-        logger.info(
-            "FORCE_PASSWORD_LOGIN_TEST=1 — skipping cookie verify, exercising password_login fallback directly"
-        )
+        logger.info("FORCE_PASSWORD_LOGIN_TEST=1 — skipping cookie verify, exercising password_login fallback directly")
     pw_login = cfg.adapter.password_login
     if pw_login is None:
         return False
@@ -379,6 +377,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help=(
             "skip cookie loading and login verification — for inspecting "
             "login forms and other pages where logged-in sessions redirect away"
+        ),
+    )
+    p_html.add_argument(
+        "--capture-network",
+        action="store_true",
+        help=(
+            "browser mode only: log all network requests the page makes "
+            "(method + url + resource_type). Useful for discovering API "
+            "endpoints behind fully-SPA sites (e.g. warau)."
         ),
     )
     return parser
@@ -959,6 +966,7 @@ def cmd_html(
     wait_selector: str | None = None,
     wait_timeout_ms: int = 15_000,
     anonymous: bool = False,
+    capture_network: bool = False,
 ) -> int:
     """Fetch a single URL and dump its body to stdout.
 
@@ -996,7 +1004,13 @@ def cmd_html(
         if force_browser:
             from .common.browser import BrowserClicker
 
+            captured: list[tuple[str, str, str]] = []
             with BrowserClicker(cookies=None) as bc:
+                if capture_network:
+                    bc.context.on(
+                        "request",
+                        lambda req: captured.append((req.method, req.url, req.resource_type)),
+                    )
                 page = bc.goto(url)
                 try:
                     final_url = page.url
@@ -1010,6 +1024,12 @@ def cmd_html(
                     page.close()
             original_len = len(body_text)
             print(f"=== {final_url} (browser anonymous, len={original_len}) ===")
+            if capture_network and captured:
+                print("\n=== captured network requests ===")
+                for method, req_url, rtype in captured:
+                    if rtype in ("image", "stylesheet", "font", "media"):
+                        continue
+                    print(f"  [{rtype}] {method} {req_url}")
         else:
             import requests
 
@@ -1048,10 +1068,16 @@ def cmd_html(
 
         host = urlparse(cfg.adapter.mypage_url).hostname or ""
         default_domain = "." + (host.split(".", 1)[-1] if "." in host else host)
+        captured_auth: list[tuple[str, str, str]] = []
         with BrowserClicker(
             cookies=_jar_to_cookies(clicker),
             default_cookie_domain=default_domain,
         ) as bc:
+            if capture_network:
+                bc.context.on(
+                    "request",
+                    lambda req: captured_auth.append((req.method, req.url, req.resource_type)),
+                )
             page = bc.goto(url)
             try:
                 final_url = page.url
@@ -1070,6 +1096,12 @@ def cmd_html(
         original_len = len(body_text)
         _persist_cookies(clicker, cfg)
         print(f"=== {final_url} (browser, len={original_len}) ===")
+        if capture_network and captured_auth:
+            print("\n=== captured network requests ===")
+            for method, req_url, rtype in captured_auth:
+                if rtype in ("image", "stylesheet", "font", "media"):
+                    continue
+                print(f"  [{rtype}] {method} {req_url}")
     else:
         resp = clicker.session.get(url, timeout=(10.0, 30.0), allow_redirects=True)
         _persist_cookies(clicker, cfg)
@@ -1158,6 +1190,7 @@ def main(argv: list[str] | None = None) -> int:
             wait_selector=getattr(args, "wait_selector", None),
             wait_timeout_ms=getattr(args, "wait_timeout_ms", 15_000),
             anonymous=getattr(args, "anonymous", False),
+            capture_network=getattr(args, "capture_network", False),
         )
     parser.error(f"unknown subcommand: {args.cmd}")
 
