@@ -27,7 +27,7 @@ GitHub Actions と Claude を活用した個人用自動化ワークフロー集
 | `CLAUDE_CODE_OAUTH_TOKEN` | 全 Claude Code Action 共通の認証 |
 | `SLACK_BOT_TOKEN` | Slack Bot User OAuth Token (`xoxb-...`)。全プロジェクト共有 |
 | `SLACK_CHANNEL_<PROJECT>` | プロジェクト別 channel (`SLACK_CHANNEL_TODO` / `_TECH` / `_STOCK` / `_MOPPY` / `_HAPITAS` / `_POINTINCOME` / `_AMEFURI` / `_POINTTOWN` / `_GETMONEY` / `_FRUITMAIL` / `_WARAU` / `_SUGUTAMA`) |
-| `GMAIL_USER` / `GMAIL_APP_PASSWORD` | ポイ活専用 Gmail (`poikatsu.box@gmail.com` 系) の IMAP 認証 |
+| `GMAIL_USER` / `GMAIL_APP_PASSWORD` | ポイ活専用 Gmail (`<your-poikatsu-email>` 系) の IMAP 認証 |
 | `<SITE>_COOKIES` | point_sites 各サイト用 Cookie JSON (Cookie-Editor export) |
 
 ## ローカル実行

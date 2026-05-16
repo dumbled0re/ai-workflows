@@ -20,7 +20,7 @@
 
 ## Adapter 追加 flow
 
-1. **user**: ポイ活専用 Gmail (`poikatsu.box@gmail.com` 系) でサイト登録 → Cookie-Editor で JSON export
+1. **user**: ポイ活専用 Gmail (`<your-poikatsu-email>` 系) でサイト登録 → Cookie-Editor で JSON export
 2. **user**: GitHub Secret 登録 (`<SITE>_COOKIES` + `SLACK_CHANNEL_<SITE>`) + Slack channel に bot 招待
 3. **Claude**:
    - `mkdir adapters/<site>/` + `__init__.py` (`pointincome` をテンプレに `mypage_url` `allowed_hosts` `login_keyword` `source` を埋める)
