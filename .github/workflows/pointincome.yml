@@ -88,3 +88,5 @@ jobs:
       cookies: ${{ secrets.POINTINCOME_COOKIES }}
       gmail_user: ${{ secrets.GMAIL_USER }}
       gmail_app_password: ${{ secrets.GMAIL_APP_PASSWORD }}
+      login_user: ${{ secrets.POINTINCOME_USER }}
+      login_pass: ${{ secrets.POINTINCOME_PASS }}

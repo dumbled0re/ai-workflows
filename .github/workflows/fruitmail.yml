@@ -80,3 +80,5 @@ jobs:
       cookies: ${{ secrets.FRUITMAIL_COOKIES }}
       gmail_user: ${{ secrets.GMAIL_USER }}
       gmail_app_password: ${{ secrets.GMAIL_APP_PASSWORD }}
+      login_user: ${{ secrets.FRUITMAIL_USER }}
+      login_pass: ${{ secrets.FRUITMAIL_PASS }}

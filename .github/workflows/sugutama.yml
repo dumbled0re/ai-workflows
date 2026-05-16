@@ -81,3 +81,5 @@ jobs:
       cookies: ${{ secrets.SUGUTAMA_COOKIES }}
       gmail_user: ${{ secrets.GMAIL_USER }}
       gmail_app_password: ${{ secrets.GMAIL_APP_PASSWORD }}
+      login_user: ${{ secrets.SUGUTAMA_USER }}
+      login_pass: ${{ secrets.SUGUTAMA_PASS }}

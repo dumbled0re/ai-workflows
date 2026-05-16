@@ -59,6 +59,13 @@ on:
         required: true
       gmail_app_password:
         required: true
+      # Optional ID/PW fallback. When both are provided AND the
+      # adapter has ``password_login`` configured, ``_verify_login``
+      # falls back to fresh Playwright login if cookies fail.
+      login_user:
+        required: false
+      login_pass:
+        required: false
 
 permissions:
   contents: read
@@ -187,6 +194,8 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.slack_bot_token }}
           SITE_SLACK_CHANNEL: ${{ secrets.slack_channel }}
           SITE_COOKIES: ${{ secrets.cookies }}
+          SITE_LOGIN_USER: ${{ secrets.login_user }}
+          SITE_LOGIN_PASS: ${{ secrets.login_pass }}
           GMAIL_USER: ${{ secrets.gmail_user }}
           GMAIL_APP_PASSWORD: ${{ secrets.gmail_app_password }}
         run: |
@@ -197,6 +206,13 @@ jobs:
           export "${SITE_UPPER}_COOKIES=$SITE_COOKIES"
           export "SLACK_CHANNEL_${SITE_UPPER}=$SITE_SLACK_CHANNEL"
           export "${SITE_UPPER}_DRY_RUN=$DRY_RUN_FLAG"
+          # Optional ID/PW fallback. ``<SITE>_USER`` / ``<SITE>_PASS`` are
+          # consumed by point_sites/common/password_login.py only when the
+          # adapter has ``password_login`` set AND cookie verification fails.
+          # Empty values are exported as empty strings; password_login.py
+          # checks ``os.environ.get(...)`` (truthy) so empty == not set.
+          export "${SITE_UPPER}_USER=$SITE_LOGIN_USER"
+          export "${SITE_UPPER}_PASS=$SITE_LOGIN_PASS"
           if [[ "$DISPATCH_EXTRACT" == "1" ]]; then
             export "${SITE_UPPER}_EXTRACT_LINKS=1"
           fi
