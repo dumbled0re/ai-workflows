@@ -28,6 +28,7 @@ import re
 
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
+from ...common.password_login import PasswordLoginConfig
 from ...common.sources import OnsiteInboxSource
 from ...common.wizard import DailyWizard
 from .parser import parse_inbox, parse_message
@@ -36,7 +37,11 @@ ADAPTER = Adapter(
     name="pointtown",
     site_label="ポイントタウン",
     mypage_url="https://www.pointtown.com/mypage",
-    allowed_hosts=frozenset({"pointtown.com", "www.pointtown.com", "sp.pointtown.com"}),
+    # id.gmo.jp は GMO 共通の SSO。pointtown の /login は anonymous GET で
+    # ``https://id.gmo.jp/gui/auth/login/sso?ckey=...`` に redirect され、
+    # そこで login form が出る。Playwright 経由の password_login が SSO
+    # form に navigate するため allowed_hosts に追加。
+    allowed_hosts=frozenset({"pointtown.com", "www.pointtown.com", "sp.pointtown.com", "id.gmo.jp"}),
     login_keyword="ログアウト",
     source=OnsiteInboxSource(
         inbox_url="https://www.pointtown.com/mypage/mail",
@@ -80,5 +85,24 @@ ADAPTER = Adapter(
                 ("#js-get-reward-btn", 1),
             ),
         ),
+    ),
+    # 2026-05-16 inspect (--anonymous, /login → GMO SSO redirect 追従) で
+    # 確定。pointtown 独自 login form は存在せず、GMO 共通 SSO (id.gmo.jp)
+    # に redirect される。Playwright で /login に goto すると自動で SSO
+    # form 画面まで進むので、login_url は /login に設定すれば足りる。
+    #
+    # SSO form fields:
+    #   email   input[type="email"][name="LoginForm[email]"]
+    #   pass    input[name="LoginForm[pass]"]
+    #   submit  button.Btn__primary[type="submit"]
+    #
+    # ckey は SSO URL の query で session 都度生成されるが、/login 経由
+    # で自動 redirect するため login_url 側で静的に固定可能。
+    password_login=PasswordLoginConfig(
+        login_url="https://www.pointtown.com/login",
+        username_selector='input[name="LoginForm[email]"]',
+        password_selector='input[name="LoginForm[pass]"]',
+        submit_selector="button.Btn__primary",
+        success_marker="ログアウト",
     ),
 )
