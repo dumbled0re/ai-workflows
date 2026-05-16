@@ -99,5 +99,16 @@ ADAPTER = Adapter(
             url="https://www.fruitmail.net/bingo/index.php",
             clicks=(("#bingo_start", 1),),
         ),
+        # daily ログインボーナス。HTML inspect 2026-05-16 (point_de page) で
+        # ``<button class="global_loginBonus__confirmButton">`` がヘッダー
+        # widget として全 page に出現することを確認。click で stamp + reward
+        # modal を開き、modal の background ヘッダーに ``data-is-today-
+        # login-bonus-granted`` 属性が立ったら受け取り済 = fail-soft で skip。
+        # mypage で実行 (top でも動くが pointtown 例に倣う)。
+        DailyWizard(
+            name="fruitmail_login_bonus",
+            url="https://www.fruitmail.net/mypage/",
+            clicks=((".global_loginBonus__confirmButton", 1),),
+        ),
     ),
 )
