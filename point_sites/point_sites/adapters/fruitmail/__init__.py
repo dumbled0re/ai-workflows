@@ -51,7 +51,7 @@ ADAPTER = Adapter(
     # 社抽選) — that's added so the slot DailyWizard's navigation passes
     # ``is_manual_url_allowed`` and the wizard's Playwright session can
     # GET the page.
-    allowed_hosts=frozenset({"fruitmail.net", "www.fruitmail.net", "slot.fruitmail.net"}),
+    allowed_hosts=frozenset({"fruitmail.net", "www.fruitmail.net", "slot.fruitmail.net", "almond.fruitmail.net"}),
     login_keyword="ログアウト",
     # Sender domain best-guess. If real mails come from a different
     # subdomain (e.g. ``info@fruitmail.net`` vs ``mail@``), broaden
