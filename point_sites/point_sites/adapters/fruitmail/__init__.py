@@ -33,6 +33,7 @@ Required Secrets:
 
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
+from ...common.password_login import PasswordLoginConfig
 from ...common.sources import GmailSource
 from ...common.wizard import DailyWizard
 from .parser import parse as parse_email
@@ -110,5 +111,16 @@ ADAPTER = Adapter(
             url="https://www.fruitmail.net/mypage/",
             clicks=((".global_loginBonus__confirmButton", 1),),
         ),
+    ),
+    # 2026-05-16 inspect (--anonymous) で確定。form id="login" action は
+    # 同 URL POST。identifier は email or 会員 ID 両対応 (name="identifier")、
+    # password は name="password"。submit は専用 class の button。
+    # cookie 失効時に FRUITMAIL_USER / FRUITMAIL_PASS Secret から fresh login。
+    password_login=PasswordLoginConfig(
+        login_url="https://www.fruitmail.net/login?go_html=https://www.fruitmail.net/",
+        username_selector="#user_identifier",
+        password_selector="#password",
+        submit_selector="button.login_index__loginButtonControl",
+        success_marker="ログアウト",
     ),
 )
