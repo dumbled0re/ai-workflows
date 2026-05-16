@@ -79,6 +79,12 @@ ADAPTER = Adapter(
     # の reel 回転時間として機能する想定。動作確認後に retry を追加する。
     # 「本日のプレイ回数」は JS で render されるため static HTML では
     # 上限不明 (typical 日本のポイントサイトスロットは 1-3 回/日)。
+    #
+    # ビンゴ (https://www.fruitmail.net/bingo/index.php) は自社運営。
+    # form ``<input type="submit" id="bingo_start" name="bingo_card">``
+    # で daily 1 回カード生成。完成 (= 縦横斜め揃う) でポイント獲得。
+    # 1 日 1 回の submit で番号が 1 つずつ埋まる累積式が一般的なので、
+    # cron で毎日 submit するだけで累積。観察期間が必要 (issue で追跡)。
     daily_wizards=(
         DailyWizard(
             name="fruitmail_present_slot",
@@ -87,6 +93,11 @@ ADAPTER = Adapter(
                 ("#start", 1),
                 ("#stop", 1),
             ),
+        ),
+        DailyWizard(
+            name="fruitmail_bingo",
+            url="https://www.fruitmail.net/bingo/index.php",
+            clicks=(("#bingo_start", 1),),
         ),
     ),
 )
