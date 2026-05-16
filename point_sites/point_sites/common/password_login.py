@@ -146,7 +146,34 @@ def login_with_password(
             logger.info("password login succeeded (success_marker found)")
             bc.authenticated = True
         else:
-            logger.warning("password login submitted but success_marker not found")
+            # Capture the post-submit landing page details so the next
+            # iteration can tell why the marker is missing (wrong creds
+            # → SSO error page / captcha / 2FA / different success page
+            # text). page.url tells us if redirect chain landed on the
+            # expected host; title + content snippet shows what's on
+            # screen. content is redacted to drop session tokens.
+            import re as _re
+
+            final_url = ""
+            with contextlib.suppress(Exception):
+                final_url = page.url
+            title = ""
+            with contextlib.suppress(Exception):
+                tm = _re.search(r"<title[^>]*>([^<]+)</title>", content)
+                if tm:
+                    title = tm.group(1).strip()
+            snippet = _re.sub(r"[A-Za-z0-9+/=_-]{20,}", "<redacted>", content)
+            snippet = _re.sub(r"<script\b[\s\S]*?</script>", "", snippet)
+            snippet = _re.sub(r"<style\b[\s\S]*?</style>", "", snippet)
+            snippet = _re.sub(r"\s+", " ", snippet)[:600]
+            logger.warning(
+                "password login submitted but success_marker %r not found; "
+                "final_url=%r title=%r snippet=%s",
+                config.success_marker,
+                final_url,
+                title,
+                snippet,
+            )
         return ok
     except Exception as exc:
         logger.warning("password login form interaction failed: %s", exc)
