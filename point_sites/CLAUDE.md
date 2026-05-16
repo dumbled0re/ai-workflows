@@ -46,10 +46,50 @@
 
 | 用途 | 実装 | 例 |
 |---|---|---|
-| balance 取得 (anti-bot interstitial 突破) | `Adapter.balance_uses_browser=True` | pointincome (突破できなかったので HTTP fallback) |
+| balance 取得 (anti-bot interstitial 突破 / JS render 後 read) | `Adapter.balance_uses_browser=True` | sugutama (JS-rendered mile widget)、pointincome (突破できなかったので HTTP fallback) |
 | 単発の SPA navigation | `Adapter.browser_actions` | amefuri SPA login bonus |
 | daily-rotating banner の discover + click | `Adapter.daily_banner_url` + `daily_banner_selector` | hapitas top の click_get banners |
-| multi-step button wizard | `Adapter.daily_wizards` | pointtown login bonus modal、hapitas takarakuji 交換 |
+| multi-step button wizard | `Adapter.daily_wizards` | pointtown login bonus、hapitas takarakuji 交換、fruitmail スロット / ビンゴ / login_bonus |
+| Cookie 失効時の自動再ログイン | `Adapter.password_login=PasswordLoginConfig(...)` | fruitmail / moppy (実装済)。pointtown は GMO SSO anti-fraud で無効化 |
+
+### ID/PW login fallback (password_login)
+
+Cookie 失効頻繁な site 向けに、`<SITE>_USER` / `<SITE>_PASS` Secret から Playwright で fresh login する仕組み。
+
+```python
+# adapter __init__.py 抜粋
+password_login=PasswordLoginConfig(
+    login_url="https://example.jp/login",
+    username_selector='input[name="email"]',  # CSS selector (page.fill で使う)
+    password_selector='input[name="pass"]',
+    submit_selector="button.login-btn",        # page.click() (native) で発火
+    success_marker="ログアウト",                # post-submit page 内に含まれてれば成功
+)
+```
+
+`_verify_login` の挙動:
+1. cookie で verify
+2. 失敗時、`adapter.password_login is not None` かつ env var が set されていれば BrowserClicker (cookies=None) で fresh login → 成功なら cookie merge back
+3. 再 verify、失敗なら従来の Slack auth_error path
+
+**Debug flag**: `force_password_login_test=true` workflow input で cookie verify を skip して fallback を強制発火 (実装新規時の selector 確認に使う)。
+
+**注意**:
+- `selector` に `name="LoginForm[email]"` のような `[]` を含む name attr は Playwright で escape 問題が起きる場合あり → id-based / type-based selector を優先
+- SSO 経由 site (GMO SSO 等) は redirect chain 完了に 5s 程度かかる → password_login は post-submit に 5s wait + content() check 内蔵
+- anti-fraud (US runner IP が「不審なログイン」判定される site = GMO 系) は突破不可と確定。framework としては fail-soft で従来 path に fallback
+
+## inspect (cmd_html) の debug flag
+
+`gh workflow run <site>.yml -f inspect_url=<URL>` で実 HTML を取得して analyse する debug 機構。追加 flag:
+
+| Flag | 用途 |
+|---|---|
+| `inspect_browser=true` | Playwright Chromium で render してから content() (SPA / JS-driven page) |
+| `inspect_cap=<N>` | 出力 byte 数上限 (default 80000、SPA で大きい page は 200000-500000) |
+| `inspect_wait_selector=<CSS>` | browser モードで指定 selector を wait してから content() (SPA hydration 待ち) |
+| `inspect_anonymous=true` | cookie load と login verify を skip。**login form 等の logged-out HTML を見る用** (logged-in session は redirect で見えない) |
+| `inspect_capture_network=true` | browser モードで全 network request を log 出力。**SPA の API endpoint 探索用** |
 
 ## test / lint / mypy
 
