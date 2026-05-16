@@ -1,0 +1,26 @@
+verify_id: point_sites/2026-05-23-fruitmail-bingo-credit
+verify_after: 2026-05-23T09:00:00+09:00
+project: point_sites
+relates_to: "11dbb5a (fruitmail bingo DailyWizard 追加)"
+description: |
+  fruitmail ビンゴ DailyWizard を 2026-05-16 追加。``#bingo_start``
+  submit でカード番号を 1 日 1 つ累積する design (推定)。完成 (縦横
+  斜め揃う) で credit が入る。
+
+  完成まで何日かかるか不明だが、最短 5 行で 5 日。``recent_run_log_grep``
+  で 1 週間後の log に「balance after clicks: 5(0[3-9]|[1-9][0-9])」
+  (= 503pt 以上 = 初回 502pt から増えた) を check。
+
+  完成しなくても submit 自体は credit するかも (login bonus 系)。同じ
+  pattern で同時観察できる。
+kind: recent_run_log_grep
+args:
+  workflows:
+    - fruitmail.yml
+  pattern: "fruitmail_bingo wizard succeeded"
+  lookback: 14
+  require_all: true
+max_attempts: 7
+retry_after_hours: 24
+success_message: |
+  ✅ fruitmail ビンゴ wizard が 7 日以内に succeed log を残した — submit 動作確認
