@@ -1,0 +1,30 @@
+verify_id: point_sites/2026-05-23-fruitmail-slot-credit
+verify_after: 2026-05-23T09:00:00+09:00
+project: point_sites
+relates_to: "22e2fd6 (fruitmail present_slot DailyWizard 追加)"
+description: |
+  fruitmail プレゼントスロット DailyWizard を 2026-05-16 に投入。
+  ``#start`` → ``#stop`` の 2 step で daily 1 プレイ自動化。
+  初回 dispatch 時点 (run 25951580509) は balance 502→502 で wizard
+  succeeded だが credit は確認できず (= ハズレ or 抽選非反映)。
+
+  賞品は Amazon ギフト券・ポイントで自社抽選、当選確率は site 仕様
+  未公開。1 週間後に balance が増えたか passive scan。
+    - 増えていれば adapter は正しく credit させており、retry 機能を
+      追加して daily プレイ回数フル消化を検討
+    - 増えていなければ wizard が credit に到達できていないか抽選
+      ハズレが連続したか不明 → 再 inspect で実 spin の XHR 解析
+
+  ``recent_run_log_grep`` で直近 7 cron run に「balance after clicks」
+  が 502 より大きな数値を含むか check。
+kind: recent_run_log_grep
+args:
+  workflows:
+    - fruitmail.yml
+  pattern: "balance after clicks: 5(0[3-9]|[1-9][0-9])"
+  lookback: 14
+  require_all: true
+max_attempts: 7
+retry_after_hours: 24
+success_message: |
+  ✅ fruitmail プレゼントスロット credit 発火確認 — 自社抽選 wizard が機能している
