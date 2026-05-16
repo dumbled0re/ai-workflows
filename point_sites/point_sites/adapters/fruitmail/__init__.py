@@ -34,6 +34,7 @@ Required Secrets:
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
 from ...common.sources import GmailSource
+from ...common.wizard import DailyWizard
 from .parser import parse as parse_email
 
 ADAPTER = Adapter(
@@ -42,12 +43,15 @@ ADAPTER = Adapter(
     # Verified anonymously 2026-05-10: ``/mypage/`` returns 200,
     # ``/my/`` is 404. Login keyword check (ログアウト) runs on this URL.
     mypage_url="https://www.fruitmail.net/mypage/",
-    # ``apricot.fruitmail.net`` is a separate game-server subdomain
-    # mentioned in recon. Game endpoints there are intentionally out of
-    # scope (ad-fraud risk per CLAUDE.md guardrails). If a real click-
-    # mail body ever embeds an apricot-domain tracking URL, allow it
-    # only after auditing — leave it out of allowlist for now.
-    allowed_hosts=frozenset({"fruitmail.net", "www.fruitmail.net"}),
+    # ``apricot.fruitmail.net`` is the on-site game-server subdomain
+    # for michannel / estlier — those embed 第三者ゲーム業者 jumps
+    # (kantangame, dropgame, pochitto2 等) so they stay out of the
+    # allowlist. ``slot.fruitmail.net`` hosts the in-house プレゼント
+    # スロット (賞品: Amazon ギフト券・ポイント、当選は fruitmail 自
+    # 社抽選) — that's added so the slot DailyWizard's navigation passes
+    # ``is_manual_url_allowed`` and the wizard's Playwright session can
+    # GET the page.
+    allowed_hosts=frozenset({"fruitmail.net", "www.fruitmail.net", "slot.fruitmail.net"}),
     login_keyword="ログアウト",
     # Sender domain best-guess. If real mails come from a different
     # subdomain (e.g. ``info@fruitmail.net`` vs ``mail@``), broaden
@@ -63,5 +67,26 @@ ADAPTER = Adapter(
     discover_seeds=(
         "https://www.fruitmail.net/mypage/",
         "https://www.fruitmail.net/clickpoint/daily",
+    ),
+    # プレゼントスロット (https://slot.fruitmail.net/present_slot/) は
+    # 自社抽選 (賞品: Amazon ギフト券・ポイント) で第三者広告経由ではな
+    # い。HTML inspect 2026-05-16 で確認できた action anchors:
+    #   #start  ← スロット回転開始
+    #   #stop   ← 停止 (停止位置でハズレ/当たり抽選)
+    #   #retry  ← 次の回 (本日のプレイ回数 N まで)
+    #   #end    ← 終了 (point_de に遷移)
+    # 初回実装は 1 プレイ分のみ。selector 間 800ms wait が start→stop
+    # の reel 回転時間として機能する想定。動作確認後に retry を追加する。
+    # 「本日のプレイ回数」は JS で render されるため static HTML では
+    # 上限不明 (typical 日本のポイントサイトスロットは 1-3 回/日)。
+    daily_wizards=(
+        DailyWizard(
+            name="fruitmail_present_slot",
+            url="https://slot.fruitmail.net/present_slot/",
+            clicks=(
+                ("#start", 1),
+                ("#stop", 1),
+            ),
+        ),
     ),
 )

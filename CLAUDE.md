@@ -100,6 +100,20 @@ session 内で完結しない / 翌日以降に持ち越す task は **必ず Gi
 
 通知: `SLACK_CHANNEL_VERIFY` Secret 指定 channel に全イベント (success / inconclusive / failure) を流す。issue にもコメントが残るので Slack ロスト時の冗長性あり。pending-verify の `kind` 登録は機械検証用なので、`enhancement` 等の人手 task issue には `pending-verify` label を **付けないこと** (cron が拾って混乱の元になる)。
 
+## user に選択 / 判断を求めるときは AskUserQuestion ツール
+
+user に複数の選択肢を提示したい / 方針を聞きたい場合は **`AskUserQuestion` ツールを使う**。地の文で「A / B / C のどれにしますか？」と書くだけにしない。
+
+**Why:** チャット本文に選択肢を埋め込むと、user は手動で番号を返したり改めて文章入力する必要がある。`AskUserQuestion` だと UI 上 click 選択でき、最大 4 択 + "Other" 自動付与 + multiSelect 可で operability が桁違いに上がる。
+
+**How to apply:**
+
+- 1-4 択の選択肢を提示するシーン (実装方針・優先順位・どの issue を立てるか等) は `AskUserQuestion` 一択
+- 自由回答が必要な「どう書きますか？」「内容を教えてください」のような open question では使わない (普通に聞く)
+- 選択肢が 5 個以上になりそうな場合は、まず 4 大分類で `AskUserQuestion` → 選ばれた分類の中で再質問、と段階分け
+- 推奨案がある場合は先頭に置き label に "(Recommended)" を付ける
+- preview field は code snippet / mockup / config の比較など視覚的な対比が要るときに使う (単なる文章 description で足りるなら不要)
+
 ## Git 運用ポリシー
 
 個人リポジトリ。AI は **確認なしで自律実行 OK**:
