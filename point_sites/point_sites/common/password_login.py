@@ -121,7 +121,13 @@ def login_with_password(
             page.dispatch_event(config.intermediate_submit_selector, "click", timeout=5000)
             page.wait_for_timeout(1500)
         page.fill(config.password_selector, password)
-        page.dispatch_event(config.submit_selector, "click", timeout=5000)
+        # Native click via page.click() (not dispatch_event "click") so
+        # the form's submit handler fires. dispatch_event sends a
+        # synthetic MouseEvent that some forms (GMO SSO etc.) don't treat
+        # as a real submit signal — the click looks "clicked" but the
+        # form never POSTs. page.click() does a real mouse-down/up which
+        # both bound handlers and native form submit handle uniformly.
+        page.click(config.submit_selector, timeout=5000)
         # networkidle so the post-login redirect and any session-cookie
         # set-cookies finish landing before we check the marker. ad-heavy
         # sites can keep polling forever; fall through and check content
