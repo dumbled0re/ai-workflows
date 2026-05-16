@@ -1,0 +1,23 @@
+verify_id: point_sites/2026-05-23-fruitmail-login-bonus-credit
+verify_after: 2026-05-23T09:00:00+09:00
+project: point_sites
+relates_to: "1405400 (fruitmail login_bonus DailyWizard 追加)"
+description: |
+  fruitmail daily ログインボーナス DailyWizard を 2026-05-16 投入。
+  ``.global_loginBonus__confirmButton`` 1 click で stamp + reward modal
+  を開く。初回 dispatch で wizard succeeded 確認済 (run 25952468785)、
+  balance 502→502 (= 本日分は modal 開いただけ or 既受領)。
+
+  ``recent_run_log_grep`` で 1 週間後の log に「fruitmail_login_bonus
+  wizard succeeded」が出続けているか + balance が増えてるかを check。
+kind: recent_run_log_grep
+args:
+  workflows:
+    - fruitmail.yml
+  pattern: "fruitmail_login_bonus wizard succeeded"
+  lookback: 14
+  require_all: true
+max_attempts: 7
+retry_after_hours: 24
+success_message: |
+  ✅ fruitmail login_bonus wizard 動作継続確認
