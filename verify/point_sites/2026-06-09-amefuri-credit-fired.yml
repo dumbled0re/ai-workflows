@@ -1,0 +1,32 @@
+verify_id: point_sites/2026-06-09-amefuri-credit-fired
+verify_after: 2026-06-09T09:00:00+09:00
+project: point_sites
+relates_to: amefuri/__init__.py L94-101 (stagnation_window=30)
+description: |
+  amefuri は「たぬきランク」の per-day yield (1pt = 0.1円) が表示精度未満
+  のため、stagnation_window=30 設定で 30 runs フラットを許容している。
+  30 日ごとの milestone bonus (10〜100pt) が点火すれば 1 件でも
+  ``balance after clicks: [1-9]`` が log に出るはず。
+
+  2026-05-16 までの直近 7 連続 cron で残高 0pt のまま。設計コメントに
+  従えば「milestone (≈ 6/8) 過ぎても加算がゼロのままなら本格 broken」。
+  6/9 朝以降に passive scan で「直近 35 cron run のいずれかで balance
+  が 0 でない数値を出したか」を確認。
+
+  inconclusive で max_attempts 切れた場合 (= 7 日間 retry してダメ) は
+  failure 通知。Claude/user 側で:
+    1. _DAILY_BONUS_URL ("/account") が credit 発火する正しい endpoint
+       か discover 再実行で再確認
+    2. 直っていなければ amefuri adapter を disable (REGISTRY から外す
+       か workflow を disable)
+kind: recent_run_log_grep
+args:
+  workflows:
+    - amefuri.yml
+  pattern: "balance after clicks: [1-9]"
+  lookback: 35
+  require_all: true
+max_attempts: 7
+retry_after_hours: 24
+success_message: |
+  ✅ amefuri 30 日 milestone bonus 発火確認 — adapter は正しく credit させている

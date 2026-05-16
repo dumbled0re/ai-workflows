@@ -63,3 +63,32 @@ def test_first_pattern_wins() -> None:
     <p>保有ポイント 9999 P</p>
     """
     assert parse_balance(html) == 1000
+
+
+def test_sugutama_js_placeholder_returns_none() -> None:
+    """sugutama mypage は server-side では ``------`` placeholder のみで JS render。
+
+    DEFAULT_BALANCE_PATTERNS を当てると embedded ``<script>`` 内の "class=...point..."
+    風文字列にノイズマッチして年号 (e.g. 2026) を拾うバグがあった (2026-05-16)。
+    sugutama 専用の strict pattern では placeholder のため None を返すことを確認。
+    """
+    from point_sites.adapters.sugutama import _SUGUTAMA_BALANCE_PATTERNS
+
+    # 実際の sugutama mypage HTML の構造を再現
+    html = """
+    <div class="mile add_mile js-user_point">------</div>
+    <script>
+      // ノイズ: copyright や config 等で 2026 が現れがち
+      var meta = {copyright: 2026, class: "point-config"};
+    </script>
+    <div class="some-point-class">2026</div>
+    """
+    assert parse_balance(html, _SUGUTAMA_BALANCE_PATTERNS) is None
+
+
+def test_sugutama_pattern_matches_when_server_renders() -> None:
+    """将来 sugutama が server-side render に切り替わった場合は拾えること。"""
+    from point_sites.adapters.sugutama import _SUGUTAMA_BALANCE_PATTERNS
+
+    html = '<div class="mile add_mile js-user_point">1,234</div>'
+    assert parse_balance(html, _SUGUTAMA_BALANCE_PATTERNS) == 1234

@@ -47,10 +47,31 @@ Required Secrets:
     (moppy/warau 等と共有)
 """
 
+import re
+
 from ...common.adapter import Adapter
-from ...common.balance import DEFAULT_BALANCE_PATTERNS
 from ...common.sources import GmailSource
 from .parser import parse as parse_email
+
+# sugutama (netmile) の mypage は server-side でマイル数を render せず、
+# DOM 上は ``<div class="mile add_mile js-user_point">------</div>`` の
+# ように placeholder のみ。実値は client-side JS が API 経由で後から
+# 埋める JS-rendered balance。HTTP GET の生 HTML には数値が含まれない。
+#
+# 過去の挙動 (2026-05-16 まで): DEFAULT_BALANCE_PATTERNS の末尾
+# ``class="...point..."[^>]*>\s*(\d+)`` が embedded ``<script>`` 内
+# (ライブラリ JS の class 属性風 string や JSON literal 等) のノイズと
+# マッチして、"2026" のような無関係な数字を残高として誤検出していた
+# (user 報告 2026-05-16: 実残高ゼロなのに Slack に 2026pt 表示)。
+#
+# 対策: balance scraping を実質 disable。下記 pattern は将来 sugutama
+# が server-side render に切り替わった場合のみ拾う forward-compat 用
+# で、現状では ``------`` placeholder のため常に None を返す。Slack 通知
+# は「残高: 取得失敗 / 推定なし」表記になり pointincome と同じ運用。
+#
+# TODO (別 issue): JS render 後の balance を取る正攻法を実装する
+# (Playwright で page.content() か、netmile passbook API の直接呼出し)。
+_SUGUTAMA_BALANCE_PATTERNS = (re.compile(r'class="[^"]*js-user_point[^"]*"[^>]*>\s*([0-9,]+)\s*<'),)
 
 ADAPTER = Adapter(
     name="sugutama",
@@ -69,6 +90,6 @@ ADAPTER = Adapter(
     clicked_label="sugutama-clicked",
     no_coins_label="sugutama-no-coins",
     source=GmailSource(parse_email=parse_email),
-    balance_patterns=DEFAULT_BALANCE_PATTERNS,
+    balance_patterns=_SUGUTAMA_BALANCE_PATTERNS,
     discover_seeds=("https://www.netmile.co.jp/sugutama/mypage",),
 )
