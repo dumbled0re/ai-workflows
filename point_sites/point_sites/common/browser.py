@@ -252,20 +252,29 @@ class BrowserClicker:
         mypage_url: str,
         *,
         patterns: tuple[re.Pattern[str], ...] = DEFAULT_BALANCE_PATTERNS,
+        hydrate_wait_ms: int = 4_000,
     ) -> int | None:
         """Browser equivalent of ``balance.fetch_balance``.
 
         Loads ``mypage_url`` with a real browser so JS-rendered balance
-        widgets (``pointincome``-style) are present in ``page.content()``.
-        Returns ``None`` on any failure; the caller treats that as
-        "balance unknown" rather than zero.
+        widgets (``pointincome`` / sugutama mile counter etc.) are
+        present in ``page.content()``. Returns ``None`` on any failure;
+        the caller treats that as "balance unknown" rather than zero.
+
+        Uses ``wait_until="domcontentloaded"`` instead of the default
+        ``networkidle`` because ad-heavy mypages (sugutama / pointtown:
+        Criteo+doubleclick beacons that never quiet down) blow past
+        the 30s timeout otherwise. After DOM-ready we add a
+        ``hydrate_wait_ms`` buffer (default 4s) so the balance-fetch JS
+        XHR can fill the widget before we capture ``page.content()``.
         """
         try:
-            page = self.goto(mypage_url)
+            page = self.goto(mypage_url, wait_until="domcontentloaded")
         except Exception as exc:
             logger.warning("browser balance fetch navigation failed: %s", exc)
             return None
         try:
+            page.wait_for_timeout(hydrate_wait_ms)
             html = page.content()
         finally:
             page.close()
