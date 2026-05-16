@@ -178,19 +178,19 @@ def _attempt_password_login(
     cfg: Config,
     pw_login: PasswordLoginConfig,
 ) -> bool:
-    """Open a BrowserClicker session, fill the login form, merge cookies back."""
-    from urllib.parse import urlparse
+    """Open a fresh BrowserClicker session, fill the login form, merge cookies back.
 
+    The Playwright session is started **without** any existing cookies
+    so the site's login URL doesn't redirect to a logged-in page (which
+    would hide the form and cause page.fill to time out on the missing
+    selector). Once login succeeds, the rotated cookie jar is merged
+    back into the Clicker that drives the rest of the run.
+    """
     from .common.browser import BrowserClicker
     from .common.password_login import login_with_password
 
     logger.info("cookie verification failed — attempting password login")
-    host = urlparse(cfg.adapter.mypage_url).hostname or ""
-    default_domain = "." + (host.split(".", 1)[-1] if "." in host else host)
-    with BrowserClicker(
-        cookies=_jar_to_cookies(clicker),
-        default_cookie_domain=default_domain,
-    ) as bc:
+    with BrowserClicker(cookies=None) as bc:
         ok = login_with_password(bc, pw_login, cfg.adapter.name)
         if not ok:
             return False
