@@ -36,6 +36,14 @@ on:
         description: "max stripped-body bytes to print (default 80000); pass as string for cross-workflow compat"
         type: string
         default: "80000"
+      inspect_wait_selector:
+        description: "browser mode only: wait for this CSS selector before reading page.content(). For fully-SPA sites where server-side HTML is a shell."
+        type: string
+        default: ""
+      inspect_anonymous:
+        description: "skip cookie loading and login verification (for inspecting login forms / anonymous landing pages)"
+        type: boolean
+        default: false
       force_fresh_cookies:
         description: "delete persisted cookie jar before run, forcing re-bootstrap from <SITE>_COOKIES Secret. Use after rotating the Secret in GitHub when the cached jar would otherwise overwrite the fresh value."
         type: boolean
@@ -173,6 +181,8 @@ jobs:
           INSPECT_URL: ${{ inputs.inspect_url }}
           INSPECT_BROWSER: ${{ inputs.inspect_browser && '1' || '0' }}
           INSPECT_CAP: ${{ inputs.inspect_cap }}
+          INSPECT_WAIT_SELECTOR: ${{ inputs.inspect_wait_selector }}
+          INSPECT_ANONYMOUS: ${{ inputs.inspect_anonymous && '1' || '0' }}
           DISCOVER: ${{ inputs.discover && '1' || '0' }}
           SLACK_BOT_TOKEN: ${{ secrets.slack_bot_token }}
           SITE_SLACK_CHANNEL: ${{ secrets.slack_channel }}
@@ -199,6 +209,12 @@ jobs:
             fi
             if [[ -n "$INSPECT_CAP" && "$INSPECT_CAP" != "80000" ]]; then
               HTML_FLAGS+=(--cap "$INSPECT_CAP")
+            fi
+            if [[ -n "$INSPECT_WAIT_SELECTOR" ]]; then
+              HTML_FLAGS+=(--wait-selector "$INSPECT_WAIT_SELECTOR")
+            fi
+            if [[ "$INSPECT_ANONYMOUS" == "1" ]]; then
+              HTML_FLAGS+=(--anonymous)
             fi
             uv run python -m point_sites.main html --site "$SITE" "$INSPECT_URL" "${HTML_FLAGS[@]}"
           elif [[ "$DISCOVER" == "1" ]]; then

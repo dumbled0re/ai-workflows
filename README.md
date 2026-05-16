@@ -8,8 +8,9 @@ GitHub Actions と Claude を活用した個人用自動化ワークフロー集
 |---|---|---|---|
 | [`stock_analyzer/`](./stock_analyzer/) | 日本株の短期投資分析（テクニカル + ファンダ + ニュース + 信用残）。自律改善ループ（予測記録 → 検証 → 戦略更新）付き | 毎日 8:00 / 16:00 JST、土曜 10:00 JST にレビュー | Bot Token + `SLACK_CHANNEL_STOCK` |
 | [`tech_catchup/`](./tech_catchup/) | AI 業界のニュース・新リリースを Hacker News / GitHub Trending / arXiv / AI 企業公式ブログから収集して要約 | 毎朝 7:30 JST | Bot Token + `SLACK_CHANNEL_TECH` |
-| [`point_sites/`](./point_sites/) | 日本のポイ活サイト自動化（adapter 構造）。moppy / hapitas / pointincome / amefuri / pointtown / getmoney に対応 (fruitmail / warau / sugutama は scaffold 済、secret 登録待ち)。Cookie rotation 永続化 + 加算検証 (3 層 degradation alert) 付き | サイト別 (8:00〜10:30 JST) | Bot Token + `SLACK_CHANNEL_<SITE>` |
+| [`point_sites/`](./point_sites/) | 日本のポイ活サイト自動化（adapter 構造）。本番稼働中 8 サイト: moppy / hapitas / amefuri / pointtown / getmoney / fruitmail / warau / sugutama。pointincome は JP geofence で cron 無効化。Cookie rotation 永続化 + 加算検証 (3 層 degradation alert) + daily 系 Playwright wizard (hapitas takarakuji / pointtown ログインボーナス / fruitmail スロット / fruitmail ビンゴ / fruitmail ログインボーナス) | サイト別 (8:00〜10:30 JST) | Bot Token + `SLACK_CHANNEL_<SITE>` |
 | [`todo/`](./todo/) | 個人 TODO リスト。Claude Code の `todo` skill で `todos.md` を編集し、毎朝 Slack に未完了タスクを通知 | 毎朝 9:00 JST | Bot Token + `SLACK_CHANNEL_TODO` |
+| [`verify/`](./verify/) + `scripts/pending_verify.py` | 後日の機械検証 (cron run の log grep 等) を YAML + GitHub Issue で予約、毎朝自動実行 | 毎朝 7:30 JST | Bot Token + `SLACK_CHANNEL_VERIFY` |
 
 > 詳細な設計・運用方針は [`CLAUDE.md`](./CLAUDE.md) と [`point_sites/CLAUDE.md`](./point_sites/CLAUDE.md) を参照。
 
@@ -29,6 +30,8 @@ GitHub Actions と Claude を活用した個人用自動化ワークフロー集
 | `SLACK_CHANNEL_<PROJECT>` | プロジェクト別 channel (`SLACK_CHANNEL_TODO` / `_TECH` / `_STOCK` / `_MOPPY` / `_HAPITAS` / `_POINTINCOME` / `_AMEFURI` / `_POINTTOWN` / `_GETMONEY` / `_FRUITMAIL` / `_WARAU` / `_SUGUTAMA`) |
 | `GMAIL_USER` / `GMAIL_APP_PASSWORD` | ポイ活専用 Gmail (`<your-poikatsu-email>` 系) の IMAP 認証 |
 | `<SITE>_COOKIES` | point_sites 各サイト用 Cookie JSON (Cookie-Editor export) |
+| `<SITE>_USER` / `<SITE>_PASS` | (任意) ID/PW login 自動化 framework 用。設定すると Cookie 失効時に自動再ログイン |
+| `SLACK_CHANNEL_VERIFY` | pending-verify cron が機械検証結果を流す channel |
 
 ## ローカル実行
 
@@ -64,15 +67,20 @@ uv run python -m todo.main notify               # Slack 通知
 | `stock-analysis.yml` | 株分析（保有銘柄予測 + 有望株発掘） | 毎日 8:00 / 16:00 |
 | `weekly-review.yml` | 株戦略の週次レビュー | 土 10:00 |
 | `tech-catchup.yml` | AI ニュースキャッチアップ | 毎朝 7:30 |
-| `moppy.yml` / `pointincome.yml` / `hapitas.yml` / `amefuri.yml` / `pointtown.yml` / `getmoney.yml` / `fruitmail.yml` / `warau.yml` / `sugutama.yml` | point_sites 各サイトのクリックメール自動化 (fruitmail/warau/sugutama は secret 登録後に活性化) | 8:00〜10:30 (15 分ずらし) |
-| `point_sites-ci.yml` | point_sites の mypy + ruff + pytest | PR 時 |
+| `moppy.yml` / `hapitas.yml` / `amefuri.yml` / `pointtown.yml` / `getmoney.yml` / `fruitmail.yml` / `warau.yml` / `sugutama.yml` | point_sites 各サイトのクリックメール + daily wizard 自動化 (本番稼働中) | 8:00〜10:30 (15 分ずらし) |
+| `pointincome.yml` | pointincome は JP geofence (US runner で `/information.php` redirect) のため auto-click 不可、Gmail 抽出 → Slack 通知 → user 手動 click 運用 | manual dispatch |
+| `gendama.yml` | scaffold 段階、180 日休眠条件のため運用見送り | (active だが extract 系のみ) |
+| `point_sites-ci.yml` / `ci.yml` | point_sites の mypy + ruff + pytest / 全体 lint | PR 時 |
+| `pending-verify.yml` | `verify/**/*.yml` を読み機械検証 (workflow log grep 等) を自動実行、結果を Slack + 該当 issue に投稿 | 毎朝 7:30 |
 | `todo.yml` | TODO リマインダーを Slack に通知 | 毎朝 9:00 |
 
 手動実行は GitHub Actions タブから `Run workflow` で。
 
 ## アーキテクチャ共通パターン
 
-すべてのプロジェクトが同じ 3 フェーズ構成：
+プロジェクトによって 2 種類:
+
+### Claude 分析型 (stock_analyzer / tech_catchup)
 
 ```
 [Phase 1: Python]   データ収集 → JSON 出力
@@ -83,12 +91,14 @@ uv run python -m todo.main notify               # Slack 通知
 [Phase 3: Python]   結果を Slack 通知
 ```
 
-Phase 1/3 はプロジェクト固有のロジック、Phase 2 は Claude による分析。Python と Claude の責務を分離することで、Python 側はテスト可能、Claude 側はプロンプトのみ管理可能。
+### 純 Python 自動化型 (point_sites / todo / pending-verify)
+
+Claude を使わず、Python のみで完結 (クリックメール処理 / daily wizard / 検証 cron 等)。
 
 ## コスト
 
 - **Claude**: サブスクリプション内（Pro/Max プラン、API 課金なし）
-- **GitHub Actions**: 無料枠内（各実行 ~5 分、月数百分のオーダー）
+- **GitHub Actions**: ai-workflows は **public repo 化済**で Linux runner は完全無制限無料 (private 時代の 2,000 min/月 無料枠は超過したため public 化で解決)
 - **API**: yfinance（株）、IMAP（メール）、各種 RSS / API はすべて無料層
 
 ## ライセンス・免責

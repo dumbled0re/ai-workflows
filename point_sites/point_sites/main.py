@@ -349,6 +349,29 @@ def _build_arg_parser() -> argparse.ArgumentParser:
             "SPA pages where the relevant section is past 80KB."
         ),
     )
+    p_html.add_argument(
+        "--wait-selector",
+        default=None,
+        help=(
+            "browser mode only: wait for this CSS selector to appear "
+            "before reading page.content(). Required for fully-SPA "
+            "sites (e.g. warau) where server-side HTML is a shell."
+        ),
+    )
+    p_html.add_argument(
+        "--wait-timeout-ms",
+        type=int,
+        default=15_000,
+        help="bound for --wait-selector (default 15000ms)",
+    )
+    p_html.add_argument(
+        "--anonymous",
+        action="store_true",
+        help=(
+            "skip cookie loading and login verification — for inspecting "
+            "login forms and other pages where logged-in sessions redirect away"
+        ),
+    )
     return parser
 
 
@@ -918,7 +941,16 @@ def cmd_discover(cfg: Config) -> int:
     return 0
 
 
-def cmd_html(cfg: Config, url: str, *, force_browser: bool = False, cap: int = 80_000) -> int:
+def cmd_html(
+    cfg: Config,
+    url: str,
+    *,
+    force_browser: bool = False,
+    cap: int = 80_000,
+    wait_selector: str | None = None,
+    wait_timeout_ms: int = 15_000,
+    anonymous: bool = False,
+) -> int:
     """Fetch a single URL and dump its body to stdout.
 
     Used to plan automation for items whose interaction shape isn't
@@ -930,10 +962,66 @@ def cmd_html(cfg: Config, url: str, *, force_browser: bool = False, cap: int = 8
     For adapters with ``balance_uses_browser=True``, the body is
     fetched through Playwright Chromium so JS-rendered content is
     visible and anti-bot interstitials are bypassed.
+
+    ``wait_selector`` (browser mode only) lets the caller wait for a
+    specific DOM element before calling ``page.content()``. This is
+    the workaround for fully-SPA sites (e.g. warau) whose server-side
+    HTML is just a skeleton — Playwright still needs to wait for the
+    client-side hydration to produce the actual content. Without this
+    flag we capture an empty shell. ``wait_timeout_ms`` bounds the
+    wait (default 15s) so a missing selector doesn't hang.
+
+    ``anonymous=True`` skips cookie loading and login verification so
+    the request goes out unauthenticated. This is the only way to
+    inspect login form pages (logged-in sessions redirect away from
+    /login URLs) and other anonymous-only landing pages. URL host
+    must still be in ``allowed_hosts``.
     """
     if not is_manual_url_allowed(url, cfg.adapter.allowed_hosts):
         print(f"refused: {url} is not under {cfg.adapter.site_label} hosts", file=sys.stderr)
         return 2
+
+    if anonymous:
+        # No cookies, no auth check — used to discover login-form
+        # HTML that logged-in sessions can't see.
+        if force_browser:
+            from .common.browser import BrowserClicker
+
+            with BrowserClicker(cookies=None) as bc:
+                page = bc.goto(url)
+                try:
+                    final_url = page.url
+                    if wait_selector:
+                        try:
+                            page.wait_for_selector(wait_selector, timeout=wait_timeout_ms)
+                        except Exception as exc:
+                            logger.warning("wait_for_selector %r timed out: %s", wait_selector, exc)
+                    body_text = page.content()
+                finally:
+                    page.close()
+            original_len = len(body_text)
+            print(f"=== {final_url} (browser anonymous, len={original_len}) ===")
+        else:
+            import requests
+
+            resp = requests.get(
+                url,
+                timeout=(10.0, 30.0),
+                allow_redirects=True,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; ai-workflows inspect)"},
+            )
+            body_text = resp.text
+            original_len = len(body_text)
+            print(f"=== {resp.url} (HTTP {resp.status_code} anonymous, len={original_len}) ===")
+        body = re.sub(r"<script\b[^>]*>.*?</script>", "<!-- script removed -->", body_text, flags=re.DOTALL)
+        body = re.sub(r"<style\b[^>]*>.*?</style>", "<!-- style removed -->", body, flags=re.DOTALL)
+        body = re.sub(r"<!--.*?-->", "", body, flags=re.DOTALL)
+        body = re.sub(r"\n\s*\n+", "\n", body)
+        print(body[:cap])
+        if len(body) > cap:
+            print(f"... (truncated, {len(body) - cap} more bytes)")
+        return 0
+
     cookies = _resolve_cookies(cfg)
     if cookies is None:
         print(f"refused: {cfg.adapter.cookies_env} is not set", file=sys.stderr)
@@ -958,6 +1046,14 @@ def cmd_html(cfg: Config, url: str, *, force_browser: bool = False, cap: int = 8
             page = bc.goto(url)
             try:
                 final_url = page.url
+                if wait_selector:
+                    try:
+                        page.wait_for_selector(wait_selector, timeout=wait_timeout_ms)
+                    except Exception as exc:
+                        # Don't abort the inspect — log the miss and
+                        # capture whatever the DOM has at this point so
+                        # the user can see how far hydration got.
+                        logger.warning("wait_for_selector %r timed out: %s", wait_selector, exc)
                 body_text = page.content()
             finally:
                 page.close()
@@ -1050,6 +1146,9 @@ def main(argv: list[str] | None = None) -> int:
             args.url,
             force_browser=getattr(args, "browser", False),
             cap=getattr(args, "cap", 80_000),
+            wait_selector=getattr(args, "wait_selector", None),
+            wait_timeout_ms=getattr(args, "wait_timeout_ms", 15_000),
+            anonymous=getattr(args, "anonymous", False),
         )
     parser.error(f"unknown subcommand: {args.cmd}")
 
