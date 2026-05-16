@@ -128,6 +128,12 @@ def login_with_password(
         # anyway — the success_marker test is the real signal here.
         with contextlib.suppress(Exception):
             page.wait_for_load_state("networkidle", timeout=15_000)
+        # SSO sites (pointtown → id.gmo.jp → pointtown.com) take an
+        # additional 3-5s for the cross-domain redirect chain to land
+        # on the final logged-in page. networkidle may return early on
+        # the SSO host before pointtown's session redirect fires. Give
+        # the chain room to finish before content() check.
+        page.wait_for_timeout(5000)
         content = page.content()
         ok = config.success_marker in content
         if ok:
