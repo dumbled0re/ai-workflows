@@ -28,7 +28,6 @@ import re
 
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
-from ...common.password_login import PasswordLoginConfig
 from ...common.sources import OnsiteInboxSource
 from ...common.wizard import DailyWizard
 from .parser import parse_inbox, parse_message
@@ -86,25 +85,17 @@ ADAPTER = Adapter(
             ),
         ),
     ),
-    # 2026-05-16 inspect (--anonymous, /login → GMO SSO redirect 追従) で
-    # 確定。pointtown 独自 login form は存在せず、GMO 共通 SSO (id.gmo.jp)
-    # に redirect される。Playwright で /login に goto すると自動で SSO
-    # form 画面まで進むので、login_url は /login に設定すれば足りる。
+    # password_login config は意図的に **無効化**。2026-05-16 動作確認
+    # (run 25954246169 / 25954212446) で、Playwright による form fill +
+    # submit は通るが GMO SSO の anti-fraud で
+    # ``https://id.gmo.jp/gui/auth/login/security`` (タイトル「セキュリ
+    # ティページ」) に飛ばされて停止することが判明。原因は GHA runner
+    # の US Azure IP が user の普段 (JP) IP と乖離してて、GMO 側で
+    # 「いつもと違うアクセス」と判定 → 追加認証要求。
     #
-    # SSO form fields (id ベースが安定。``LoginForm[email]`` の name attr は
-    # 角括弧を含むため Playwright CSS selector で escape 問題が起きる
-    # — run 25954125691 で確認、type-based selector で回避):
-    #   email   #login-form input[type="email"]
-    #   pass    #login-form input[type="password"]
-    #   submit  button.Btn__primary[type="submit"]
-    #
-    # ckey は SSO URL の query で session 都度生成されるが、/login 経由
-    # で自動 redirect するため login_url 側で静的に固定可能。
-    password_login=PasswordLoginConfig(
-        login_url="https://www.pointtown.com/login",
-        username_selector='#login-form input[type="email"]',
-        password_selector='#login-form input[type="password"]',
-        submit_selector="#login-form button.Btn__primary",
-        success_marker="ログアウト",
-    ),
+    # 解決策は JP runner / VPS / residential proxy 等の IP 確保で、現状
+    # の framework で簡単に解決できない。pointincome の JP geofence 問題
+    # と同種、別 issue で track。それまでは cookie 失効時に手動更新運用
+    # を継続。
+    # password_login=None,  # (default) cookie-only operation
 )

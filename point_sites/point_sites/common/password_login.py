@@ -167,8 +167,7 @@ def login_with_password(
             snippet = _re.sub(r"<style\b[\s\S]*?</style>", "", snippet)
             snippet = _re.sub(r"\s+", " ", snippet)[:600]
             logger.warning(
-                "password login submitted but success_marker %r not found; "
-                "final_url=%r title=%r snippet=%s",
+                "password login submitted but success_marker %r not found; final_url=%r title=%r snippet=%s",
                 config.success_marker,
                 final_url,
                 title,
