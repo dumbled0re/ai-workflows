@@ -48,6 +48,10 @@ on:
         description: "delete persisted cookie jar before run, forcing re-bootstrap from <SITE>_COOKIES Secret. Use after rotating the Secret in GitHub when the cached jar would otherwise overwrite the fresh value."
         type: boolean
         default: false
+      force_password_login_test:
+        description: "DEBUG: skip cookie verify and exercise password_login fallback directly (verify <SITE>_USER/PASS wiring)"
+        type: boolean
+        default: false
     secrets:
       slack_bot_token:
         required: true
@@ -196,6 +200,7 @@ jobs:
           SITE_COOKIES: ${{ secrets.cookies }}
           SITE_LOGIN_USER: ${{ secrets.login_user }}
           SITE_LOGIN_PASS: ${{ secrets.login_pass }}
+          FORCE_PASSWORD_LOGIN_TEST: ${{ inputs.force_password_login_test && '1' || '' }}
           GMAIL_USER: ${{ secrets.gmail_user }}
           GMAIL_APP_PASSWORD: ${{ secrets.gmail_app_password }}
         run: |

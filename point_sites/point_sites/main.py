@@ -153,9 +153,18 @@ def _verify_login(clicker: Clicker, cfg: Config) -> bool:
        rotated cookie jar back into ``clicker``.
     3. Re-verify with cookies. Failure here falls through to the
        existing Slack-alert path.
+
+    Setting ``FORCE_PASSWORD_LOGIN_TEST=1`` skips step 1 entirely so
+    the fallback can be exercised even with valid cookies — used to
+    verify password_login wiring during framework development.
     """
-    if clicker.verify_login(cfg.adapter.mypage_url, cfg.adapter.login_keyword):
-        return True
+    if not os.environ.get("FORCE_PASSWORD_LOGIN_TEST"):
+        if clicker.verify_login(cfg.adapter.mypage_url, cfg.adapter.login_keyword):
+            return True
+    else:
+        logger.info(
+            "FORCE_PASSWORD_LOGIN_TEST=1 — skipping cookie verify, exercising password_login fallback directly"
+        )
     pw_login = cfg.adapter.password_login
     if pw_login is None:
         return False

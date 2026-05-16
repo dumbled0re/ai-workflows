@@ -59,6 +59,10 @@ on:
         description: "delete persisted cookie jar before run, forcing re-bootstrap from Secret (use after rotating <SITE>_COOKIES)"
         type: boolean
         default: false
+      force_password_login_test:
+        description: "DEBUG: skip cookie verify, exercise password_login fallback directly"
+        type: boolean
+        default: false
 
 
 permissions:
@@ -78,6 +82,7 @@ jobs:
       inspect_wait_selector: ${{ inputs.inspect_wait_selector }}
       inspect_anonymous: ${{ inputs.inspect_anonymous == true }}
       force_fresh_cookies: ${{ inputs.force_fresh_cookies == true }}
+      force_password_login_test: ${{ inputs.force_password_login_test == true }}
     secrets:
       slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
       slack_channel: ${{ secrets.SLACK_CHANNEL_GETMONEY }}
