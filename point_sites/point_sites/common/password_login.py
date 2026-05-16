@@ -144,6 +144,16 @@ def login_with_password(
         ok = config.success_marker in content
         if ok:
             logger.info("password login succeeded (success_marker found)")
+            # Log the cookie domains so the operator can tell whether
+            # the rotated jar covers sister subdomains (e.g. fruitmail
+            # → almond.fruitmail.net for fortune subpages). A cookie
+            # with domain ".fruitmail.net" flows to every subdomain;
+            # one scoped to "www.fruitmail.net" doesn't.
+            try:
+                domains = sorted({str(c.get("domain", "")) for c in bc.export_cookies()})
+                logger.info("rotated cookie domains: %s", ", ".join(domains))
+            except Exception as exc:
+                logger.debug("cookie domain log failed: %s", exc)
             bc.authenticated = True
         else:
             # Capture the post-submit landing page details so the next
