@@ -19,6 +19,7 @@ from re import Pattern
 from typing import TYPE_CHECKING
 
 from .browser_action import BrowserAction
+from .password_login import PasswordLoginConfig
 from .wizard import DailyWizard
 
 if TYPE_CHECKING:
@@ -99,6 +100,16 @@ class Adapter:
     # balance_after. Fail-soft: a missing button times out and the
     # wizard logs a warning without aborting the run.
     daily_wizards: tuple[DailyWizard, ...] = field(default_factory=tuple)
+
+    # ID/PW Playwright login fallback. When the persisted cookie jar
+    # fails ``verify_login``, the orchestrator opens a Chromium session,
+    # navigates to ``login_url``, fills username/password from the
+    # configured Secrets, and captures the rotated cookie jar. Set
+    # only for sites whose cookie lifetime is too short to keep up with
+    # manual refresh (fruitmail ~24h, pointtown ~20h, moppy intermittent).
+    # ``None`` (default) = cookie-only operation, manual refresh on
+    # expiry (same as before this field existed).
+    password_login: PasswordLoginConfig | None = None
 
     # Recent-run window for balance-stagnation detection. Default
     # ``None`` disables it, which is the right call for high-yield

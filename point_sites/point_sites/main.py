@@ -38,6 +38,7 @@ from .common.gmail_client import GmailAuthError
 from .common.models import ClickCandidate, RunSummary
 from .common.notifier import Notifier
 from .common.outcome_tracker import OutcomeTracker, make_outcome
+from .common.password_login import PasswordLoginConfig
 from .common.redaction import host_only, redact_subject, redact_url
 from .common.sources.base import ClickBatch
 from .common.state_store import StateStore
@@ -143,7 +144,54 @@ def _build_clicker(cfg: Config, cookies: list[dict[str, object]]) -> Clicker:
 
 
 def _verify_login(clicker: Clicker, cfg: Config) -> bool:
-    """Wrapper that injects adapter-specific mypage URL and login keyword."""
+    """Verify session is logged in; fall back to password login if configured.
+
+    1. Try the cookie-based verification (existing path).
+    2. On failure, if ``adapter.password_login`` is set AND the matching
+       ``<SITE>_USER`` / ``<SITE>_PASS`` env vars are set, run a
+       Playwright login flow that fills the form and captures the
+       rotated cookie jar back into ``clicker``.
+    3. Re-verify with cookies. Failure here falls through to the
+       existing Slack-alert path.
+    """
+    if clicker.verify_login(cfg.adapter.mypage_url, cfg.adapter.login_keyword):
+        return True
+    pw_login = cfg.adapter.password_login
+    if pw_login is None:
+        return False
+    if not os.environ.get(pw_login.resolve_username_env(cfg.adapter.name)):
+        return False
+    return _attempt_password_login(clicker, cfg, pw_login)
+
+
+def _attempt_password_login(
+    clicker: Clicker,
+    cfg: Config,
+    pw_login: PasswordLoginConfig,
+) -> bool:
+    """Open a BrowserClicker session, fill the login form, merge cookies back."""
+    from urllib.parse import urlparse
+
+    from .common.browser import BrowserClicker
+    from .common.password_login import login_with_password
+
+    logger.info("cookie verification failed — attempting password login")
+    host = urlparse(cfg.adapter.mypage_url).hostname or ""
+    default_domain = "." + (host.split(".", 1)[-1] if "." in host else host)
+    with BrowserClicker(
+        cookies=_jar_to_cookies(clicker),
+        default_cookie_domain=default_domain,
+    ) as bc:
+        ok = login_with_password(bc, pw_login, cfg.adapter.name)
+        if not ok:
+            return False
+        _merge_browser_cookies(
+            clicker,
+            bc.export_cookies(),
+            allowed_hosts=cfg.adapter.allowed_hosts,
+        )
+    # Re-verify via the now-rotated Clicker jar so the rest of the run
+    # sees the same authenticated state the BrowserClicker did.
     return clicker.verify_login(cfg.adapter.mypage_url, cfg.adapter.login_keyword)
 
 
