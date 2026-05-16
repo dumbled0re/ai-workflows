@@ -63,7 +63,19 @@ Object.defineProperty(navigator, 'plugins', {
     {name: 'Native Client', filename: 'internal-nacl-plugin'},
   ],
 });
-window.chrome = window.chrome || {runtime: {}};
+window.chrome = {
+  runtime: {OnInstalledReason: {INSTALL: 'install'}, PlatformOs: {MAC: 'mac', LINUX: 'linux', WIN: 'win'}},
+  app: {isInstalled: false, getDetails: () => null, getIsInstalled: () => false,
+    InstallState: {DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed'},
+    RunningState: {CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running'}},
+  csi: () => ({onloadT: Date.now(), pageT: 0, startE: Date.now(), tran: 15}),
+  loadTimes: () => ({
+    requestTime: Date.now()/1000, startLoadTime: Date.now()/1000,
+    commitLoadTime: Date.now()/1000, finishDocumentLoadTime: Date.now()/1000,
+    finishLoadTime: Date.now()/1000, firstPaintTime: Date.now()/1000,
+    navigationType: 'Other', wasFetchedViaSpdy: true, wasNpnNegotiated: true,
+    npnNegotiatedProtocol: 'h2', wasAlternateProtocolAvailable: false, connectionInfo: 'h2'}),
+};
 const originalQuery = window.navigator.permissions && window.navigator.permissions.query;
 if (originalQuery) {
   window.navigator.permissions.query = (parameters) => (
@@ -72,6 +84,29 @@ if (originalQuery) {
       : originalQuery(parameters)
   );
 }
+// WebGL vendor/renderer mask (HeadlessChrome detection via UNMASKED_VENDOR_WEBGL)
+const getParameter = WebGLRenderingContext.prototype.getParameter;
+WebGLRenderingContext.prototype.getParameter = function(parameter) {
+  if (parameter === 37445) return 'Intel Inc.';
+  if (parameter === 37446) return 'Intel Iris OpenGL Engine';
+  return getParameter.apply(this, arguments);
+};
+// Canvas fingerprint noise injection (sub-pixel jitter)
+const toDataURL = HTMLCanvasElement.prototype.toDataURL;
+HTMLCanvasElement.prototype.toDataURL = function(type) {
+  const ctx = this.getContext('2d');
+  if (ctx) {
+    const imageData = ctx.getImageData(0, 0, this.width, this.height);
+    for (let i = 0; i < imageData.data.length; i += 4) {
+      imageData.data[i] ^= 0x01;
+    }
+    ctx.putImageData(imageData, 0, 0);
+  }
+  return toDataURL.apply(this, arguments);
+};
+// hardwareConcurrency / deviceMemory (Chrome on macOS typical values)
+Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 8});
+Object.defineProperty(navigator, 'deviceMemory', {get: () => 8});
 """
 
 
