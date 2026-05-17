@@ -11,8 +11,9 @@ name: gendama
 # forfeited when the account is purged.
 
 on:
-  schedule:
-    - cron: "0 0 * * *"  # JST 9:00
+  # schedule disabled 2026-05-17 — scaffold のみで本番 Secrets 未設定、毎日 fail 通知が出ていた
+  # schedule:
+  #   - cron: "0 0 * * *"  # JST 9:00
   workflow_dispatch:
     inputs:
       dry_run:

@@ -19,8 +19,9 @@ name: pointincome
 # のハードコードを外して通常 click モードに戻す。
 
 on:
-  schedule:
-    - cron: "15 23 * * *"  # JST 8:15 (15 min after moppy.yml)
+  # schedule disabled 2026-05-17 — Gmail account suspended, Zoho 移行待ち
+  # schedule:
+  #   - cron: "15 23 * * *"  # JST 8:15 (15 min after moppy.yml)
   workflow_dispatch:
     inputs:
       dry_run:

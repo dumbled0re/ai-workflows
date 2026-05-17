@@ -14,8 +14,9 @@ name: warau
 #      path が混ざってないか EXCLUSION_URL_RE 強化
 
 on:
-  schedule:
-    - cron: "15 1 * * *"  # JST 10:15 (15 min after fruitmail.yml)
+  # schedule disabled 2026-05-17 — Gmail account suspended, Zoho 移行待ち
+  # schedule:
+  #   - cron: "15 1 * * *"  # JST 10:15 (15 min after fruitmail.yml)
   workflow_dispatch:
     inputs:
       dry_run:

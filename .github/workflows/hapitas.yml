@@ -10,8 +10,9 @@ name: hapitas
 # it or skip enabling this adapter.
 
 on:
-  schedule:
-    - cron: "30 23 * * *"  # JST 8:30
+  # schedule disabled 2026-05-17 — Gmail account suspended, Zoho 移行待ち
+  # schedule:
+  #   - cron: "30 23 * * *"  # JST 8:30
   workflow_dispatch:
     inputs:
       dry_run:

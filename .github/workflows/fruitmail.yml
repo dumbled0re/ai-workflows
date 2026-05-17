@@ -15,8 +15,9 @@ name: fruitmail
 #      parser regex を実 click-mail に narrow
 
 on:
-  schedule:
-    - cron: "0 1 * * *"  # JST 10:00 (15 min after getmoney.yml)
+  # schedule disabled 2026-05-17 — Gmail account suspended, Zoho 移行待ち
+  # schedule:
+  #   - cron: "0 1 * * *"  # JST 10:00 (15 min after getmoney.yml)
   workflow_dispatch:
     inputs:
       dry_run:
