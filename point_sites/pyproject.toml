@@ -8,6 +8,9 @@ dependencies = [
     "beautifulsoup4>=4.12.0",
     "pydantic>=2.8.0",
     "playwright>=1.59.0",
+    "google-api-python-client>=2.196.0",
+    "google-auth>=2.53.0",
+    "google-auth-oauthlib>=1.4.0",
 ]
 
 [dependency-groups]
@@ -40,6 +43,10 @@ python_version = "3.12"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["google_auth_oauthlib.*", "googleapiclient.*", "google.auth.*", "google.oauth2.*"]
+ignore_missing_imports = true
 
 
 [tool.pytest.ini_options]
