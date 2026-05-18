@@ -109,32 +109,29 @@ class RunSummary(BaseModel):
 
 ### 2. `gmail_client.py`
 
-**IMAP + App Password 認証:**
-- Gmail の **アプリパスワード**（`https://myaccount.google.com/apppasswords` で発行、要2段階認証）を使う
-- 環境変数: `GMAIL_USER`（メアド）+ `GMAIL_APP_PASSWORD`（16文字、空白OK・自動 strip）
-- 接続: `imap.gmail.com:993`（SSL）
-- Folder: `[Gmail]/All Mail`（INBOX 限定だとアーカイブ済みメールを見落とすため）
-- Python 標準ライブラリ `imaplib` のみ使用、追加依存なし
+**Gmail API + OAuth2 認証** (2026-05-17 IMAP 退役後):
+- IMAP-using Gmail アカウントが Google bot 検出で suspend された経緯から、`google-api-python-client` 経由の HTTP API に移行
+- 環境変数: `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REFRESH_TOKEN`
+  - 取得方法: `scripts/get_refresh_token.py` を 1 度ローカル実行（ブラウザで OAuth 同意 → refresh_token を出力）
+- Scope: `gmail.readonly` のみ（送信 / modify 不要、bot 検出フットプリント最小化）
+- 接続: HTTPS API、追加依存 `google-api-python-client` / `google-auth` / `google-auth-oauthlib`
 
-**Gmail 拡張IMAPコマンド使用:**
-- 検索: `X-GM-RAW` で Gmail Web UI と同じクエリ構文（`from:moppy.jp -label:moppy-clicked` 等）が使える
-- ラベル付与: `X-GM-LABELS` 拡張で IMAP 経由でも Gmail ラベル操作可能
+**Gmail 検索構文:**
+- 検索: API の `q` パラメータが Gmail Web UI と同じ構文（`from:moppy.jp newer_than:5d` 等）をそのまま受け付ける
+- ラベル / `\Seen` 書き込みは readonly scope では不可 → 代わりに **`GmailSource` 側で local dedup**（`data/<site>/processed_messages.json`）で重複処理を防ぐ
 
 **エラー分類:**
 | エラー | 動作 |
 |---|---|
-| connect 失敗（DNS/network） | `GmailAuthError`、Slack 通知、exit 1 |
-| login 失敗（認証エラー） | 「app password 再生成？」と促し exit 1 |
-| `GMAIL_USER` 不正（`@` 含まない等） | 起動時 fail-fast |
-| `GMAIL_APP_PASSWORD` 16文字でない | 起動時 fail-fast |
-| Folder select 失敗 | exit 1 |
-| FETCH 個別失敗 | スキップして次のメッセージ |
+| `refresh_token` rejected | `GmailAuthError`、「`scripts/get_refresh_token.py` 再実行」を促し exit 1 |
+| 必須 Secret 未設定 | 起動時 fail-fast |
+| `messages.list` 失敗 | `GmailAuthError`、Slack 通知、exit 1 |
+| `messages.get` 個別失敗 | スキップして次のメッセージ |
 
 **API:**
-- `search_messages(query: str, max_results: int) -> list[str]`（IMAP UID を返す）
-- `get_message(uid: str) -> ParsedMessage`（RFC822 をパースして plaintext / html を抽出）
-- `mark_as_read(uid: str)`（`+FLAGS (\Seen)`）
-- `add_label(uid: str, label_name: str)`（`+X-GM-LABELS (label)`、ラベル無ければ Gmail 側で自動作成）
+- `search_messages(query: str, max_results: int) -> list[str]`（Gmail message ID を返す）
+- `get_message(msg_id: str) -> ParsedMessage`（RFC822 を base64url で取得 → パース）
+- `mark_as_read(msg_id: str)` / `add_label(msg_id: str, label: str)` — readonly scope では **no-op**（後方互換のためシグネチャ維持）
 - `close()` / context manager サポート
 
 ### 3. `moppy_parser.py`
@@ -275,8 +272,9 @@ def redact_subject(subject: str, prefix_len: int = 5) -> str:
 
 | 変数 | 必須 | デフォルト | 用途 |
 |---|---|---|---|
-| `GMAIL_USER` | ◯ | - | Gmail アドレス（フル） |
-| `GMAIL_APP_PASSWORD` | ◯ | - | 16文字 app password（空白OK・自動strip） |
+| `GMAIL_CLIENT_ID` | ◯ | - | OAuth2 Desktop client ID（Cloud Console で発行） |
+| `GMAIL_CLIENT_SECRET` | ◯ | - | OAuth2 client secret |
+| `GMAIL_REFRESH_TOKEN` | ◯ | - | OAuth2 refresh token（`scripts/get_refresh_token.py` で 1 度取得） |
 | `SLACK_BOT_TOKEN` | ◯ | - | Slack Bot User OAuth Token (`xoxb-...`)。全プロジェクト共有 |
 | `SLACK_CHANNEL_MOPPY` | ◯ | - | Slack 通知先チャンネル ID または `#channel-name` |
 | `MOPPY_GMAIL_QUERY` | - | `from:moppy.jp -label:moppy-clicked newer_than:3d` | Gmail検索クエリ（X-GM-RAW構文） |
@@ -292,8 +290,7 @@ def redact_subject(subject: str, prefix_len: int = 5) -> str:
 | `MOPPY_EXTRACT_LINKS` | - | `0` | `1` でクリック実行せず **ポイント加算リンクを Slack に投稿のみ**（ユーザーが手動クリック前提）。`MOPPY_COOKIES` 不要・state 変更なし・ラベル付与なし |
 
 **起動時 validation:**
-- `GMAIL_USER`: `@` を含むこと
-- `GMAIL_APP_PASSWORD`: 空白除去後 16文字
+- `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REFRESH_TOKEN`: いずれも非空文字列
 - 数値: 型チェック + 範囲（INTERVAL_MIN ≥ 1, MIN ≤ MAX, MAX_ATTEMPTS 1-10, MAX_MESSAGES 1-500）
 - `SLACK_BOT_TOKEN`: `xoxb-` で始まること
 - `SLACK_CHANNEL_MOPPY`: 必須（チャンネル ID または `#name`）
@@ -341,12 +338,12 @@ def redact_subject(subject: str, prefix_len: int = 5) -> str:
 cd point_sites && uv sync
 
 # dry-run: クリックせず、候補一覧を Slack に通知
-GMAIL_USER=... GMAIL_APP_PASSWORD=... \
+GMAIL_CLIENT_ID=... GMAIL_CLIENT_SECRET=... GMAIL_REFRESH_TOKEN=... \
   SLACK_BOT_TOKEN=xoxb-... SLACK_CHANNEL_MOPPY=#moppy \
   uv run python -m point_sites.main run --dry-run
 
 # 本番実行
-GMAIL_USER=... GMAIL_APP_PASSWORD=... \
+GMAIL_CLIENT_ID=... GMAIL_CLIENT_SECRET=... GMAIL_REFRESH_TOKEN=... \
   SLACK_BOT_TOKEN=xoxb-... SLACK_CHANNEL_MOPPY=#moppy \
   uv run python -m point_sites.main run
 
@@ -368,8 +365,9 @@ uv run python -m point_sites.main state --message-id <uid>
 **必要な GitHub Secrets:**
 | Secret 名 | 値 |
 |---|---|
-| `GMAIL_USER` | Gmail アドレス（フル） |
-| `GMAIL_APP_PASSWORD` | アプリパスワード（16文字、空白含んでもOK） |
+| `GMAIL_CLIENT_ID` | OAuth2 Desktop client ID |
+| `GMAIL_CLIENT_SECRET` | OAuth2 client secret |
+| `GMAIL_REFRESH_TOKEN` | OAuth2 refresh token |
 | `SLACK_BOT_TOKEN` | Slack Bot User OAuth Token (`xoxb-...`)。ai-workflows 全プロジェクト共有 |
 | `SLACK_CHANNEL_MOPPY` | Slack 通知先チャンネル（ID または `#name`） |
 
@@ -396,16 +394,15 @@ uv run python -m point_sites.main state --message-id <uid>
 
 ## 運用開始までに必要な手動セットアップ
 
-1. **Gmail で 2段階認証を ON**: https://myaccount.google.com/security
-2. **アプリパスワード生成**: https://myaccount.google.com/apppasswords → 16文字パスワードを発行
+1. **Google Cloud Console で新規プロジェクト + Gmail API enable + OAuth Client ID (Desktop app) を作成**: https://console.cloud.google.com
+2. **`scripts/get_refresh_token.py` を一度ローカル実行** して `GMAIL_REFRESH_TOKEN` を取得 (ブラウザで OAuth 同意フロー)
 3. **Slack 通知先チャンネル準備**（モッピー専用、株分析等と兼用しない）。Bot を `/invite` で招待。Bot Token (`SLACK_BOT_TOKEN`) は ai-workflows 全プロジェクト共有のものを利用。
 4. **モッピーへブラウザでログイン → Cookie をエクスポート**:
    - Chrome DevTools (F12) → Application タブ → Storage → Cookies → `.moppy.jp`
    - もしくは "Cookie-Editor" 拡張でエクスポート
    - 最低 `PHPSESSID` 等のセッション Cookie を `[{"name": "...", "value": "..."}]` の JSON 配列に整形
 5. **GitHub Secrets 登録**（リポジトリ Settings → Secrets and variables → Actions）:
-   - `GMAIL_USER` = メアド
-   - `GMAIL_APP_PASSWORD` = ステップ2で発行したパスワード
+   - `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REFRESH_TOKEN` = ステップ1-2で取得
    - `SLACK_BOT_TOKEN` = `xoxb-...`（既存の場合はそのまま）
    - `SLACK_CHANNEL_MOPPY` = ステップ3で決めたチャンネル名（例: `#moppy`）または ID
    - `MOPPY_COOKIES` = ステップ4で書き出した JSON（**未設定だとポイント加算されない**）

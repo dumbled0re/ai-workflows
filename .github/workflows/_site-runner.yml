@@ -63,9 +63,11 @@ on:
         required: true
       cookies:
         required: false
-      gmail_user:
+      gmail_client_id:
         required: true
-      gmail_app_password:
+      gmail_client_secret:
+        required: true
+      gmail_refresh_token:
         required: true
       # Optional ID/PW fallback. When both are provided AND the
       # adapter has ``password_login`` configured, ``_verify_login``
@@ -206,8 +208,9 @@ jobs:
           SITE_LOGIN_USER: ${{ secrets.login_user }}
           SITE_LOGIN_PASS: ${{ secrets.login_pass }}
           FORCE_PASSWORD_LOGIN_TEST: ${{ inputs.force_password_login_test && '1' || '' }}
-          GMAIL_USER: ${{ secrets.gmail_user }}
-          GMAIL_APP_PASSWORD: ${{ secrets.gmail_app_password }}
+          GMAIL_CLIENT_ID: ${{ secrets.gmail_client_id }}
+          GMAIL_CLIENT_SECRET: ${{ secrets.gmail_client_secret }}
+          GMAIL_REFRESH_TOKEN: ${{ secrets.gmail_refresh_token }}
         run: |
           set -e
           SITE_UPPER=$(echo "$SITE" | tr '[:lower:]' '[:upper:]')

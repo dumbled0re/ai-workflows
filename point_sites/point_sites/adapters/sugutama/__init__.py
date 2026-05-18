@@ -43,8 +43,8 @@ Required Secrets:
     netmile.co.jp browser session (login verification + balance scrape
     のみで使用)
   - ``SLACK_CHANNEL_SUGUTAMA`` — Slack channel ID or ``#name``
-  - ``GMAIL_USER`` / ``GMAIL_APP_PASSWORD`` — Gmail IMAP 認証
-    (moppy/warau 等と共有)
+  - ``GMAIL_CLIENT_ID`` / ``GMAIL_CLIENT_SECRET`` / ``GMAIL_REFRESH_TOKEN``
+    — Gmail API OAuth2 認証 (moppy/warau 等と共有)
 """
 
 import re

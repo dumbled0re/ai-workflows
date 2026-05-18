@@ -143,3 +143,6 @@ class Adapter:
 
     def outcome_path(self, data_root: str) -> str:
         return f"{data_root}/{self.name}/outcomes.jsonl"
+
+    def processed_messages_path(self, data_root: str) -> str:
+        return f"{data_root}/{self.name}/processed_messages.json"

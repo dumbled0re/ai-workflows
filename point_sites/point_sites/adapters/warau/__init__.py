@@ -40,7 +40,8 @@ Required Secrets:
   - ``WARAU_COOKIES`` — Cookie-Editor JSON export from a logged-in
     warau.jp browser session (login verification + balance scrape のみで使用)
   - ``SLACK_CHANNEL_WARAU`` — Slack channel ID or ``#name``
-  - ``GMAIL_USER`` / ``GMAIL_APP_PASSWORD`` — Gmail IMAP 認証 (moppy 等と共有)
+  - ``GMAIL_CLIENT_ID`` / ``GMAIL_CLIENT_SECRET`` / ``GMAIL_REFRESH_TOKEN``
+    — Gmail API OAuth2 認証 (moppy 等と共有)
 """
 
 from ...common.adapter import Adapter

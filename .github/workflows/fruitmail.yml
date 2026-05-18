@@ -89,7 +89,8 @@ jobs:
       slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
       slack_channel: ${{ secrets.SLACK_CHANNEL_FRUITMAIL }}
       cookies: ${{ secrets.FRUITMAIL_COOKIES }}
-      gmail_user: ${{ secrets.GMAIL_USER }}
-      gmail_app_password: ${{ secrets.GMAIL_APP_PASSWORD }}
+      gmail_client_id: ${{ secrets.GMAIL_CLIENT_ID }}
+      gmail_client_secret: ${{ secrets.GMAIL_CLIENT_SECRET }}
+      gmail_refresh_token: ${{ secrets.GMAIL_REFRESH_TOKEN }}
       login_user: ${{ secrets.FRUITMAIL_USER }}
       login_pass: ${{ secrets.FRUITMAIL_PASS }}

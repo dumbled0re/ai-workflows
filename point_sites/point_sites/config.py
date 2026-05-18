@@ -98,12 +98,17 @@ class Config:
     slack_channel: str
     cookies: list[dict[str, object]] | None  # None = anonymous (no points credited)
 
-    # Gmail (only relevant when adapter uses email-based clicks). These
-    # default to adapter values but ``<PREFIX>_GMAIL_QUERY`` /
-    # ``<PREFIX>_LABEL`` / ``<PREFIX>_NO_COINS_LABEL`` env vars override.
-    gmail_user: str
-    gmail_app_password: str
+    # Gmail (only relevant when adapter uses email-based clicks).
+    # OAuth2 credentials: obtained once via ``scripts/get_refresh_token.py``
+    # and stored as repo Secrets. The previous IMAP path (GMAIL_USER /
+    # GMAIL_APP_PASSWORD) was retired 2026-05-17 after Google bot-suspended
+    # the IMAP-using account.
+    gmail_client_id: str
+    gmail_client_secret: str
+    gmail_refresh_token: str
     gmail_query: str
+    # Labels are kept for backward compat in adapter configs but are now
+    # informational only — readonly OAuth scope cannot write labels.
     clicked_label: str
     no_coins_label: str
 
@@ -120,6 +125,10 @@ class Config:
     state_path: str
     outcome_path: str
     cookie_store_path: str
+    # Local dedup file for Gmail message IDs already processed. Replaces
+    # the prior server-side label-based dedup, which is no longer possible
+    # under the readonly OAuth scope.
+    processed_messages_path: str
 
     @classmethod
     def from_env(cls, adapter: Adapter, *, data_root: str = "data") -> Config:
@@ -131,19 +140,12 @@ class Config:
         slack_channel = _env_str(adapter.slack_channel_env, required=True)
         assert slack_channel is not None
 
-        gmail_user = _env_str("GMAIL_USER", required=True)
-        assert gmail_user is not None
-        if "@" not in gmail_user:
-            raise ConfigError(f"GMAIL_USER must be a full email address, got {gmail_user!r}")
-
-        gmail_app_password = _env_str("GMAIL_APP_PASSWORD", required=True)
-        assert gmail_app_password is not None
-        # Google displays app passwords as "abcd efgh ijkl mnop" — strip spaces.
-        cleaned_password = gmail_app_password.replace(" ", "")
-        if len(cleaned_password) != 16:
-            raise ConfigError(
-                f"GMAIL_APP_PASSWORD must be 16 characters (after stripping spaces); got {len(cleaned_password)}"
-            )
+        gmail_client_id = _env_str("GMAIL_CLIENT_ID", required=True)
+        gmail_client_secret = _env_str("GMAIL_CLIENT_SECRET", required=True)
+        gmail_refresh_token = _env_str("GMAIL_REFRESH_TOKEN", required=True)
+        assert gmail_client_id is not None
+        assert gmail_client_secret is not None
+        assert gmail_refresh_token is not None
 
         prefix = adapter.env_prefix
         interval_min = _env_int(f"{prefix}_CLICK_INTERVAL_MIN", 5, low=1, high=600)
@@ -168,8 +170,9 @@ class Config:
 
         return cls(
             adapter=adapter,
-            gmail_user=gmail_user,
-            gmail_app_password=cleaned_password,
+            gmail_client_id=gmail_client_id,
+            gmail_client_secret=gmail_client_secret,
+            gmail_refresh_token=gmail_refresh_token,
             slack_bot_token=bot_token,
             slack_channel=slack_channel,
             cookies=cookies,
@@ -192,6 +195,10 @@ class Config:
             cookie_store_path=(
                 _env_str(f"{prefix}_COOKIE_STORE_PATH", adapter.cookie_store_path(data_root))
                 or adapter.cookie_store_path(data_root)
+            ),
+            processed_messages_path=(
+                _env_str(f"{prefix}_PROCESSED_MESSAGES_PATH", adapter.processed_messages_path(data_root))
+                or adapter.processed_messages_path(data_root)
             ),
             log_level=log_level,
         )
