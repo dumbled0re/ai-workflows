@@ -13,9 +13,8 @@ name: moppy
 # recon shortcuts that never touch state or labels.
 
 on:
-  # schedule disabled 2026-05-17 — Gmail account suspended, Zoho 移行待ち
-  # schedule:
-  #   - cron: "0 23 * * *"  # JST 朝8時
+  schedule:
+    - cron: "0 23 * * *"  # JST 朝8時
   workflow_dispatch:
     inputs:
       dry_run:
