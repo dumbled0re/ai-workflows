@@ -41,7 +41,6 @@ Required Secrets:
 
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
-from ...common.password_login import PasswordLoginConfig
 from ...common.sources import OnsiteInboxSource
 from .parser import parse_inbox, parse_message
 
@@ -76,15 +75,10 @@ ADAPTER = Adapter(
         "https://dietnavi.com/pc/mypage/",
         "https://dietnavi.com/pc/mypage/mail_notice/index",
     ),
-    # 2026-05-21 MCP Playwright で確定。/pc/login.php に POST、name="mail"
-    # と name="pass"、submit は ``input.login_btn``。reCAPTCHA なし。
-    # 2026-05-21 user が新アカウント作成済 (旧アカウントはメアド変更不可で
-    # 諦め) — GETMONEY_USER / GETMONEY_PASS は新アカウントの credentials。
-    password_login=PasswordLoginConfig(
-        login_url="https://dietnavi.com/pc/login.php",
-        username_selector='input[name="mail"]',
-        password_selector='input[name="pass"]',
-        submit_selector="input.login_btn",
-        success_marker="ログアウト",
-    ),
+    # password_login は 2026-05-21 に試したが reCAPTCHA v2 (data-sitekey
+    # ``6LdO2ggT...``) で submit 後 login form のまま (run 26259378305)。
+    # 初回 inspect では reCAPTCHA iframe が async load 前で見逃したが、
+    # 再 inspect で確認済。hapitas と同類、Playwright stealth では突破不可。
+    # Cookie 失効時は従来の Slack auth_error path で user に Cookie 再エクスポート
+    # を要求する。
 )
