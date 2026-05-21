@@ -55,7 +55,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -215,9 +215,8 @@ def _wait_for_run_completion(workflow_basename: str, before_ts: str, timeout_sec
         runs = json.loads(proc.stdout)
         if runs:
             run = runs[0]
-            if run.get("createdAt", "") > before_ts:
-                if run.get("status") == "completed":
-                    return run
+            if run.get("createdAt", "") > before_ts and run.get("status") == "completed":
+                return run
         time.sleep(15)
     return None
 
@@ -470,6 +469,16 @@ def process_issue(issue: dict, *, dry_run: bool) -> dict | None:
     max_attempts = int(schema.get("max_attempts", DEFAULT_MAX_ATTEMPTS))
     logger.info("issue %s (%s): current attempt counter %d/%d", number, verify_id, attempt, max_attempts)
 
+    if attempt >= max_attempts:
+        logger.info(
+            "issue %s (%s): max_attempts already reached (%d/%d), skipping",
+            number,
+            verify_id,
+            attempt,
+            max_attempts,
+        )
+        return None
+
     if dry_run:
         logger.info("DRY RUN — would execute kind=%s args=%s", schema["kind"], schema.get("args"))
         return None
@@ -535,7 +544,8 @@ def process_issue(issue: dict, *, dry_run: bool) -> dict | None:
         )
         comment_on_issue(
             number,
-            f"❌ attempt {attempt + 1}/{max_attempts} 失敗。Claude 自動修正を試行 (失敗ならまた次回 cron)\n\n```\n{result.detail}\n```",
+            f"❌ attempt {attempt + 1}/{max_attempts} 失敗。Claude 自動修正を試行 (失敗ならまた次回 cron)"
+            f"\n\n```\n{result.detail}\n```",
         )
 
     # Always emit failure context so the auto-fix step can pick it up.
