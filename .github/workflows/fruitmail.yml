@@ -16,7 +16,7 @@ name: fruitmail
 
 on:
   schedule:
-    - cron: "0 1 * * *"  # JST 10:00 (15 min after getmoney.yml)
+    - cron: "0 6 * * *"  # JST 15:00 (Gmail 5 サイト分散の昼下がり枠)
   workflow_dispatch:
     inputs:
       dry_run:

@@ -17,7 +17,7 @@ name: sugutama
 
 on:
   schedule:
-    - cron: "30 1 * * *"  # JST 10:30 (15 min after warau.yml)
+    - cron: "30 12 * * *"  # JST 21:30 (Gmail 5 サイト分散の夜枠)
   workflow_dispatch:
     inputs:
       dry_run:

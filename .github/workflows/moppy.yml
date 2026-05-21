@@ -14,7 +14,7 @@ name: moppy
 
 on:
   schedule:
-    - cron: "0 23 * * *"  # JST 朝8時
+    - cron: "30 22 * * *"  # JST 7:30 (Gmail 5 サイト分散の朝枠)
   workflow_dispatch:
     inputs:
       dry_run:

@@ -93,6 +93,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Bot-detection mitigation: GitHub Actions cron fires at fixed seconds
+      # (modulo GHA's own ~15min load jitter), so without an additional random
+      # delay all data-center IP requests would land at the same second each
+      # day — an obvious tell. Sleep 0–600s only on schedule triggers; manual
+      # ``workflow_dispatch`` skips this so debug iterations stay fast.
+      - name: Jitter (anti bot-pattern detection)
+        if: github.event_name == 'schedule'
+        run: |
+          JITTER=$((RANDOM % 600))
+          echo "Sleeping ${JITTER}s to randomize cron firing pattern"
+          sleep "$JITTER"
+
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:

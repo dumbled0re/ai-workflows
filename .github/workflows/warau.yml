@@ -15,7 +15,7 @@ name: warau
 
 on:
   schedule:
-    - cron: "15 1 * * *"  # JST 10:15 (15 min after fruitmail.yml)
+    - cron: "30 9 * * *"  # JST 18:30 (Gmail 5 サイト分散の夕方枠)
   workflow_dispatch:
     inputs:
       dry_run:
