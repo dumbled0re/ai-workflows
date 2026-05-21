@@ -41,6 +41,7 @@ Required Secrets:
 
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
+from ...common.password_login import PasswordLoginConfig
 from ...common.sources import OnsiteInboxSource
 from .parser import parse_inbox, parse_message
 
@@ -74,5 +75,16 @@ ADAPTER = Adapter(
     discover_seeds=(
         "https://dietnavi.com/pc/mypage/",
         "https://dietnavi.com/pc/mypage/mail_notice/index",
+    ),
+    # 2026-05-21 MCP Playwright で確定。/pc/login.php に POST、name="mail"
+    # と name="pass"、submit は ``input.login_btn``。reCAPTCHA なし。
+    # 2026-05-21 user が新アカウント作成済 (旧アカウントはメアド変更不可で
+    # 諦め) — GETMONEY_USER / GETMONEY_PASS は新アカウントの credentials。
+    password_login=PasswordLoginConfig(
+        login_url="https://dietnavi.com/pc/login.php",
+        username_selector='input[name="mail"]',
+        password_selector='input[name="pass"]',
+        submit_selector="input.login_btn",
+        success_marker="ログアウト",
     ),
 )

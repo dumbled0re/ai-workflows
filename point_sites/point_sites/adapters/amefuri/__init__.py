@@ -33,6 +33,7 @@ import re
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
 from ...common.browser_action import BrowserAction
+from ...common.password_login import PasswordLoginConfig
 from ...common.sources import EndpointPollSource
 
 # Daily-login GET target. アメフリ has no discrete "claim bonus" button
@@ -98,4 +99,17 @@ ADAPTER = Adapter(
     # endpoint is genuinely silent, not just yielding below display
     # precision.
     stagnation_window=30,
+    # 2026-05-21 MCP Playwright で確定。amefuri は i2i SSO 経由で認証する
+    # ため login_url は ``id.i2i.jp/usr/login.php``。form の hidden に
+    # ``rtoken`` (CSRF) があり、page.goto で取得される値がそのまま POST に
+    # 乗るので追加処理不要。⚠️ 隠し reCAPTCHA (v3 invisible、JS で token を
+    # ``input[name="recaptcha"]`` に書き込む) が存在するため Playwright
+    # stealth が score を抜けられない可能性あり。
+    password_login=PasswordLoginConfig(
+        login_url="https://id.i2i.jp/usr/login.php?service=i2ipoint",
+        username_selector="#login-id",
+        password_selector='input[name="loginPw"]',
+        submit_selector="#login-basic",
+        success_marker="ログアウト",
+    ),
 )

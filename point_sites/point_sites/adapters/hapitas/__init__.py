@@ -23,6 +23,7 @@ Bring-up flow: identical to other adapters. See HANDOFF.md "新しい
 
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
+from ...common.password_login import PasswordLoginConfig
 from ...common.sources import GmailSource
 from ...common.wizard import DailyWizard
 from .parser import parse as parse_email
@@ -74,5 +75,18 @@ ADAPTER = Adapter(
                 ("#takarakuji_exchange_btn_exchanges_10", 1),
             ),
         ),
+    ),
+    # 2026-05-21 MCP Playwright で確定。/auth/signin/ にPOST、name="mail"
+    # と name="password"、submit は ``input.btn_login_main_white`` (type="button"、
+    # JS で reCAPTCHA トークン取得後に form 送信)。⚠️ reCAPTCHA v2 が submit
+    # ボタンに付いている (``g-recaptcha`` class) ため、Playwright stealth の
+    # heuristics 次第で fail する可能性あり。fail したら Cookie ベース運用に
+    # 戻すしかない (memory: pointtown と同じパターン)。
+    password_login=PasswordLoginConfig(
+        login_url="https://hapitas.jp/auth/signin/",
+        username_selector='input[name="mail"]',
+        password_selector='input[name="password"]',
+        submit_selector="input.btn_login_main_white",
+        success_marker="ログアウト",
     ),
 )

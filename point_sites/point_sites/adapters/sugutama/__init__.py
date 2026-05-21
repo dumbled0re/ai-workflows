@@ -50,6 +50,7 @@ Required Secrets:
 import re
 
 from ...common.adapter import Adapter
+from ...common.password_login import PasswordLoginConfig
 from ...common.sources import GmailSource
 from .parser import parse as parse_email
 
@@ -98,4 +99,17 @@ ADAPTER = Adapter(
     # 経由の balance 取得に切替、``_SUGUTAMA_BALANCE_PATTERNS`` が hydration
     # 完了後の数値を pick up する。
     balance_uses_browser=True,
+    # 2026-05-21 MCP Playwright で確定。/sugutama/login にPOST、Rails 形式の
+    # name="user[email]" / name="user[password]" だが Playwright で ``[]`` の
+    # escape 問題が発生しうるため id-based selector を採用 (memory:
+    # password_login の注意点)。submit は無装飾の input[type="submit"]、
+    # authenticity_token CSRF は form 内 hidden で page.goto 時に取得される。
+    # reCAPTCHA なし。
+    password_login=PasswordLoginConfig(
+        login_url="https://www.netmile.co.jp/sugutama/login",
+        username_selector="#js-mail",
+        password_selector="#js-password",
+        submit_selector='input[type="submit"]',
+        success_marker="ログアウト",
+    ),
 )
