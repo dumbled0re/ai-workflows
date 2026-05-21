@@ -102,11 +102,20 @@ ADAPTER = Adapter(
     # 2026-05-21 MCP Playwright で確定。amefuri は i2i SSO 経由で認証する
     # ため login_url は ``id.i2i.jp/usr/login.php``。form の hidden に
     # ``rtoken`` (CSRF) があり、page.goto で取得される値がそのまま POST に
-    # 乗るので追加処理不要。⚠️ 隠し reCAPTCHA (v3 invisible、JS で token を
-    # ``input[name="recaptcha"]`` に書き込む) が存在するため Playwright
-    # stealth が score を抜けられない可能性あり。
+    # 乗るので追加処理不要。隠し reCAPTCHA v3 (``input[name="recaptcha"]``、
+    # JS で token を書き込む) は Playwright stealth で通った (2026-05-21 検証)。
+    #
+    # ⚠️ 2026-05-22 fix: ``goto`` parameter が無いと i2i ログイン後の
+    # redirect chain が amefuri.net まで届かず、i2i の cookie だけが
+    # rotation されて amefri.net 側 session が空のまま (login verification
+    # 失敗、run 26259167089)。goto に amefri の /service/login を指定して
+    # SSO chain を完成させる。
     password_login=PasswordLoginConfig(
-        login_url="https://id.i2i.jp/usr/login.php?service=i2ipoint",
+        login_url=(
+            "https://id.i2i.jp/usr/login.php"
+            "?service=i2ipoint"
+            "&goto=https%3A%2F%2Fwww.amefri.net%2Fservice%2Flogin%3Furl%3D"
+        ),
         username_selector="#login-id",
         password_selector='input[name="loginPw"]',
         submit_selector="#login-basic",
