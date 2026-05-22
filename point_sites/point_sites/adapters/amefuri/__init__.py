@@ -33,7 +33,6 @@ import re
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
 from ...common.browser_action import BrowserAction
-from ...common.password_login import PasswordLoginConfig
 from ...common.sources import EndpointPollSource
 
 # Daily-login GET target. アメフリ has no discrete "claim bonus" button
@@ -99,26 +98,16 @@ ADAPTER = Adapter(
     # endpoint is genuinely silent, not just yielding below display
     # precision.
     stagnation_window=30,
-    # 2026-05-21 MCP Playwright で確定。amefuri は i2i SSO 経由で認証する
-    # ため login_url は ``id.i2i.jp/usr/login.php``。form の hidden に
-    # ``rtoken`` (CSRF) があり、page.goto で取得される値がそのまま POST に
-    # 乗るので追加処理不要。隠し reCAPTCHA v3 (``input[name="recaptcha"]``、
-    # JS で token を書き込む) は Playwright stealth で通った (2026-05-21 検証)。
+    # password_login は 2026-05-22 に試したが i2i SSO chain で躓いて撤回。
+    # amefri.net の "ログイン" link は ``goto`` だけでなく動的 ``rtoken``
+    # (CSRF、amefri 側でセッション per-request 発行) を含む URL で i2i に
+    # 飛ぶ。これが無いと SSO chain (i2i ログイン → amefri.net/service/login
+    # の trampoline → amefri 側 session 復元) が完成しない。run 26260139555
+    # で確認: goto あっても rtoken なしだと submit 後 amefri.net 根 page に
+    # 着地するが session 未復元、ログアウト リンクが見つからず fail。
     #
-    # ⚠️ 2026-05-22 fix: ``goto`` parameter が無いと i2i ログイン後の
-    # redirect chain が amefuri.net まで届かず、i2i の cookie だけが
-    # rotation されて amefri.net 側 session が空のまま (login verification
-    # 失敗、run 26259167089)。goto に amefri の /service/login を指定して
-    # SSO chain を完成させる。
-    password_login=PasswordLoginConfig(
-        login_url=(
-            "https://id.i2i.jp/usr/login.php"
-            "?service=i2ipoint"
-            "&goto=https%3A%2F%2Fwww.amefri.net%2Fservice%2Flogin%3Furl%3D"
-        ),
-        username_selector="#login-id",
-        password_selector='input[name="loginPw"]',
-        submit_selector="#login-basic",
-        success_marker="ログアウト",
-    ),
+    # 修正には password_login.py framework に「初回 navigation で home page
+    # の login link href を抽出 → そこへ navigate」という 2-step flow を入れ
+    # る必要あり (別 issue で対応予定)。それまで Cookie-only で運用、Cookie
+    # 失効時は Slack auth_error で user に Cookie 再エクスポートを依頼。
 )
