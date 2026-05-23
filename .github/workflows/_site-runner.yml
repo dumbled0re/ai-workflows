@@ -48,6 +48,10 @@ on:
         description: "browser mode only: log all network requests the page makes (for finding SPA API endpoints)"
         type: boolean
         default: false
+      inspect_wait_until:
+        description: "browser mode only: page.goto wait condition. Override to 'domcontentloaded' for ad-heavy pages (sugutama mypage, warau game/list) that hang on networkidle."
+        type: string
+        default: ""
       force_fresh_cookies:
         description: "delete persisted cookie jar before run, forcing re-bootstrap from <SITE>_COOKIES Secret. Use after rotating the Secret in GitHub when the cached jar would otherwise overwrite the fresh value."
         type: boolean
@@ -213,6 +217,7 @@ jobs:
           INSPECT_WAIT_SELECTOR: ${{ inputs.inspect_wait_selector }}
           INSPECT_ANONYMOUS: ${{ inputs.inspect_anonymous && '1' || '0' }}
           INSPECT_CAPTURE_NETWORK: ${{ inputs.inspect_capture_network && '1' || '0' }}
+          INSPECT_WAIT_UNTIL: ${{ inputs.inspect_wait_until }}
           DISCOVER: ${{ inputs.discover && '1' || '0' }}
           SLACK_BOT_TOKEN: ${{ secrets.slack_bot_token }}
           SITE_SLACK_CHANNEL: ${{ secrets.slack_channel }}
@@ -259,6 +264,9 @@ jobs:
             fi
             if [[ "$INSPECT_CAPTURE_NETWORK" == "1" ]]; then
               HTML_FLAGS+=(--capture-network)
+            fi
+            if [[ -n "$INSPECT_WAIT_UNTIL" ]]; then
+              HTML_FLAGS+=(--wait-until "$INSPECT_WAIT_UNTIL")
             fi
             uv run python -m point_sites.main html --site "$SITE" "$INSPECT_URL" "${HTML_FLAGS[@]}"
           elif [[ "$DISCOVER" == "1" ]]; then

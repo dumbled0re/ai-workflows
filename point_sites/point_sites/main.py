@@ -388,6 +388,18 @@ def _build_arg_parser() -> argparse.ArgumentParser:
             "endpoints behind fully-SPA sites (e.g. warau)."
         ),
     )
+    p_html.add_argument(
+        "--wait-until",
+        default="networkidle",
+        choices=["networkidle", "domcontentloaded", "load", "commit"],
+        help=(
+            "browser mode only: page.goto wait condition. Default "
+            "``networkidle`` is safe for normal SPAs but ad-heavy pages "
+            "(sugutama mypage, warau /game/list) hang because long-poll "
+            "ad iframes never settle — use ``domcontentloaded`` paired "
+            "with --wait-selector to gate on real content."
+        ),
+    )
     return parser
 
 
@@ -967,6 +979,7 @@ def cmd_html(
     wait_timeout_ms: int = 15_000,
     anonymous: bool = False,
     capture_network: bool = False,
+    wait_until: str = "networkidle",
 ) -> int:
     """Fetch a single URL and dump its body to stdout.
 
@@ -987,6 +1000,13 @@ def cmd_html(
     client-side hydration to produce the actual content. Without this
     flag we capture an empty shell. ``wait_timeout_ms`` bounds the
     wait (default 15s) so a missing selector doesn't hang.
+
+    ``wait_until`` (browser mode only) controls the goto wait condition.
+    Default ``networkidle`` is safe for normal SPA pages, but ad-heavy
+    sites (sugutama mypage, warau /game/list, pointtown /ptu) have
+    long-poll ad iframes that never settle — passing
+    ``domcontentloaded`` skips the wait and relies on ``wait_selector``
+    (if set) to gate on real content.
 
     ``anonymous=True`` skips cookie loading and login verification so
     the request goes out unauthenticated. This is the only way to
@@ -1011,7 +1031,7 @@ def cmd_html(
                         "request",
                         lambda req: captured.append((req.method, req.url, req.resource_type)),
                     )
-                page = bc.goto(url)
+                page = bc.goto(url, wait_until=wait_until)
                 try:
                     final_url = page.url
                     if wait_selector:
@@ -1191,6 +1211,7 @@ def main(argv: list[str] | None = None) -> int:
             wait_timeout_ms=getattr(args, "wait_timeout_ms", 15_000),
             anonymous=getattr(args, "anonymous", False),
             capture_network=getattr(args, "capture_network", False),
+            wait_until=getattr(args, "wait_until", "networkidle"),
         )
     parser.error(f"unknown subcommand: {args.cmd}")
 
