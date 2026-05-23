@@ -101,6 +101,19 @@ session 内で完結しない / 翌日以降に持ち越す task は **必ず Gi
 
 通知: `SLACK_CHANNEL_VERIFY` Secret 指定 channel に全イベント (success / inconclusive / failure) を流す。issue にもコメントが残るので Slack ロスト時の冗長性あり。pending-verify の `kind` 登録は機械検証用なので、`enhancement` 等の人手 task issue には `pending-verify` label を **付けないこと** (cron が拾って混乱の元になる)。
 
+### user の「続けて」「次やって」「続きやって」発言での自動進行
+
+長期 rollout (ad-fraud 各サイト実装等) は `rollout` label の tracker issue (= 順番付き checklist) で管理。**user が「続けて」「次やって」「続きやって」「続き」とだけ送ってきたら**、Claude は以下を自動実行:
+
+1. `gh issue list --label rollout --state open` で active tracker を確認
+2. 該当 tracker (現状は #31) を `gh issue view <num>` で読み込み
+3. queue の最上位 `[ ]` (未着手) 項目を pick → リンクされた sub-issue (例 #24) を読み込み
+4. recon → 実装 → test → `git commit + push` を実行
+5. 完了したら sub-issue を `gh issue close` + tracker を `gh issue edit <num> --body` で `[x] ~~xxx~~` に更新
+6. 残り context budget あれば次項目に進む、底つき気味なら handoff skill 起動 or 「N 件完了、残り別 session」と user 報告
+
+**重要**: user が文脈を覚えなくて済むようにする protocol なので、「何を続けますか?」と聞き返さない。ambiguous なら memory `project_rollout_queue_tracker` を見る。
+
 ## user に選択 / 判断を求めるときは AskUserQuestion ツール
 
 user に複数の選択肢を提示したい / 方針を聞きたい場合は **`AskUserQuestion` ツールを使う**。地の文で「A / B / C のどれにしますか？」と書くだけにしない。
