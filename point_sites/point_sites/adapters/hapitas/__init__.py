@@ -74,6 +74,42 @@ ADAPTER = Adapter(
                 ("#takarakuji_exchange_btn_exchanges_10", 1),
             ),
         ),
+        # 2026-05-23 ad-fraud policy 解禁後の追加 (issue #25)。
+        #
+        # hapitas top page (run 26328580122) で発見:
+        #   - m.hapitas.jp/gmo/game/easygame   → hapitas.kantangame.com にリダイレクト
+        #   - m.hapitas.jp/gmo/game/gesoten    → ゲソてん (GMO 系 mini-game hub)
+        #   - m.hapitas.jp/gmo/game/quiz       → クイズ
+        #   - m.hapitas.jp/gmo/game/spotdiff   → 間違い探し
+        #
+        # 各 entry URL は GMO ad-game platform への redirect 入口、訪問だけで
+        # impression が出る。easygame inspect (run 26328615517) で確認: redirect 先で
+        # /easygame/event (ミッション) + /easygame/lottery (抽選券) が存在。
+        # interactive game でスコア出さないと credit しないかもしれないが、visit-only
+        # で 1 週間 balance 観察してから escalate 判断。
+        #
+        # m.hapitas.jp は ``hapitas.jp`` の subdomain として is_manual_url_allowed
+        # の subdomain-match で許可される (clicker.py 参照)。
+        DailyWizard(
+            name="hapitas_gmo_easygame",
+            url="https://m.hapitas.jp/gmo/game/easygame",
+            clicks=(),
+        ),
+        DailyWizard(
+            name="hapitas_gmo_gesoten",
+            url="https://m.hapitas.jp/gmo/game/gesoten",
+            clicks=(),
+        ),
+        DailyWizard(
+            name="hapitas_gmo_quiz",
+            url="https://m.hapitas.jp/gmo/game/quiz",
+            clicks=(),
+        ),
+        DailyWizard(
+            name="hapitas_gmo_spotdiff",
+            url="https://m.hapitas.jp/gmo/game/spotdiff",
+            clicks=(),
+        ),
     ),
     # password_login は 2026-05-21 に試したが reCAPTCHA v2 (``g-recaptcha`` class)
     # に弾かれて submit 後 login form のまま (run 26259164716)。Playwright stealth
