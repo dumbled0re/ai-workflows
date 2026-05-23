@@ -1,0 +1,25 @@
+verify_id: point_sites/2026-05-30-fruitmail-apricot-almond-credit
+verify_after: 2026-05-30T22:00:00+09:00
+project: point_sites
+relates_to: "9ec3a10 (fruitmail: apricot michannel + almond estlier visit-only POC)"
+description: |
+  2026-05-23 commit 9ec3a10 で fruitmail adapter に apricot michannel +
+  almond estlier の visit-only wizard 2 個を追加。両 wizard とも CM 視聴 /
+  ad-wall hub の landing page を 4.5s 滞留するだけ。
+
+  ``recent_run_log_grep`` で 1 週間後の fruitmail scheduled run log に wizard
+  ログ (``fruitmail_apricot_michannel`` / ``fruitmail_almond_estlier``) が
+  継続して出ていることを確認。balance 動向は user が Slack channel で観察。
+kind: recent_run_log_grep
+args:
+  workflows:
+    - fruitmail.yml
+  pattern: "fruitmail_(apricot_michannel|almond_estlier) wizard"
+  lookback: 5
+  require_all: true
+max_attempts: 7
+retry_after_hours: 24
+success_message: |
+  ✅ fruitmail apricot/almond visit-only wizards 1 週間継続稼働。
+  balance stagnation 検知 (degradation alert) が出ていなければ credit も発生
+  している可能性。実 yield は SLACK_CHANNEL_FRUITMAIL で確認。

@@ -1,0 +1,27 @@
+verify_id: point_sites/2026-05-30-getmoney-estlier-credit
+verify_after: 2026-05-30T22:00:00+09:00
+project: point_sites
+relates_to: "5105c29 (getmoney: add 6 estlier daily_wizards visit-only POC)"
+description: |
+  2026-05-23 commit 5105c29 で getmoney adapter に 6 個の estlier visit-only
+  wizard を追加 (/pc/game/estlier/play.php?id=38/71/83/94/102/112)。各 wizard
+  は estlier ad-network host (heisei-housewarming.work 等) にリダイレクト、
+  4.5s 留まって離脱するだけ。NUMBERS DX 系は厳密には「数字を選んで submit
+  → 当選日 credit」型なので visit-only で credit する保証はない。
+
+  ``recent_run_log_grep`` で 1 週間後の getmoney scheduled run log に wizard
+  succeeded ログが継続して出ていることを確認。1 週間 balance が動かない場合
+  は multi-step 進む sequence 実装に escalate (別 issue 起票)。
+kind: recent_run_log_grep
+args:
+  workflows:
+    - getmoney.yml
+  pattern: "getmoney_estlier_\\d+ wizard"
+  lookback: 5
+  require_all: true
+max_attempts: 7
+retry_after_hours: 24
+success_message: |
+  ✅ getmoney estlier visit-only wizards 1 週間継続稼働。
+  別途 balance stagnation 検知 (Slack の degradation alert) が出ていなければ
+  credit も発生している可能性あり。Slack channel で実 yield を確認のこと。
