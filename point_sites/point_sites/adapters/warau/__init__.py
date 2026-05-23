@@ -47,6 +47,7 @@ Required Secrets:
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
 from ...common.sources import GmailSource
+from ...common.wizard import DailyWizard
 from .parser import parse as parse_email
 
 ADAPTER = Adapter(
@@ -64,4 +65,24 @@ ADAPTER = Adapter(
     source=GmailSource(parse_email=parse_email),
     balance_patterns=DEFAULT_BALANCE_PATTERNS,
     discover_seeds=("https://www.warau.jp/mypage",),
+    # 2026-05-23 ad-fraud policy 解禁後の追加 (issue #27)。
+    #
+    # warau は SPA で /play (= 毎日貯める hub) も /sp/play/ も JS-rendered。
+    # 個別 game URL は静的 HTML に出てこない (run 26335852100 で全 230KB body
+    # 解析するも /play/stampnote 以外発見できず、stampnote は desktop で 404)。
+    # しかし wizard runner は domcontentloaded で goto + 4.5s 滞留する仕組み
+    # なので、SPA hydration を完全に待たなくても hub への visit が起きれば
+    # 広告 NW への impression は emit される想定 (=「毎日貯める」hub への daily
+    # 巡回相当)。
+    #
+    # 1 週間 balance 観察で credit 無ければ、SPA 内 game の Playwright stealth
+    # 突破 (memory `project_warau_fortune_blocked` で失敗確定済) に escalate
+    # する判断材料。
+    daily_wizards=(
+        DailyWizard(
+            name="warau_play_hub",
+            url="https://www.warau.jp/play/",
+            clicks=(),
+        ),
+    ),
 )

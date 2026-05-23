@@ -52,6 +52,7 @@ import re
 from ...common.adapter import Adapter
 from ...common.password_login import PasswordLoginConfig
 from ...common.sources import GmailSource
+from ...common.wizard import DailyWizard
 from .parser import parse as parse_email
 
 # sugutama (netmile) の mypage は server-side でマイル数を render せず、
@@ -99,6 +100,32 @@ ADAPTER = Adapter(
     # 経由の balance 取得に切替、``_SUGUTAMA_BALANCE_PATTERNS`` が hydration
     # 完了後の数値を pick up する。
     balance_uses_browser=True,
+    # 2026-05-23 ad-fraud policy 解禁後の追加 (issue #29)。framework に
+    # ``inspect_wait_until=domcontentloaded`` 機能を追加 (commit c8921e6 +
+    # 369a985) してようやく logged-in sugutama mypage の HTML を取得可能に。
+    #
+    # /sugutama/mypage HTML inspect で発見:
+    #   - /sugutama/game (タイトル: ゲーム｜無料ゲームでお小遣い稼ぎ)
+    #   - /sugutama/events (タイトル: すぐたまイベント｜ボーナスマイル獲得のチャンス)
+    #
+    # 個別 game (bingo / janken / ガラポン 等) URL は JS-rendered で static
+    # HTML に出ないが、hub への visit で広告 NW impression は emit される想定。
+    # /sugutama/events は「ボーナスマイル獲得のチャンス」event hub。
+    #
+    # 1 週間 balance 観察で credit 無ければ wait_for_selector + JS-rendered
+    # game URL 抽出に escalate (別 issue)。
+    daily_wizards=(
+        DailyWizard(
+            name="sugutama_game_hub",
+            url="https://www.netmile.co.jp/sugutama/game",
+            clicks=(),
+        ),
+        DailyWizard(
+            name="sugutama_events",
+            url="https://www.netmile.co.jp/sugutama/events",
+            clicks=(),
+        ),
+    ),
     # 2026-05-21 MCP Playwright で確定。/sugutama/login にPOST、Rails 形式の
     # name="user[email]" / name="user[password]" だが Playwright で ``[]`` の
     # escape 問題が発生しうるため id-based selector を採用 (memory:
