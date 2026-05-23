@@ -1,0 +1,31 @@
+verify_id: point_sites/2026-05-30-moppy-banner-credit
+verify_after: 2026-05-30T22:00:00+09:00
+project: point_sites
+relates_to: "a3b97c9 (moppy daily_banner で /gamecontents/ 8 banner/day 実装)"
+description: |
+  2026-05-23 commit a3b97c9 で moppy adapter に daily_banner_url +
+  daily_banner_selector を追加。/gamecontents/ から 8 個の ``/cc/c?t=CC...``
+  banner URL を毎日 click する。初回 dispatch (run 26327456425) で 8 click
+  全部 status=success だが balance before/after 共に 55 pt で credit 即時反映
+  なし (moppy はコイン→ポイント conversion ありの可能性)。
+
+  ``recent_run_log_grep`` で 1 週間後の moppy scheduled run log に banner
+  discovery + click が継続している証拠 (``discovered \d+ unique daily banners``)
+  を確認。同時に Slack 通知に balance delta が出ているか観察。
+
+  もし 1 週間経っても balance がまったく動かない場合は、moppy の /cc/c
+  banner click は (1) 既に Gmail で credited 済 URL の同一 token で重複 dedup
+  されている、または (2) on-site banner は ad-fraud と判定されて credit 拒否、
+  のどちらか。前者なら yield 0 で実装維持 OK、後者なら撤回判断。
+kind: recent_run_log_grep
+args:
+  workflows:
+    - moppy.yml
+  pattern: "discovered \\d+ unique daily banners"
+  lookback: 5
+  require_all: true
+max_attempts: 7
+retry_after_hours: 24
+success_message: |
+  ✅ moppy daily_banner: banner discovery + click pipeline が継続稼働確認
+  別途 balance stagnation 検知が degradation 出していなければ credit も発生
