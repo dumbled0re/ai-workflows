@@ -1098,7 +1098,7 @@ def cmd_html(
                     "request",
                     lambda req: captured_auth.append((req.method, req.url, req.resource_type)),
                 )
-            page = bc.goto(url)
+            page = bc.goto(url, wait_until=wait_until)
             try:
                 final_url = page.url
                 if wait_selector:
