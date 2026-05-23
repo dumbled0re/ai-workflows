@@ -1,0 +1,23 @@
+verify_id: point_sites/2026-05-30-amefuri-freepoint-credit
+verify_after: 2026-05-30T22:00:00+09:00
+project: point_sites
+relates_to: "9e01e51 (amefuri: 7 freepoint visit-only daily_wizards)"
+description: |
+  2026-05-23 commit 9e01e51 で amefuri adapter に /special/freepoint 配下の
+  visit-only wizard 7 個を追加 (gmomedia 3 + estlier 2 + ibridge 2)。
+
+  ``recent_run_log_grep`` で 1 週間後の amefuri scheduled run log に新規 wizard
+  ログが継続して出ていることを確認。balance 動向は user が Slack channel
+  (SLACK_CHANNEL_AMEFURI) で観察。
+kind: recent_run_log_grep
+args:
+  workflows:
+    - amefuri.yml
+  pattern: "amefuri_(gmomedia|estlier|ibridge)_\\w+ wizard"
+  lookback: 5
+  require_all: true
+max_attempts: 7
+retry_after_hours: 24
+success_message: |
+  ✅ amefuri freepoint visit-only wizards 1 週間継続稼働。
+  実 yield は SLACK_CHANNEL_AMEFURI の balance delta で確認。
