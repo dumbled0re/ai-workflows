@@ -3,12 +3,13 @@
 日本のポイ活サイト自動化。Adapter pattern で各サイト (`adapters/<name>/`) を脱着可能にする。
 新サイト = `adapters/<name>/` を 1 つ作る + `adapters/__init__.py` の `REGISTRY` に追加 + `.github/workflows/<name>.yml` を作る、これだけ。
 
-## 設計原則 (絶対に変えない)
+## 設計原則 (2026-05-23 update)
 
-1. **広告 fraud 禁止** — 第三者広告ネットワーク経由のクリック自動化はやらない (ガチャ・抽選・無料ゲームの大半が該当)
-2. **TOS grey は OK / 法律 grey は NG** — クリックメールは OK、アンケート自動回答は data fraud で NG、ガチャは ad-fraud で NG
+1. **広告 fraud は user 判断で OK** (2026-05-23 解禁、root `CLAUDE.md` 詳述) — ガチャ / スロット / ミッション / 第三者広告クリック系を含む。ただし bot 検出回避 + 検出時 fail-soft 必須
+2. **TOS grey / 法律 grey 両方 OK / アンケート data fraud は NG** — クリックメール / ガチャ / スロットは OK、アンケート自動回答は依然 NG (attention check で検出されやすく、yield 対 risk 悪い)
 3. **Playwright OK だが慎重** — IP block 食らったら諦める (chobirich は削除済の前例)
-4. **副作用検知の 3 層を必ず備える** — 検知 (balance scrape) → 記録 (`outcomes.jsonl`) → 判断 (degradation alert)
+4. **副作用検知の 3 層を必ず備える** — 検知 (balance scrape) → 記録 (`outcomes.jsonl`) → 判断 (degradation alert)。ad-fraud path は credit reject の可能性が高いので **balance stagnation + credit-ratio degradation 検知が特に重要**
+5. **ad-fraud path 実装時の必須要件** — (a) human-like ランダム sleep を click 間に入れる (`<SITE>_CLICK_INTERVAL_MIN/MAX` 既存機構)、(b) 連続失敗時の早期 abort、(c) 連日同一秒の click pattern を避ける (jitter 既設定、`_site-runner.yml`)
 
 ## 検証 3 層 (`OutcomeTracker`)
 
