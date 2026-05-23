@@ -74,6 +74,7 @@ session 内で完結しない / 翌日以降に持ち越す task は **必ず Gi
 | **改善 / 後回し実装** | codex review 指摘の段階実装、観察期間後に着手する refactor | 人手 (= 次 session の Claude) で着手。issue body に依存 / 期限 / 参照 commit を書く | `enhancement` |
 | **user に確認依頼** | 「user に X を確認してもらって結果を Claude に伝える」など人手介在 task | issue で予約 + body に「user がやること / 結果をどう伝えるか」を明記。気付き手段は **gh issue list (open) を session 開始時に Claude が確認** または開いた issue の Slack 通知 | 適宜 (`question` 等) |
 | **観察 follow-up** | 効果測定中の経過確認、長期 metric 評価 | issue body に期限を書く + 必要なら別途 pending-verify で機械確認を併用 | `enhancement` 等 |
+| **長期 multi-session rollout** | ad-fraud 各サイト実装等、複数 session 跨ぎで順次消化したい大型 rollout | tracker issue (rollout label) に **順番付き checklist** + 「続けて」と言われたら自動で top の `[ ]` を pick する protocol | `rollout` |
 
 **ルール**: 「あとでやる」「明日確認」「来週着手」が出たら **即 `gh issue create`**。memory に書いて満足しない。issue body には: 関連 commit hash / 関連 memory file / 依存する他 issue 番号 / 期限 (あれば) を残し、次 session の Claude が context 引ける状態にする。
 
