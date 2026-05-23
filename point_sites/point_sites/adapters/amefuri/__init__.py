@@ -34,6 +34,7 @@ from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
 from ...common.browser_action import BrowserAction
 from ...common.sources import EndpointPollSource
+from ...common.wizard import DailyWizard
 
 # Daily-login GET target. アメフリ has no discrete "claim bonus" button
 # (verified via inspect_url 2026-05-09: /account shows the bonus as a
@@ -90,6 +91,69 @@ ADAPTER = Adapter(
     browser_actions=(
         BrowserAction(name="login_visit_home", url="https://www.amefri.net/"),
         BrowserAction(name="login_visit_account", url="https://www.amefri.net/account"),
+    ),
+    # 2026-05-23 ad-fraud policy 解禁 + user 提供 screenshot で
+    # ``/special/freepoint`` (毎日貯める hub) に多数の wizard 候補が
+    # あることが判明 (issue #28)。inspect runs:
+    #   - 26335036974: hub の href 一覧で /video/* 7 entry + /game/gacha
+    #   - 26335110777: /video/estlier/index/83 = PANBONスロット (host:
+    #                  i2ipoint.nail-monster.work) を確定
+    #   - 26335073242: /video/estlier/index/1 = コラムとアンケート list
+    #
+    # mapping (user screenshot tile vs URL):
+    #   - 無料ガチャ            → /game/gacha (server 302 で blocked、別 issue)
+    #   - アメフリゲームボックス → /video/gmomedia/easygame
+    #   - 脳トレクイズ           → /video/gmomedia/quiz
+    #   - 間違い探しボックス     → /video/gmomedia/spotdiff
+    #   - PANBONスロット         → /video/estlier/index/83
+    #   - コラムとアンケート     → /video/estlier/index/1 (list page 訪問のみ
+    #                             → アンケート 自動回答はしない、policy 遵守)
+    #   - アメフリ頭の体操広場   → /video/ibridge/index/stamp
+    #   - みんなのフルーツ農場   → /video/ibridge/index/farm
+    #
+    # 全 wizard は visit-only (clicks=())、entry URL を開いて 4.5s 留まる
+    # だけ。gmomedia easygame の inspect は 30s networkidle で timeout した
+    # が wizard runner は domcontentloaded で goto するので問題なし想定。
+    #
+    # 1 週間 balance 観察で credit 確認、無 yield なら個別 multi-step に
+    # escalate (別 follow-up issue)。期待値は user screenshot の最大値で
+    # 合計 ~5000-50000 pt 範囲 (10pt=1円換算なので月 ~1500-15000 円相当)。
+    daily_wizards=(
+        DailyWizard(
+            name="amefuri_gmomedia_easygame",
+            url="https://www.amefri.net/video/gmomedia/easygame",
+            clicks=(),
+        ),
+        DailyWizard(
+            name="amefuri_gmomedia_quiz",
+            url="https://www.amefri.net/video/gmomedia/quiz",
+            clicks=(),
+        ),
+        DailyWizard(
+            name="amefuri_gmomedia_spotdiff",
+            url="https://www.amefri.net/video/gmomedia/spotdiff",
+            clicks=(),
+        ),
+        DailyWizard(
+            name="amefuri_estlier_panbon_slot",
+            url="https://www.amefri.net/video/estlier/index/83",
+            clicks=(),
+        ),
+        DailyWizard(
+            name="amefuri_estlier_column",
+            url="https://www.amefri.net/video/estlier/index/1",
+            clicks=(),
+        ),
+        DailyWizard(
+            name="amefuri_ibridge_stamp",
+            url="https://www.amefri.net/video/ibridge/index/stamp",
+            clicks=(),
+        ),
+        DailyWizard(
+            name="amefuri_ibridge_farm",
+            url="https://www.amefri.net/video/ibridge/index/farm",
+            clicks=(),
+        ),
     ),
     # 1pt/day yield rounds out credit-ratio's MIN_EXPECTED_FOR_RATIO
     # threshold (=2), so the strong detector skips amefri entirely.
