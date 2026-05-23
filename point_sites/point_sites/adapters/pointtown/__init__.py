@@ -84,6 +84,55 @@ ADAPTER = Adapter(
                 ("#js-get-reward-btn", 1),
             ),
         ),
+        # 2026-05-23 ad-fraud policy 解禁後の追加 (issue #24)。
+        #
+        # /gacha inspect (run 26335263680) で earning section の URL 一覧
+        # を確定:
+        #   - /gacha (ポイントタウンガチャ、7日 stamp あり)
+        #   - /game/redirect/easygame (GMO easygame、hapitas と共通 platform)
+        #   - /gesoten/redirect (ゲソてん、GMO 系)
+        #   - /quiz/redirect/brain-training (脳トレクイズ)
+        #   - /nazotore/redirect (なぞとれ)
+        #   - /pointq (pointQ クイズ系)
+        #
+        # 全 wizard は clicks=() で visit-only。各 redirect 先で広告 impression
+        # が emit されることに賭けた最小実装。1 週間 balance 観察。
+        #
+        # 既知 skip:
+        #   - 先着ボーナス: 広告主商品の購入/申込必須 (out of scope)
+        #   - 宝箱: 動画広告 + multi-step、動画 skip は bot 検知リスク高い
+        #     (login_bonus modal の後段で別 wizard 化検討、別 issue)
+        #   - 本日ボーナスデー: UI overlay であって独立 URL なし
+        DailyWizard(
+            name="pointtown_gacha",
+            url="https://www.pointtown.com/gacha",
+            clicks=(),
+        ),
+        DailyWizard(
+            name="pointtown_easygame",
+            url="https://www.pointtown.com/game/redirect/easygame",
+            clicks=(),
+        ),
+        DailyWizard(
+            name="pointtown_gesoten",
+            url="https://www.pointtown.com/gesoten/redirect",
+            clicks=(),
+        ),
+        DailyWizard(
+            name="pointtown_brain_quiz",
+            url="https://www.pointtown.com/quiz/redirect/brain-training",
+            clicks=(),
+        ),
+        DailyWizard(
+            name="pointtown_nazotore",
+            url="https://www.pointtown.com/nazotore/redirect",
+            clicks=(),
+        ),
+        DailyWizard(
+            name="pointtown_pointq",
+            url="https://www.pointtown.com/pointq",
+            clicks=(),
+        ),
     ),
     # password_login config は意図的に **無効化**。2026-05-16 動作確認
     # (run 25954246169 / 25954212446) で、Playwright による form fill +
