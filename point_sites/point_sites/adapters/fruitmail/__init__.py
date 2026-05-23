@@ -44,15 +44,23 @@ ADAPTER = Adapter(
     # Verified anonymously 2026-05-10: ``/mypage/`` returns 200,
     # ``/my/`` is 404. Login keyword check (ログアウト) runs on this URL.
     mypage_url="https://www.fruitmail.net/mypage/",
-    # ``apricot.fruitmail.net`` is the on-site game-server subdomain
-    # for michannel / estlier — those embed 第三者ゲーム業者 jumps
-    # (kantangame, dropgame, pochitto2 等) so they stay out of the
-    # allowlist. ``slot.fruitmail.net`` hosts the in-house プレゼント
-    # スロット (賞品: Amazon ギフト券・ポイント、当選は fruitmail 自
-    # 社抽選) — that's added so the slot DailyWizard's navigation passes
-    # ``is_manual_url_allowed`` and the wizard's Playwright session can
-    # GET the page.
-    allowed_hosts=frozenset({"fruitmail.net", "www.fruitmail.net", "slot.fruitmail.net", "almond.fruitmail.net"}),
+    # ``apricot.fruitmail.net`` / ``almond.fruitmail.net`` host the CM 視聴
+    # / estlier ad-wall game hubs respectively — those redirect through
+    # 第三者ゲーム業者 hosts (content-lump.net 等) but the entry URLs
+    # themselves stay on the apricot/almond subdomain. 2026-05-23 ad-fraud
+    # policy 解禁で visit-only wizard 化対象に追加 (apex ``fruitmail.net``
+    # に subdomain-match で既に許可されていたが、明示化する)。
+    # ``slot.fruitmail.net`` hosts the in-house プレゼントスロット (賞品:
+    # Amazon ギフト券・ポイント、当選は fruitmail 自社抽選).
+    allowed_hosts=frozenset(
+        {
+            "fruitmail.net",
+            "www.fruitmail.net",
+            "slot.fruitmail.net",
+            "almond.fruitmail.net",
+            "apricot.fruitmail.net",
+        }
+    ),
     login_keyword="ログアウト",
     # Sender domain best-guess. If real mails come from a different
     # subdomain (e.g. ``info@fruitmail.net`` vs ``mail@``), broaden
@@ -110,6 +118,33 @@ ADAPTER = Adapter(
             name="fruitmail_login_bonus",
             url="https://www.fruitmail.net/mypage/",
             clicks=((".global_loginBonus__confirmButton", 1),),
+        ),
+        # 2026-05-23 ad-fraud policy 解禁後の追加 (issue #26)。
+        #
+        # apricot.fruitmail.net/mch/michannel.php = CM 視聴 (CM をみてためる)。
+        # inspect (run 26328480422) は networkidle で 30s timeout したが、これは
+        # CM 動画 + 広告 SSP の polling が常時走るため。wizard runner は
+        # ``wait_until="domcontentloaded"`` で goto するので timeout 回避できる
+        # 想定 (main.py 682 行)。動画の自動再生 + 4.5s 滞留で視聴 impression が
+        # 計上される最簡素実装。
+        #
+        # almond.fruitmail.net/estlier/ = ad-wall hub「コインアイランド」。
+        # inspect (run 26328481364) で ターザンゲーム / パンボンスロット /
+        # ファッションチェック 等の多数 mini-game への入口と判明。各 mini-game は
+        # multi-step で実装難なので、hub の landing page だけ開いて広告 impression
+        # を稼ぐ POC とする。
+        #
+        # 両 wizard は clicks=() で visit-only。1 週間 balance 観察で credit
+        # 確認、無 yield なら multi-step / CM 視聴待機実装に escalate。
+        DailyWizard(
+            name="fruitmail_apricot_michannel",
+            url="https://apricot.fruitmail.net/mch/michannel.php",
+            clicks=(),
+        ),
+        DailyWizard(
+            name="fruitmail_almond_estlier",
+            url="https://almond.fruitmail.net/estlier/",
+            clicks=(),
         ),
     ),
     # 2026-05-16 inspect (--anonymous) で確定。form id="login" action は
