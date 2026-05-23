@@ -32,6 +32,13 @@ ADAPTER = Adapter(
         "https://pc.moppy.jp/cap/",
         "https://pc.moppy.jp/category/coin/",
     ),
+    # 2026-05-23 audit で発見: /gamecontents/ に moppy 自身のクリックコイン URL
+    # (``/cc/c?t=CC...``) が 8 個程度埋め込まれている。これらは Gmail で送られて
+    # くる click-mail と同種の自サイト click reward (= ad-fraud ではない)、
+    # /gamecontents/ から直接拾うことで Gmail を待たずに即時 click 可能。
+    # hapitas の clickget_banner と同じ pattern。
+    daily_banner_url="https://pc.moppy.jp/gamecontents/",
+    daily_banner_selector='a[href*="/cc/c?t=CC"]',
     # 2026-05-16 inspect (--anonymous) で確定。form action=/login/?mode=submit、
     # mail field は name="mail" (placeholder メールアドレス)、pass field は
     # name="pass"。submit は ``button.a-btn__login`` (Yahoo/Google ログインの
