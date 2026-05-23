@@ -1,0 +1,25 @@
+verify_id: point_sites/2026-05-30-hapitas-gmo-game-credit
+verify_after: 2026-05-30T22:00:00+09:00
+project: point_sites
+relates_to: "bf6eb4b (hapitas: 4 GMO ad-game visit-only daily_wizards)"
+description: |
+  2026-05-23 commit bf6eb4b で hapitas adapter に GMO ad-game の visit-only
+  wizard 4 個を追加 (easygame / gesoten / quiz / spotdiff)。各 entry URL は
+  m.hapitas.jp/gmo/game/* で、訪問だけで GMO ad-platform への impression
+  emit を想定。
+
+  ``recent_run_log_grep`` で 1 週間後の hapitas scheduled run log に新規 wizard
+  ログが継続して出ていることを確認。balance 動向は user が Slack channel
+  (SLACK_CHANNEL_HAPITAS) で観察。
+kind: recent_run_log_grep
+args:
+  workflows:
+    - hapitas.yml
+  pattern: "hapitas_gmo_(easygame|gesoten|quiz|spotdiff) wizard"
+  lookback: 5
+  require_all: true
+max_attempts: 7
+retry_after_hours: 24
+success_message: |
+  ✅ hapitas GMO ad-game visit-only wizards 1 週間継続稼働。
+  実 yield は SLACK_CHANNEL_HAPITAS の balance delta で確認。
