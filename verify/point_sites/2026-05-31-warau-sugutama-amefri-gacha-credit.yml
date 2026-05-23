@@ -1,0 +1,25 @@
+verify_id: point_sites/2026-05-31-warau-sugutama-amefri-gacha-credit
+verify_after: 2026-05-31T22:00:00+09:00
+project: point_sites
+relates_to: "06102cd + fd9743b (warau/sugutama hub + amefri /game/gacha visit-only)"
+description: |
+  2026-05-23 commit 06102cd で warau /play/ + sugutama /game + /sugutama/events
+  の visit-only wizard を追加。commit fd9743b で amefri /game/gacha visit-only
+  も追加 (server 302 でも試す)。
+
+  ``recent_run_log_grep`` で 1 週間後の各 scheduled run log に新規 wizard ログが
+  継続して出ていることを確認。balance 動向は user が Slack channel で観察。
+kind: recent_run_log_grep
+args:
+  workflows:
+    - warau.yml
+    - sugutama.yml
+    - amefuri.yml
+  pattern: "(warau_play_hub|sugutama_(game_hub|events)|amefuri_gacha) wizard"
+  lookback: 5
+  require_all: true
+max_attempts: 7
+retry_after_hours: 24
+success_message: |
+  ✅ warau/sugutama hub visit + amefri gacha visit-only 1 週間継続稼働。
+  実 yield は各 Slack channel の balance delta で確認。
