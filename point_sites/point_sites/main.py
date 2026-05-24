@@ -892,6 +892,45 @@ def cmd_run(
                         # need 5-8s instead of the default 2s — bump
                         # ``initial_wait_ms`` per-wizard.
                         page.wait_for_timeout(wizard.initial_wait_ms)
+                        # Static-wizard prize title extraction (lottery_mode
+                        # only). Mirrors the dynamic_wizard prize_titles
+                        # logic, but reads from a per-wizard selector
+                        # pointing at a hidden input (form-bound prize name)
+                        # or a heading element. Empty result falls through
+                        # to the notifier's "(タイトル取得失敗)" branch.
+                        if wizard.title_selector and cfg.adapter.lottery_mode:
+                            try:
+                                title_val = page.evaluate(
+                                    """(sel) => {
+                                        const el = document.querySelector(sel);
+                                        if (!el) return '';
+                                        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                                            return el.value || '';
+                                        }
+                                        return (el.textContent || '').trim();
+                                    }""",
+                                    wizard.title_selector,
+                                )
+                                if isinstance(title_val, str) and title_val.strip():
+                                    prize_titles.setdefault(wizard.url, title_val.strip())
+                            except Exception as exc:
+                                logger.warning(
+                                    "%s wizard title extraction failed: %s",
+                                    wizard.name,
+                                    exc,
+                                )
+                        # Pre-click form setup (e.g. set <select> value
+                        # before submit). Fail-soft: a JS exception
+                        # warns and continues into the click sequence.
+                        if wizard.pre_click_evaluate:
+                            try:
+                                page.evaluate(wizard.pre_click_evaluate)
+                            except Exception as exc:
+                                logger.warning(
+                                    "%s wizard pre_click_evaluate failed: %s",
+                                    wizard.name,
+                                    exc,
+                                )
                         for step_idx, (selector, repeat) in enumerate(wizard.clicks):
                             for _ in range(repeat):
                                 # Click semantics:

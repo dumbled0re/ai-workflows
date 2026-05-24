@@ -92,3 +92,20 @@ class DailyWizard:
     # ``Element is not visible`` check fires even with force=True
     # (commit fb9b002, 失敗). evaluate-based is the nuclear option.
     click_force: bool = False
+
+    # Arbitrary JS evaluated after navigation + ``initial_wait_ms`` but
+    # before the first click. Use for form-field setup that DailyWizard's
+    # click sequence cannot express — e.g. setting a ``<select>`` value
+    # before submit (fruitmail prize forms require selected_apply_number
+    # to be set, default is "please choose"). Exceptions are logged and
+    # swallowed (fail-soft).
+    pre_click_evaluate: str | None = None
+
+    # CSS selector pointing at an element whose visible label is the
+    # prize/item name (e.g. ``input[name="item_name"]`` for fruitmail
+    # prize forms whose hidden input carries the日 prize). Only used
+    # when ``Adapter.lottery_mode=True`` — feeds the「応募した賞品一覧」
+    # Slack output. INPUT elements have their ``value`` attr read,
+    # other elements use ``textContent``. Empty result silently falls
+    # back to the static name (notifier's "(タイトル取得失敗)" path).
+    title_selector: str | None = None

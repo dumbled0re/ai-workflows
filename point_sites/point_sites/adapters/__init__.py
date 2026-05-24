@@ -10,6 +10,7 @@ from ..common.adapter import Adapter
 from .amefuri import ADAPTER as AMEFURI
 from .chanceit import ADAPTER as CHANCEIT
 from .fruitmail import ADAPTER as FRUITMAIL
+from .fruitmail_lottery import ADAPTER as FRUITMAIL_LOTTERY
 from .gendama import ADAPTER as GENDAMA
 from .getmoney import ADAPTER as GETMONEY
 from .hapitas import ADAPTER as HAPITAS
@@ -28,6 +29,7 @@ REGISTRY: dict[str, Adapter] = {
     POINTTOWN.name: POINTTOWN,
     GETMONEY.name: GETMONEY,
     FRUITMAIL.name: FRUITMAIL,
+    FRUITMAIL_LOTTERY.name: FRUITMAIL_LOTTERY,
     WARAU.name: WARAU,
     SUGUTAMA.name: SUGUTAMA,
     CHANCEIT.name: CHANCEIT,

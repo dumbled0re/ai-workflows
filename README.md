@@ -8,7 +8,7 @@ GitHub Actions と Claude を活用した個人用自動化ワークフロー集
 |---|---|---|---|
 | [`stock_analyzer/`](./stock_analyzer/) | 日本株の短期投資分析（テクニカル + ファンダ + ニュース + 信用残）。自律改善ループ（予測記録 → 検証 → 戦略更新）付き | 毎日 8:00 / 16:00 JST、土曜 10:00 JST にレビュー | Bot Token + `SLACK_CHANNEL_STOCK` |
 | [`tech_catchup/`](./tech_catchup/) | AI 業界のニュース・新リリースを Hacker News / GitHub Trending / arXiv / AI 企業公式ブログから収集して要約 | 毎朝 7:30 JST | Bot Token + `SLACK_CHANNEL_TECH` |
-| [`point_sites/`](./point_sites/) | 日本のポイ活サイト自動化（adapter 構造）。本番稼働中 8 サイト: moppy / hapitas / amefuri / pointtown / getmoney / fruitmail / warau / sugutama。pointincome は JP geofence で cron 無効化。Cookie rotation 永続化 + 加算検証 (3 層 degradation alert) + daily 系 Playwright wizard (hapitas takarakuji / pointtown ログインボーナス / fruitmail スロット / fruitmail ビンゴ / fruitmail ログインボーナス) | サイト別 (8:00〜10:30 JST) | Bot Token + `SLACK_CHANNEL_<SITE>` |
+| [`point_sites/`](./point_sites/) | 日本のポイ活サイト + 抽選サイト自動化（adapter 構造）。本番稼働中 8 ポイ活 + 2 抽選 (chanceit / fruitmail_lottery): moppy / hapitas / amefuri / pointtown / getmoney / fruitmail / warau / sugutama / chanceit / fruitmail_lottery。pointincome は JP geofence で extract-only。Cookie rotation 永続化 + 加算検証 (3 層 degradation alert) + Playwright wizard (各 site の daily 系 + 抽選応募) | サイト別 (8:00〜10:30 JST) | Bot Token + `SLACK_CHANNEL_<SITE>` |
 | [`todo/`](./todo/) | 個人 TODO リスト。Claude Code の `todo` skill で `todos.md` を編集し、毎朝 Slack に未完了タスクを通知 | 毎朝 9:00 JST | Bot Token + `SLACK_CHANNEL_TODO` |
 | [`verify/`](./verify/) + `scripts/pending_verify.py` | 後日の機械検証 (cron run の log grep 等) を YAML + GitHub Issue で予約、毎朝自動実行 | 毎朝 7:30 JST | Bot Token + `SLACK_CHANNEL_VERIFY` |
 

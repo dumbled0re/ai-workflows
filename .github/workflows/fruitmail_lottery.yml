@@ -1,0 +1,118 @@
+name: fruitmail_lottery
+
+# フルーツメール 懸賞 (free lottery entries — 5 categories) daily entry.
+# Sister workflow to fruitmail.yml; shares the same Fruitmail account
+# (FRUITMAIL_COOKIES / FRUITMAIL_USER / FRUITMAIL_PASS Secrets) but
+# runs the prize-entry wizards instead of click-mail collection.
+#
+# Slack notifications land in #lottery (SLACK_CHANNEL_CHANCEIT) so all
+# lottery-mode adapters (chanceit + fruitmail_lottery + future) share
+# one channel — easier for the user to scan「応募した賞品一覧」daily.
+#
+# Cron: JST 9:30 (between hapitas at 9:00 and fruitmail point cron at
+# 15:00) — different enough from the parent fruitmail.yml cron that
+# concurrent runs of two related workflows don't race for the same
+# cookie store. The runner's concurrency group is per-site so
+# fruitmail_lottery has its own queue.
+
+on:
+  schedule:
+    - cron: "30 0 * * *"  # JST 9:30
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "no-op for wizards-only adapter (legacy field)"
+        type: boolean
+        default: false
+      extract_links:
+        description: "no-op for wizards-only adapter (legacy field)"
+        type: boolean
+        default: false
+      discover:
+        description: "read-only recon of /prize/ hub"
+        type: boolean
+        default: false
+      inspect_url:
+        description: "GET this URL with auth and dump body to log"
+        type: string
+        default: ""
+      inspect_browser:
+        description: "render inspect_url via Playwright Chromium so JS-driven content is visible"
+        type: boolean
+        default: false
+      inspect_cap:
+        description: "max stripped-body bytes to print (default 80000)"
+        type: string
+        default: "80000"
+      inspect_wait_selector:
+        description: "browser mode only: wait for this CSS selector before reading page.content()"
+        type: string
+        default: ""
+      inspect_anonymous:
+        description: "skip cookie loading and login verification (login form inspect)"
+        type: boolean
+        default: false
+      inspect_capture_network:
+        description: "browser mode only: log all network requests (for SPA API discovery)"
+        type: boolean
+        default: false
+      inspect_wait_until:
+        description: "browser mode only: page.goto wait condition (default networkidle; use domcontentloaded for ad-heavy pages)"
+        type: string
+        default: ""
+      inspect_referer:
+        description: "browser mode only: set Referer header"
+        type: string
+        default: ""
+      inspect_clicks:
+        description: "browser mode only: semicolon-separated CSS selectors clicked before content() capture"
+        type: string
+        default: ""
+      force_fresh_cookies:
+        description: "delete persisted cookie jar before run, forcing re-bootstrap from FRUITMAIL_COOKIES"
+        type: boolean
+        default: false
+      force_password_login_test:
+        description: "DEBUG: skip cookie verify, exercise password_login fallback directly"
+        type: boolean
+        default: false
+
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    uses: ./.github/workflows/_site-runner.yml
+    with:
+      site: fruitmail_lottery
+      dry_run: ${{ inputs.dry_run == true }}
+      extract_links: ${{ inputs.extract_links == true }}
+      discover: ${{ inputs.discover == true }}
+      inspect_url: ${{ inputs.inspect_url }}
+      inspect_browser: ${{ inputs.inspect_browser == true }}
+      inspect_cap: ${{ inputs.inspect_cap }}
+      inspect_wait_selector: ${{ inputs.inspect_wait_selector }}
+      inspect_anonymous: ${{ inputs.inspect_anonymous == true }}
+      inspect_capture_network: ${{ inputs.inspect_capture_network == true }}
+      inspect_wait_until: ${{ inputs.inspect_wait_until }}
+      inspect_referer: ${{ inputs.inspect_referer }}
+      inspect_clicks: ${{ inputs.inspect_clicks }}
+      force_fresh_cookies: ${{ inputs.force_fresh_cookies == true }}
+      force_password_login_test: ${{ inputs.force_password_login_test == true }}
+    secrets:
+      slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
+      # Re-use #lottery channel from chanceit so all lottery output
+      # collects in one place. To split later, register
+      # SLACK_CHANNEL_FRUITMAIL_LOTTERY and prefer it here.
+      slack_channel: ${{ secrets.SLACK_CHANNEL_CHANCEIT }}
+      # Shared Fruitmail account — same cookie / credentials as the
+      # parent fruitmail.yml workflow.
+      cookies: ${{ secrets.FRUITMAIL_COOKIES }}
+      login_user: ${{ secrets.FRUITMAIL_USER }}
+      login_pass: ${{ secrets.FRUITMAIL_PASS }}
+      # gmail_* unused (source=None) but the reusable workflow expects
+      # the kwargs.
+      gmail_client_id: ${{ secrets.GMAIL_CLIENT_ID }}
+      gmail_client_secret: ${{ secrets.GMAIL_CLIENT_SECRET }}
+      gmail_refresh_token: ${{ secrets.GMAIL_REFRESH_TOKEN }}

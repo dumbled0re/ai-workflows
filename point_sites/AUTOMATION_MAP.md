@@ -21,8 +21,9 @@
 | **warau** | Gmail + 1 visit-only | **1** (play_hub、SPA anti-bot で visit-only) | — | `GmailSource` |
 | **gendama** | scaffolded (非 active) | 0 | — | 180-day inactivity rule で user 判断で disable |
 | **chanceit** (NEW 2026-05-24、抽選専用) | wizards-only (source=None) + dynamic_wizard discovery | dynamic (毎日 14 件) | — | 「応募が簡単」list を毎日 scrape → 各 prize で「応募する」button click。会員 cookie 経由で server 側が PII auto-fill |
+| **fruitmail_lottery** (NEW 2026-05-25、抽選専用) | wizards-only (source=None) + 5 daily_wizards | **5** (everyday / everyweek / everymonth / gorgeous / premium) | — | 既存 fruitmail cookie を流用、`#applyForm` で submit → `/prize/step1/` → 確認 button → 完了。`title_selector` で hidden `item_name` を抽出して Slack 表示 |
 
-**合計**: 73 wizards + 23 daily banners + 1 endpoint poll + 2 browser actions + 7 Gmail/OnsiteInbox click pipelines + **dynamic wizard discovery (chanceit 14+/日)**
+**合計**: 78 wizards + 23 daily banners + 1 endpoint poll + 2 browser actions + 7 Gmail/OnsiteInbox click pipelines + **dynamic wizard discovery (chanceit 14+/日)** + **lottery wizards 5/日 (fruitmail_lottery)**
 
 ## 📋 wizard 詳細 (site 別)
 
@@ -75,6 +76,17 @@
 ### warau (1 wizard)
 - **play_hub** (`/play/` visit-only)
 
+### fruitmail_lottery (NEW 2026-05-25、抽選専用)
+- **5 daily_wizards** (`/prize/<category>/`): everyday / everyweek / everymonth / gorgeous / premium
+  - 各 wizard: navigate → `pre_click_evaluate` で `<select name="selected_apply_number">` を 1 に set → `#applyForm button[type="submit"]` で `/prize/step1/` に POST → 確認 page で `button.prizeComponent_common__button[type="submit"]` を click → `/prize/step2/` で完了
+  - `title_selector='input[name="item_name"]'` で hidden input の賞品名 (例: 「ドリームジャンボ宝くじ 10枚」) を抽出 → 「応募した賞品一覧」Slack に表示
+- **source = None, lottery_mode = True**: click-mail は親 `fruitmail` adapter が処理。本 adapter は懸賞応募のみで「応募した賞品一覧」format
+- **共有 credentials**: workflow で `FRUITMAIL_COOKIES` / `FRUITMAIL_USER` / `FRUITMAIL_PASS` を流用、user 追加作業ゼロ
+- **Slack channel**: `SLACK_CHANNEL_CHANCEIT` (= #lottery) を共有
+- **無料**: 「口数」は応募権数 (default 1 件/日)、ポイント消費なし。アンケート回答で口数追加できるが survey 自動回答は CLAUDE.md policy NG なので default 1 件/日で運用
+- **premium 注意**: Diamond/Platinum/Black ランク限定、未到達アカウントは form 不在で fail-soft (silent no-op)
+- **期待 yield**: 5 件/日 × 当選率 0.5-2% × 賞品平均 1,000-5,000円 = 100-500円/月 (保守)。豪華は 10 万円現金、毎日はジャンボ宝くじ 10 枚等
+
 ### chanceit (NEW 2026-05-24、抽選専用)
 - **dynamic discovery**: 毎日 `https://www.chance.com/present/list.jsp?type=6` を scrape
   - `a[href*="/present/detail/"]` で個別 prize URL 抽出 (最大 20 件 cap)
@@ -115,6 +127,8 @@
 - `inspect_referer` / `inspect_clicks` input を全 9 site workflow YAML に露出
 - **dynamic wizard discovery** (Adapter に 4 fields 追加): `dynamic_wizard_list_url` / `dynamic_wizard_link_selector` / `dynamic_wizard_template` / `dynamic_wizard_max_count`。daily で list page を scrape → 個別 link で wizard を動的生成 (chanceit 抽選専用)
 - **wizards-only mode** (source=None 対応): chanceit 等の抽選専用 adapter は click-URL source を持たず、wizards のみで動作可能
+- **DailyWizard.pre_click_evaluate** (2026-05-25 追加): navigation 後 / clicks 前に走る任意 JS。fruitmail_lottery で `<select>` の値設定に使用 (form `required` を越えるため)
+- **DailyWizard.title_selector** (2026-05-25 追加): static lottery_mode wizards 向け prize title 抽出。INPUT/TEXTAREA は `value` 属性、それ以外は `textContent` を読む。空なら notifier の「(タイトル取得失敗)」fallback へ
 
 ## 📊 ポイント増加期待値
 
