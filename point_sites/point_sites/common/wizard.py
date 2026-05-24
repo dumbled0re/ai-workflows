@@ -25,6 +25,11 @@ Click semantics:
   requirements).
 
 Per-wizard timing:
+- ``initial_wait_ms`` (default 2000): wait after goto before first
+  click. Lets JS finish wiring up handlers (jQuery bindings can run
+  a beat after DOM-ready). Bump to 5000-8000 for SPA hubs whose
+  navigation links / start buttons are hydrated after a second XHR
+  (amefri stamp sub-games, getmoney NUMBERS DX rule page).
 - ``inter_click_ms`` (default 300): wait between same-selector repeats
 - ``inter_step_ms`` (default 800): wait between different selectors
   (lets modal panel animations settle before next selector becomes
@@ -70,6 +75,7 @@ class DailyWizard:
     referer: str | None = None
 
     # Timing (ms)
+    initial_wait_ms: int = 2000
     inter_click_ms: int = 300
     inter_step_ms: int = 800
     final_wait_ms: int = 2500

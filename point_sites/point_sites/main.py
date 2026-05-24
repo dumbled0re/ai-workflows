@@ -710,8 +710,11 @@ def cmd_run(
                     try:
                         # Let JS finish wiring up the wizard click handlers
                         # before we start firing clicks; jQuery $()
-                        # bindings can run a beat after DOM-ready.
-                        page.wait_for_timeout(2000)
+                        # bindings can run a beat after DOM-ready. SPA
+                        # hubs (amefri stamp、getmoney NUMBERS DX rule)
+                        # need 5-8s instead of the default 2s — bump
+                        # ``initial_wait_ms`` per-wizard.
+                        page.wait_for_timeout(wizard.initial_wait_ms)
                         for step_idx, (selector, repeat) in enumerate(wizard.clicks):
                             for _ in range(repeat):
                                 # Click semantics:

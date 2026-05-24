@@ -145,6 +145,7 @@ ADAPTER = Adapter(
                 ("#start", 1),
                 ("#stop", 1),
             ),
+            initial_wait_ms=8000,
             final_wait_ms=12000,
         ),
         # コラムとアンケート list page。visit-only だけど final_wait_ms を
@@ -172,6 +173,7 @@ ADAPTER = Adapter(
             url="https://www.amefri.net/video/ibridge/index/stamp",
             clicks=(('[data-layout-nav-id="nanpre"]', 1),),
             use_navigation_click=True,
+            initial_wait_ms=6000,
             final_wait_ms=15000,
         ),
         DailyWizard(
@@ -179,6 +181,7 @@ ADAPTER = Adapter(
             url="https://www.amefri.net/video/ibridge/index/stamp",
             clicks=(('[data-layout-nav-id="keisan"]', 1),),
             use_navigation_click=True,
+            initial_wait_ms=6000,
             final_wait_ms=15000,
         ),
         DailyWizard(
@@ -186,6 +189,7 @@ ADAPTER = Adapter(
             url="https://www.amefri.net/video/ibridge/index/stamp",
             clicks=(('[data-layout-nav-id="eitango"]', 1),),
             use_navigation_click=True,
+            initial_wait_ms=6000,
             final_wait_ms=15000,
         ),
         DailyWizard(
@@ -193,6 +197,7 @@ ADAPTER = Adapter(
             url="https://www.amefri.net/video/ibridge/index/stamp",
             clicks=(('[data-layout-nav-id="shape_memory"]', 1),),
             use_navigation_click=True,
+            initial_wait_ms=6000,
             final_wait_ms=15000,
         ),
         DailyWizard(
@@ -200,6 +205,7 @@ ADAPTER = Adapter(
             url="https://www.amefri.net/video/ibridge/index/stamp",
             clicks=(('[data-layout-nav-id="sakana"]', 1),),
             use_navigation_click=True,
+            initial_wait_ms=6000,
             final_wait_ms=15000,
         ),
         DailyWizard(
