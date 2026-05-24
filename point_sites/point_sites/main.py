@@ -728,17 +728,20 @@ def cmd_run(
                                 #   action including href navigation.
                                 #   Right for navigation links.
                                 try:
-                                    if wizard.use_navigation_click:
-                                        # force=click_force lets us bypass
-                                        # actionability check when the
-                                        # target element is present but
-                                        # covered by ad-iframes. Default
-                                        # False keeps the strict check.
-                                        page.click(
+                                    if wizard.use_navigation_click and wizard.click_force:
+                                        # JS evaluate-based click bypasses
+                                        # ALL Playwright DOM checks (visibility
+                                        # / actionability / strict mode).
+                                        # JS .click() on <a href> follows
+                                        # href naturally, so navigation
+                                        # works even for elements hidden
+                                        # by ad-iframe overlays.
+                                        page.evaluate(
+                                            "(sel) => { const el = document.querySelector(sel); if (el) el.click(); }",
                                             selector,
-                                            timeout=5000,
-                                            force=wizard.click_force,
                                         )
+                                    elif wizard.use_navigation_click:
+                                        page.click(selector, timeout=5000)
                                     else:
                                         page.dispatch_event(selector, "click", timeout=5000)
                                 except Exception as exc:

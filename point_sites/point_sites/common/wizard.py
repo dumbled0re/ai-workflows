@@ -82,9 +82,13 @@ class DailyWizard:
 
     # Click semantics
     use_navigation_click: bool = False
-    # When True, Playwright page.click() skips actionability check
-    # (visibility / stability / receives_events). Right for sites whose
-    # click targets are present in static HTML but covered by ad-network
-    # iframes or sidebar collapses that hide them. Only effective when
-    # ``use_navigation_click=True`` (dispatch_event has no force option).
+    # When True, fire the click via ``page.evaluate(el => el.click())``
+    # which bypasses ALL Playwright DOM checks (visibility / actionability
+    # / strict mode). JS ``el.click()`` on an ``<a href>`` follows the
+    # href naturally, so navigation works even for elements hidden behind
+    # ad-iframe overlays / collapsed menus. Only effective when
+    # ``use_navigation_click=True``; falls back to dispatch_event otherwise.
+    # ``page.click(force=True)`` was tried first but Playwright's
+    # ``Element is not visible`` check fires even with force=True
+    # (commit fb9b002, 失敗). evaluate-based is the nuclear option.
     click_force: bool = False
