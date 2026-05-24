@@ -103,10 +103,20 @@ ADAPTER = Adapter(
                 ("#stop", 1),
             ),
         ),
+        # 2026-05-24 inspect (run 26355996719) で
+        # /bingo/index.php に #bingo_start form が描画されていない (ad
+        # scaffolding のみ、wall_full div あり)。fruitmail 側で page 構造
+        # 変更されたか JS-rendered 化された可能性。fail-soft 化:
+        # click_force=True + use_navigation_click=True で selector miss は
+        # silent no-op、initial_wait_ms=5000 で hydration 余裕を持つ。
+        # 復活したら click 発火、なければ visit-only 相当に degrade。
         DailyWizard(
             name="fruitmail_bingo",
             url="https://www.fruitmail.net/bingo/index.php",
             clicks=(("#bingo_start", 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=5000,
         ),
         # daily ログインボーナス。HTML inspect 2026-05-16 (point_de page) で
         # ``<button class="global_loginBonus__confirmButton">`` がヘッダー
