@@ -150,8 +150,58 @@ ADAPTER = Adapter(
             name="fruitmail_almond_estlier",
             url="https://almond.fruitmail.net/estlier/",
             clicks=(),
-            # ad-wall hub への visit、各 mini-game はネスト先で別 wizard 化
-            # 検討中。hub landing 単独は短時間滞留で OK。
+            # ad-wall hub への visit-only、sub-game 個別 wizard 化は下記。
+        ),
+        # almond コインアイランド (ad-wall hub) の sub-game 5 種を click_force
+        # JS evaluate navigation で展開。inspect (run 26328481364) で発見した
+        # 5 つの popular mini-game の path に href が match した瞬間 .click()
+        # 発火。各 sub-game の rule.php / index.php に navigate して 15s 滞留。
+        # 共通 URL は hub の almond.fruitmail.net/estlier/ で uid 等の query は
+        # 自然に redirect 経由で content-lump.net に follow される想定。
+        DailyWizard(
+            name="fruitmail_almond_tarzan",
+            url="https://almond.fruitmail.net/estlier/",
+            clicks=(('a[href*="/tarzan2/fruitmail/"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="fruitmail_almond_panbon_slot",
+            url="https://almond.fruitmail.net/estlier/",
+            clicks=(('a[href*="/pc/panbon-slot/"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="fruitmail_almond_panbon_roulette",
+            url="https://almond.fruitmail.net/estlier/",
+            clicks=(('a[href*="/pc/panbon-roulette/"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="fruitmail_almond_kokuhaku",
+            url="https://almond.fruitmail.net/estlier/",
+            clicks=(('a[href*="/pc/kokuhaku/"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="fruitmail_almond_highlow",
+            url="https://almond.fruitmail.net/estlier/",
+            clicks=(('a[href*="/pc/highlow/"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            final_wait_ms=15000,
         ),
     ),
     # 2026-05-16 inspect (--anonymous) で確定。form id="login" action は
