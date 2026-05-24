@@ -103,7 +103,13 @@ ADAPTER = Adapter(
         DailyWizard(
             name="hapitas_gmo_quiz",
             url="https://m.hapitas.jp/gmo/game/quiz",
-            clicks=(),
+            clicks=(
+                # quiz hub の「挑戦する」link click でクイズ開始。
+                # hapitas.kantangame.com に redirect 後、navigation click 必要。
+                ("a.c-n-btn-gameplay--start", 1),
+            ),
+            use_navigation_click=True,
+            final_wait_ms=20000,
         ),
         DailyWizard(
             name="hapitas_gmo_spotdiff",

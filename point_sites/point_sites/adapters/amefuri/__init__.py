@@ -152,7 +152,15 @@ ADAPTER = Adapter(
         DailyWizard(
             name="amefuri_ibridge_farm",
             url="https://www.amefri.net/video/ibridge/index/farm",
-            clicks=(),
+            clicks=(
+                # farm landing で「ゲームスタート」<a href> click。
+                # navigation_click で /game/landing.php?_method=confirm に遷移。
+                # その後 30s 滞留で農場本編 (種まき/水やり/収穫) を simulate。
+                # 「1日8回プレイ可能」なので 1 wizard 1 回相当。
+                (".btn_set.cont_m a.btn_positive", 1),
+            ),
+            use_navigation_click=True,
+            final_wait_ms=30000,
         ),
         # /game/gacha は server-side 302 で / にリダイレクトされる (確認:
         # run 26334911695、26335071376)。referer 不足 or feature gate と推定。
