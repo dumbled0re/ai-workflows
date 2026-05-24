@@ -49,7 +49,10 @@ from ...common.wizard import DailyWizard
 ADAPTER = Adapter(
     name="chanceit",
     site_label="チャンスイット",
-    mypage_url="https://www.chance.com/member/mypage.jsp",
+    # 2026-05-24 確認: /member/mypage.jsp は 404、/mypage/tasklist.jsp
+    # (毎日コツコツ貯める page) は logged-in 必須で「ログアウト」リンクを
+    # 含むので login_verification に適する。
+    mypage_url="https://www.chance.com/mypage/tasklist.jsp",
     allowed_hosts=frozenset({"chance.com", "www.chance.com", "prize.chance.com"}),
     login_keyword="ログアウト",
     # source=None: wizards-only adapter. click-mail pipeline 不要、
