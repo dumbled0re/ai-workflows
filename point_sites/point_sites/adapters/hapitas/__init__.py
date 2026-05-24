@@ -116,9 +116,12 @@ ADAPTER = Adapter(
             clicks=(
                 # quiz hub の「挑戦する」link click でクイズ開始。
                 # hapitas.kantangame.com に redirect 後、navigation click 必要。
+                # ad-iframe 状態次第で visibility check に弾かれるので
+                # click_force JS evaluate で確実 click。
                 ("a.c-n-btn-gameplay--start", 1),
             ),
             use_navigation_click=True,
+            click_force=True,
             final_wait_ms=20000,
         ),
         DailyWizard(
