@@ -203,6 +203,43 @@ ADAPTER = Adapter(
             initial_wait_ms=6000,
             final_wait_ms=15000,
         ),
+        # 追加 sub-game 4 種 (sarasara / fashion / cook / dog)。同 pattern で動作 想定。
+        DailyWizard(
+            name="fruitmail_almond_sarasara",
+            url="https://almond.fruitmail.net/estlier/",
+            clicks=(('a[href*="/sarasara/"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="fruitmail_almond_fashion",
+            url="https://almond.fruitmail.net/estlier/",
+            clicks=(('a[href*="/pc/fashion/"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="fruitmail_almond_cook",
+            url="https://almond.fruitmail.net/estlier/",
+            clicks=(('a[href*="/pc/cook/"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="fruitmail_almond_dog",
+            url="https://almond.fruitmail.net/estlier/",
+            clicks=(('a[href*="/pc/dog/"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            final_wait_ms=15000,
+        ),
     ),
     # 2026-05-16 inspect (--anonymous) で確定。form id="login" action は
     # 同 URL POST。identifier は email or 会員 ID 両対応 (name="identifier")、

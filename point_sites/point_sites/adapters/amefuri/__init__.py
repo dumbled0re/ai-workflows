@@ -222,6 +222,55 @@ ADAPTER = Adapter(
             initial_wait_ms=6000,
             final_wait_ms=15000,
         ),
+        # 追加 sub-game 5 種。脳トレ系で popular な crossword / jhistory /
+        # prefectures / shisokuenzan / dkanji を選定。残り (sanji / kokki /
+        # tsume_shogi / proverb / library / elavator / tenshoot / balance /
+        # movie) は次回 batch。adenq は広告アンケート系で out of scope。
+        DailyWizard(
+            name="amefuri_stamp_crossword",
+            url="https://www.amefri.net/video/ibridge/index/stamp",
+            clicks=(('a[href*="/crossword/top.php"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="amefuri_stamp_jhistory",
+            url="https://www.amefri.net/video/ibridge/index/stamp",
+            clicks=(('a[href*="/jhistory/top.php"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="amefuri_stamp_prefectures",
+            url="https://www.amefri.net/video/ibridge/index/stamp",
+            clicks=(('a[href*="/prefectures/top.php"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="amefuri_stamp_shisokuenzan",
+            url="https://www.amefri.net/video/ibridge/index/stamp",
+            clicks=(('a[href*="/shisokuenzan/top.php"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="amefuri_stamp_dkanji",
+            url="https://www.amefri.net/video/ibridge/index/stamp",
+            clicks=(('a[href*="/dkanji/top.php"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            final_wait_ms=15000,
+        ),
         DailyWizard(
             name="amefuri_ibridge_farm",
             url="https://www.amefri.net/video/ibridge/index/farm",
