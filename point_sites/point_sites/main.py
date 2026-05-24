@@ -423,6 +423,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:
             "with --wait-selector to gate on real content."
         ),
     )
+    p_html.add_argument(
+        "--referer",
+        default=None,
+        help=(
+            "browser mode only: set the Referer header for the goto. "
+            "Required for sites that gate access by referer (e.g. "
+            "amefri /game/gacha redirects to home without "
+            "/special/freepoint referer)."
+        ),
+    )
     return parser
 
 
@@ -1042,6 +1052,7 @@ def cmd_html(
     anonymous: bool = False,
     capture_network: bool = False,
     wait_until: str = "networkidle",
+    referer: str | None = None,
 ) -> int:
     """Fetch a single URL and dump its body to stdout.
 
@@ -1093,7 +1104,7 @@ def cmd_html(
                         "request",
                         lambda req: captured.append((req.method, req.url, req.resource_type)),
                     )
-                page = bc.goto(url, wait_until=wait_until)
+                page = bc.goto(url, wait_until=wait_until, referer=referer)
                 try:
                     final_url = page.url
                     if wait_selector:
@@ -1274,6 +1285,7 @@ def main(argv: list[str] | None = None) -> int:
             anonymous=getattr(args, "anonymous", False),
             capture_network=getattr(args, "capture_network", False),
             wait_until=getattr(args, "wait_until", "networkidle"),
+            referer=getattr(args, "referer", None),
         )
     parser.error(f"unknown subcommand: {args.cmd}")
 

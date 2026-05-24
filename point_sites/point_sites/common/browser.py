@@ -249,16 +249,23 @@ class BrowserClicker:
     def new_page(self) -> Page:
         return self.context.new_page()
 
-    def goto(self, url: str, *, wait_until: str = "networkidle") -> Page:
+    def goto(self, url: str, *, wait_until: str = "networkidle", referer: str | None = None) -> Page:
         """Open a fresh page, navigate, return the loaded page.
 
         ``networkidle`` is the safest default for SPAs: it waits until the
         client JS has finished its initial XHR burst, which is when login
         bonus / balance fetches typically resolve. Sites with long-poll
         beacons that never quiet down can override to ``domcontentloaded``.
+
+        ``referer`` (optional) sets the Referer header for the goto. Used
+        for sites that gate access by referer (e.g. amefri /game/gacha
+        returns 302 to home if accessed without /special/freepoint referer).
         """
         page = self.new_page()
-        page.goto(url, wait_until=wait_until)  # type: ignore[arg-type]
+        if referer:
+            page.goto(url, wait_until=wait_until, referer=referer)  # type: ignore[arg-type]
+        else:
+            page.goto(url, wait_until=wait_until)  # type: ignore[arg-type]
         return page
 
     def verify_login(self, mypage_url: str, login_keyword: str = "ログアウト") -> bool:

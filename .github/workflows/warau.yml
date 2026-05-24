@@ -58,6 +58,10 @@ on:
         description: "browser mode only: page.goto wait condition (default networkidle; use domcontentloaded for ad-heavy pages that hang)"
         type: string
         default: ""
+      inspect_referer:
+        description: "browser mode only: set Referer header (e.g. amefri /game/gacha needs /special/freepoint referer)"
+        type: string
+        default: ""
       force_fresh_cookies:
         description: "delete persisted cookie jar before run, forcing re-bootstrap from Secret (use after rotating <SITE>_COOKIES)"
         type: boolean
@@ -86,6 +90,7 @@ jobs:
       inspect_anonymous: ${{ inputs.inspect_anonymous == true }}
       inspect_capture_network: ${{ inputs.inspect_capture_network == true }}
       inspect_wait_until: ${{ inputs.inspect_wait_until }}
+      inspect_referer: ${{ inputs.inspect_referer }}
       force_fresh_cookies: ${{ inputs.force_fresh_cookies == true }}
       force_password_login_test: ${{ inputs.force_password_login_test == true }}
     secrets:

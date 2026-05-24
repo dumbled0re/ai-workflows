@@ -182,10 +182,19 @@ ADAPTER = Adapter(
         # コラムとアンケート list page。visit-only だけど final_wait_ms を
         # 長めにして「list を眺めて立ち去る」simulation。アンケート自動回答は
         # しない (CLAUDE.md policy)。
+        # 2026-05-24 inspect (run 26356690710) で hub に
+        # ``<a class="ui-btn ui-btn-a" href="rule.php?muid=...&endate=...">``
+        # の daily-content link 多数発見。1st link (今日分) に navigate して
+        # impression 取る。click_force=True なので fail 時 silent no-op、
+        # 中身が survey の場合も form submit は禁止 (clicks に submit selector
+        # 入れない)。inter_step_ms 不要 (single click)。
         DailyWizard(
             name="amefuri_estlier_column",
             url="https://www.amefri.net/video/estlier/index/1",
-            clicks=(),
+            clicks=(("a.ui-btn.ui-btn-a", 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=4000,
             final_wait_ms=15000,
         ),
         DailyWizard(
