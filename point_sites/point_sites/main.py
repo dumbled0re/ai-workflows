@@ -1207,10 +1207,24 @@ def cmd_html(
                         logger.warning("wait_for_selector %r timed out: %s", wait_selector, exc)
                 if inspect_clicks:
                     for sel in inspect_clicks:
-                        page.evaluate(
-                            "(s) => { const el = document.querySelector(s); if (el) el.click(); }",
-                            sel,
-                        )
+                        try:
+                            page.evaluate(
+                                "(s) => { const el = document.querySelector(s); if (el) el.click(); }",
+                                sel,
+                            )
+                        except Exception as exc:
+                            # "Execution context was destroyed" happens when
+                            # the previous click triggered a navigation that's
+                            # still in-flight. Wait for the new page to load
+                            # then retry once.
+                            if "context was destroyed" in str(exc) or "navigating" in str(exc):
+                                page.wait_for_load_state("domcontentloaded")
+                                page.evaluate(
+                                    "(s) => { const el = document.querySelector(s); if (el) el.click(); }",
+                                    sel,
+                                )
+                            else:
+                                raise
                         page.wait_for_timeout(inspect_click_wait_ms)
                     final_url = page.url
                 body_text = _content_with_retry(page)
