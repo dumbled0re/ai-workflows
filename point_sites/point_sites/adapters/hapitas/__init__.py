@@ -90,15 +90,25 @@ ADAPTER = Adapter(
         #
         # m.hapitas.jp は ``hapitas.jp`` の subdomain として is_manual_url_allowed
         # の subdomain-match で許可される (clicker.py 参照)。
+        # GMO platform game 4 種 全部 interactive 化。hapitas quiz と同じ
+        # ``c-n-btn-gameplay--start`` class は GMO 共通の「挑戦する/
+        # プレイする」start button。click_force JS evaluate で ad-iframe
+        # 隠れていても発火。
         DailyWizard(
             name="hapitas_gmo_easygame",
             url="https://m.hapitas.jp/gmo/game/easygame",
-            clicks=(),
+            clicks=(("a.c-n-btn-gameplay--start", 1),),
+            use_navigation_click=True,
+            click_force=True,
+            final_wait_ms=20000,
         ),
         DailyWizard(
             name="hapitas_gmo_gesoten",
             url="https://m.hapitas.jp/gmo/game/gesoten",
-            clicks=(),
+            clicks=(("a.c-n-btn-gameplay--start", 1),),
+            use_navigation_click=True,
+            click_force=True,
+            final_wait_ms=20000,
         ),
         DailyWizard(
             name="hapitas_gmo_quiz",
@@ -114,7 +124,10 @@ ADAPTER = Adapter(
         DailyWizard(
             name="hapitas_gmo_spotdiff",
             url="https://m.hapitas.jp/gmo/game/spotdiff",
-            clicks=(),
+            clicks=(("a.c-n-btn-gameplay--start", 1),),
+            use_navigation_click=True,
+            click_force=True,
+            final_wait_ms=20000,
         ),
     ),
     # password_login は 2026-05-21 に試したが reCAPTCHA v2 (``g-recaptcha`` class)
