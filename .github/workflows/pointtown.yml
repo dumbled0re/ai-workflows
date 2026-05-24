@@ -61,6 +61,10 @@ on:
         description: "browser mode only: set Referer header (e.g. amefri /game/gacha needs /special/freepoint referer)"
         type: string
         default: ""
+      inspect_clicks:
+        description: "browser mode only: semicolon-separated CSS selectors clicked before content() capture"
+        type: string
+        default: ""
       force_fresh_cookies:
         description: "delete persisted cookie jar before run, forcing re-bootstrap from Secret (use after rotating <SITE>_COOKIES)"
         type: boolean
@@ -90,6 +94,7 @@ jobs:
       inspect_capture_network: ${{ inputs.inspect_capture_network == true }}
       inspect_wait_until: ${{ inputs.inspect_wait_until }}
       inspect_referer: ${{ inputs.inspect_referer }}
+      inspect_clicks: ${{ inputs.inspect_clicks }}
       force_fresh_cookies: ${{ inputs.force_fresh_cookies == true }}
       force_password_login_test: ${{ inputs.force_password_login_test == true }}
     secrets:

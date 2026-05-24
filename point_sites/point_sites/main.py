@@ -433,6 +433,27 @@ def _build_arg_parser() -> argparse.ArgumentParser:
             "/special/freepoint referer)."
         ),
     )
+    p_html.add_argument(
+        "--inspect-click",
+        action="append",
+        default=None,
+        help=(
+            "browser mode only: click this CSS selector after goto + "
+            "initial_wait, before capturing content(). Repeatable for "
+            "multi-step click chains (e.g. .next_bt a then form button). "
+            "Each click waits ``--inspect-click-wait-ms`` (default 5000) "
+            "for the resulting navigation/hydration before the next step "
+            "or content() capture. Uses JS evaluate (silent no-op if "
+            "selector misses). Useful for reconning forms 2-3 clicks "
+            "deep (getmoney 数字選択, NUMBERS DX, etc)."
+        ),
+    )
+    p_html.add_argument(
+        "--inspect-click-wait-ms",
+        type=int,
+        default=5000,
+        help="ms to wait after each --inspect-click (default 5000)",
+    )
     return parser
 
 
@@ -1053,6 +1074,8 @@ def cmd_html(
     capture_network: bool = False,
     wait_until: str = "networkidle",
     referer: str | None = None,
+    inspect_clicks: list[str] | None = None,
+    inspect_click_wait_ms: int = 5000,
 ) -> int:
     """Fetch a single URL and dump its body to stdout.
 
@@ -1171,7 +1194,7 @@ def cmd_html(
                     "request",
                     lambda req: captured_auth.append((req.method, req.url, req.resource_type)),
                 )
-            page = bc.goto(url, wait_until=wait_until)
+            page = bc.goto(url, wait_until=wait_until, referer=referer)
             try:
                 final_url = page.url
                 if wait_selector:
@@ -1182,6 +1205,14 @@ def cmd_html(
                         # capture whatever the DOM has at this point so
                         # the user can see how far hydration got.
                         logger.warning("wait_for_selector %r timed out: %s", wait_selector, exc)
+                if inspect_clicks:
+                    for sel in inspect_clicks:
+                        page.evaluate(
+                            "(s) => { const el = document.querySelector(s); if (el) el.click(); }",
+                            sel,
+                        )
+                        page.wait_for_timeout(inspect_click_wait_ms)
+                    final_url = page.url
                 body_text = _content_with_retry(page)
             finally:
                 page.close()
@@ -1286,6 +1317,8 @@ def main(argv: list[str] | None = None) -> int:
             capture_network=getattr(args, "capture_network", False),
             wait_until=getattr(args, "wait_until", "networkidle"),
             referer=getattr(args, "referer", None),
+            inspect_clicks=getattr(args, "inspect_click", None),
+            inspect_click_wait_ms=getattr(args, "inspect_click_wait_ms", 5000),
         )
     parser.error(f"unknown subcommand: {args.cmd}")
 
