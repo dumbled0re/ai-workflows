@@ -171,7 +171,7 @@ ADAPTER = Adapter(
         DailyWizard(
             name="amefuri_stamp_nanpre",
             url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('[data-layout-nav-id="nanpre"]', 1),),
+            clicks=(('a[href*="/nanpre/top.php"]', 1),),
             use_navigation_click=True,
             initial_wait_ms=6000,
             final_wait_ms=15000,
@@ -179,7 +179,7 @@ ADAPTER = Adapter(
         DailyWizard(
             name="amefuri_stamp_keisan",
             url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('[data-layout-nav-id="keisan"]', 1),),
+            clicks=(('a[href*="/keisan/top.php"]', 1),),
             use_navigation_click=True,
             initial_wait_ms=6000,
             final_wait_ms=15000,
@@ -187,7 +187,7 @@ ADAPTER = Adapter(
         DailyWizard(
             name="amefuri_stamp_eitango",
             url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('[data-layout-nav-id="eitango"]', 1),),
+            clicks=(('a[href*="/eitango/top.php"]', 1),),
             use_navigation_click=True,
             initial_wait_ms=6000,
             final_wait_ms=15000,
@@ -195,7 +195,7 @@ ADAPTER = Adapter(
         DailyWizard(
             name="amefuri_stamp_shape_memory",
             url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('[data-layout-nav-id="shape_memory"]', 1),),
+            clicks=(('a[href*="/shape_memory/top.php"]', 1),),
             use_navigation_click=True,
             initial_wait_ms=6000,
             final_wait_ms=15000,
@@ -203,7 +203,7 @@ ADAPTER = Adapter(
         DailyWizard(
             name="amefuri_stamp_sakana",
             url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('[data-layout-nav-id="sakana"]', 1),),
+            clicks=(('a[href*="/sakana/top.php"]', 1),),
             use_navigation_click=True,
             initial_wait_ms=6000,
             final_wait_ms=15000,
