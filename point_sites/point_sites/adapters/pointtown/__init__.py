@@ -148,36 +148,60 @@ ADAPTER = Adapter(
         # GMO platform 系の game (easygame / gesoten / brain_quiz / nazotore) は
         # hapitas と共通 platform で「挑戦する」/「プレイする」class が
         # ``c-n-btn-gameplay--start``。click_force JS evaluate で確実発火。
+        # 2026-05-24 amefri/hapitas で検証成功した kantangame
+        # ``a.c-n-btn-requid--medium`` 2nd click を pre-emptive 適用
+        # (cookies 切れで本セッションでは verify 不可、daily cron で動作確認待ち)。
+        # ``inter_step_ms=10000`` で hub load 完了待ち。
         DailyWizard(
             name="pointtown_easygame",
             url="https://www.pointtown.com/game/redirect/easygame",
-            clicks=(("a.c-n-btn-gameplay--start", 1),),
+            clicks=(
+                ("a.c-n-btn-gameplay--start", 1),
+                ("a.c-n-btn-requid--medium", 1),
+            ),
             use_navigation_click=True,
             click_force=True,
+            initial_wait_ms=5000,
+            inter_step_ms=10000,
             final_wait_ms=20000,
         ),
         DailyWizard(
             name="pointtown_gesoten",
             url="https://www.pointtown.com/gesoten/redirect",
-            clicks=(("a.c-n-btn-gameplay--start", 1),),
+            clicks=(
+                ("a.c-n-btn-gameplay--start", 1),
+                ("a.c-n-btn-requid--medium", 1),
+            ),
             use_navigation_click=True,
             click_force=True,
+            initial_wait_ms=5000,
+            inter_step_ms=10000,
             final_wait_ms=20000,
         ),
         DailyWizard(
             name="pointtown_brain_quiz",
             url="https://www.pointtown.com/quiz/redirect/brain-training",
-            clicks=(("a.c-n-btn-gameplay--start", 1),),
+            clicks=(
+                ("a.c-n-btn-gameplay--start", 1),
+                ("a.c-n-btn-requid--medium", 1),
+            ),
             use_navigation_click=True,
             click_force=True,
+            initial_wait_ms=5000,
+            inter_step_ms=10000,
             final_wait_ms=20000,
         ),
         DailyWizard(
             name="pointtown_nazotore",
             url="https://www.pointtown.com/nazotore/redirect",
-            clicks=(("a.c-n-btn-gameplay--start", 1),),
+            clicks=(
+                ("a.c-n-btn-gameplay--start", 1),
+                ("a.c-n-btn-requid--medium", 1),
+            ),
             use_navigation_click=True,
             click_force=True,
+            initial_wait_ms=5000,
+            inter_step_ms=10000,
             final_wait_ms=20000,
         ),
         # pointq は別 platform (pointQ クイズ系)、selector 不明。visit-only。
