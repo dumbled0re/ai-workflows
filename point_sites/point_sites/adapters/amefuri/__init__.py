@@ -146,16 +146,20 @@ ADAPTER = Adapter(
             click_force=True,
             final_wait_ms=20000,
         ),
-        # PANBONスロット (i2ipoint.nail-monster.work redirect)。fruitmail
-        # present_slot と同 brand と推定して #start/#stop を試したが、
-        # 7ae1634 + 63ae054 verify run で element 未検出 (異なる brand or
-        # ad-network 経由で iframe 入れ子)。visit-only に降格 + 12s 滞留で
-        # impression yield のみ狙う。selector の正解は別 issue で recon 要。
+        # PANBONスロット (i2ipoint.nail-monster.work redirect)。inspect
+        # で rule.php に <a href="game_start.php" class="link-button">
+        # の「次へ進む」button を発見 (network capture で確認)。
+        # wait_until="networkidle" にして redirect chain が settle するの
+        # を待つ。click_force=True で JS evaluate 経由 click 発火。
         DailyWizard(
             name="amefuri_estlier_panbon_slot",
             url="https://www.amefri.net/video/estlier/index/83",
-            clicks=(),
-            final_wait_ms=12000,
+            clicks=(('a[href="game_start.php"]', 1),),
+            wait_until="networkidle",
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            final_wait_ms=15000,
         ),
         # コラムとアンケート list page。visit-only だけど final_wait_ms を
         # 長めにして「list を眺めて立ち去る」simulation。アンケート自動回答は
