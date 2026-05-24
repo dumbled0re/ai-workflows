@@ -120,30 +120,48 @@ ADAPTER = Adapter(
     # 合計 ~5000-50000 pt 範囲 (10pt=1円換算なので月 ~1500-15000 円相当)。
     daily_wizards=(
         # GMO platform 共通の「挑戦する」class ``c-n-btn-gameplay--start`` を
-        # click_force JS evaluate で確実発火 → game プレイ画面へ navigate
-        # して 20s 滞留 simulation。
+        # click_force JS evaluate で確実発火 → amefri.kantangame.com/<game>
+        # へ navigate。2026-05-24 inspect で kantangame hub に
+        # ``a.c-n-btn-requid--medium`` の「プレイする」link 多数発見、
+        # 2nd click で /easygame/game/<id> 等の game detail page へ進む。
+        # ``inter_step_ms=10000`` で kantangame hub load 完了待ち。
         DailyWizard(
             name="amefuri_gmomedia_easygame",
             url="https://www.amefri.net/video/gmomedia/easygame",
-            clicks=(("a.c-n-btn-gameplay--start", 1),),
+            clicks=(
+                ("a.c-n-btn-gameplay--start", 1),
+                ("a.c-n-btn-requid--medium", 1),
+            ),
             use_navigation_click=True,
             click_force=True,
+            initial_wait_ms=5000,
+            inter_step_ms=10000,
             final_wait_ms=20000,
         ),
         DailyWizard(
             name="amefuri_gmomedia_quiz",
             url="https://www.amefri.net/video/gmomedia/quiz",
-            clicks=(("a.c-n-btn-gameplay--start", 1),),
+            clicks=(
+                ("a.c-n-btn-gameplay--start", 1),
+                ("a.c-n-btn-requid--medium", 1),
+            ),
             use_navigation_click=True,
             click_force=True,
+            initial_wait_ms=5000,
+            inter_step_ms=10000,
             final_wait_ms=20000,
         ),
         DailyWizard(
             name="amefuri_gmomedia_spotdiff",
             url="https://www.amefri.net/video/gmomedia/spotdiff",
-            clicks=(("a.c-n-btn-gameplay--start", 1),),
+            clicks=(
+                ("a.c-n-btn-gameplay--start", 1),
+                ("a.c-n-btn-requid--medium", 1),
+            ),
             use_navigation_click=True,
             click_force=True,
+            initial_wait_ms=5000,
+            inter_step_ms=10000,
             final_wait_ms=20000,
         ),
         # PANBONスロット (i2ipoint.nail-monster.work redirect)。inspect
