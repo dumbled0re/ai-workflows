@@ -101,6 +101,25 @@ class Adapter:
     # wizard logs a warning without aborting the run.
     daily_wizards: tuple[DailyWizard, ...] = field(default_factory=tuple)
 
+    # Dynamic wizard discovery: scrape a list page → find prize links →
+    # build wizards on-the-fly with the discovered URLs. Used for sites
+    # where the daily prize roster changes (chanceit 応募が簡単 14 件
+    # 毎日入れ替え 等)。
+    # ``dynamic_wizard_list_url``: list page to scrape (e.g.
+    #   "https://www.chance.com/present/list.jsp?type=6")
+    # ``dynamic_wizard_link_selector``: CSS selector for individual
+    #   prize page anchors on the list (e.g. 'a[href*="/present/detail/"]')
+    # ``dynamic_wizard_template``: template DailyWizard whose ``url``
+    #   is replaced with each discovered href. ``clicks`` /
+    #   ``initial_wait_ms`` etc are reused per-prize. Wizard names get
+    #   "_<index>" suffix.
+    # ``dynamic_wizard_max_count``: safety cap on wizards/cron run
+    #   (default 30) to avoid runaway from a buggy selector match.
+    dynamic_wizard_list_url: str | None = None
+    dynamic_wizard_link_selector: str | None = None
+    dynamic_wizard_template: DailyWizard | None = None
+    dynamic_wizard_max_count: int = 30
+
     # ID/PW Playwright login fallback. When the persisted cookie jar
     # fails ``verify_login``, the orchestrator opens a Chromium session,
     # navigates to ``login_url``, fills username/password from the

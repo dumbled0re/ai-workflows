@@ -42,6 +42,7 @@ from .common.password_login import PasswordLoginConfig
 from .common.redaction import host_only, redact_subject, redact_url
 from .common.sources.base import ClickBatch
 from .common.state_store import StateStore
+from .common.wizard import DailyWizard
 from .config import Config, ConfigError
 
 logger = logging.getLogger("point_sites")
@@ -471,11 +472,17 @@ def cmd_run(
     notifier = Notifier(cfg.slack_bot_token, cfg.slack_channel) if notify else None
 
     source = cfg.adapter.source
-    if source is None:
+    has_wizards_only = source is None and (cfg.adapter.daily_wizards or cfg.adapter.dynamic_wizard_list_url is not None)
+    if source is None and not has_wizards_only:
         # Adapters without a click-URL source (e.g. balance-only test fixtures)
         # have nothing to drive the run loop with. Fail fast rather than no-op.
         logger.error("adapter %r has no source; cmd_run cannot proceed", cfg.adapter.name)
         return 2
+    if has_wizards_only:
+        logger.info(
+            "adapter %r has no click-URL source; running wizards-only mode",
+            cfg.adapter.name,
+        )
 
     state = StateStore(cfg.state_path)
     state.prune_old(days=30)
@@ -564,97 +571,102 @@ def cmd_run(
     http_session = clicker.session if clicker is not None else None
 
     state_keys: list[str] = []
-    try:
-        source.start(effective_cfg, http_session=http_session)
-    except GmailAuthError as exc:
-        logger.error("auth error: %s", exc)
-        if notifier:
-            notifier.send_auth_error(str(exc))
-        return 1
+    if source is None:
+        # Wizards-only mode (chanceit 等の抽選専用 adapter): skip click loop.
+        pass
+    else:
+        try:
+            source.start(effective_cfg, http_session=http_session)
+        except GmailAuthError as exc:
+            logger.error("auth error: %s", exc)
+            if notifier:
+                notifier.send_auth_error(str(exc))
+            return 1
 
-    try:
-        state_keys = source.list_state_keys()
-        logger.info("found %d candidate batches", len(state_keys))
+    if source is not None:
+        try:
+            state_keys = source.list_state_keys()
+            logger.info("found %d candidate batches", len(state_keys))
 
-        for state_key in state_keys:
-            # Extract mode bypasses state — its job is to surface every URL so
-            # the user can click manually. Stale anonymous-success records and
-            # exhausted-attempt records would otherwise hide URLs the user
-            # never actually got credit for.
-            if not extract_links and state.is_message_complete(state_key, cfg.max_attempts):
-                continue
-            batch = source.fetch_batch(state_key)
-            if batch.parse_failed:
-                parse_failure_ids.append(state_key)
-                continue
-            if batch.anomalies:
-                logger.warning(
-                    "anomalous parse for %s: anomalies=%s candidates=%d",
-                    state_key,
-                    batch.anomalies,
-                    len(batch.candidates),
-                )
-                anomaly_ids.append(state_key)
-                continue
-            if not batch.candidates:
-                # No click-coin URLs: legitimate non-coin batch (newsletter,
-                # confirmation, etc.). Source decides how to mark it.
-                # Skip in dry_run / extract_links to keep state pristine.
-                if not dry_run and not extract_links:
-                    source.mark_no_credit(batch)
-                continue
-
-            new_candidates: list[ClickCandidate] = [
-                c for c in batch.candidates if not state.is_url_done(state_key, str(c.url), cfg.max_attempts)
-            ]
-
-            if dry_run:
-                dry_run_view.append(
-                    (
+            for state_key in state_keys:
+                # Extract mode bypasses state — its job is to surface every URL so
+                # the user can click manually. Stale anonymous-success records and
+                # exhausted-attempt records would otherwise hide URLs the user
+                # never actually got credit for.
+                if not extract_links and state.is_message_complete(state_key, cfg.max_attempts):
+                    continue
+                batch = source.fetch_batch(state_key)
+                if batch.parse_failed:
+                    parse_failure_ids.append(state_key)
+                    continue
+                if batch.anomalies:
+                    logger.warning(
+                        "anomalous parse for %s: anomalies=%s candidates=%d",
                         state_key,
-                        redact_subject(batch.label),
-                        [redact_url(str(c.url)) for c in new_candidates],
+                        batch.anomalies,
+                        len(batch.candidates),
                     )
-                )
-                continue
+                    anomaly_ids.append(state_key)
+                    continue
+                if not batch.candidates:
+                    # No click-coin URLs: legitimate non-coin batch (newsletter,
+                    # confirmation, etc.). Source decides how to mark it.
+                    # Skip in dry_run / extract_links to keep state pristine.
+                    if not dry_run and not extract_links:
+                        source.mark_no_credit(batch)
+                    continue
 
-            if extract_links:
-                # Post full URLs so the user can click in their logged-in browser.
-                # Labels are NOT redacted here (private channel, user needs
-                # to triage). State is intentionally untouched so re-runs after
-                # a manual click won't be blocked.
-                extract_view.append(
-                    (
-                        state_key,
-                        batch.label,
-                        [str(c.url) for c in batch.candidates],
+                new_candidates: list[ClickCandidate] = [
+                    c for c in batch.candidates if not state.is_url_done(state_key, str(c.url), cfg.max_attempts)
+                ]
+
+                if dry_run:
+                    dry_run_view.append(
+                        (
+                            state_key,
+                            redact_subject(batch.label),
+                            [redact_url(str(c.url)) for c in new_candidates],
+                        )
                     )
-                )
-                extract_batches.append(batch)
-                continue
+                    continue
 
-            if not new_candidates:
-                continue
+                if extract_links:
+                    # Post full URLs so the user can click in their logged-in browser.
+                    # Labels are NOT redacted here (private channel, user needs
+                    # to triage). State is intentionally untouched so re-runs after
+                    # a manual click won't be blocked.
+                    extract_view.append(
+                        (
+                            state_key,
+                            batch.label,
+                            [str(c.url) for c in batch.candidates],
+                        )
+                    )
+                    extract_batches.append(batch)
+                    continue
 
-            assert clicker is not None  # narrowed by the extract_links branch above
-            state.increment_attempt(state_key)
-            new_urls = {c.url for c in new_candidates}
-            for idx, candidate in enumerate(new_candidates):
-                if idx > 0:
-                    clicker.sleep_between()
-                result = clicker.click(candidate)
-                state.record_attempt(state_key, result)
-                all_results.append(result)
-                if result.final_status == "success" and candidate.estimated_points:
-                    estimated_pt_total += candidate.estimated_points
-            state.save()
+                if not new_candidates:
+                    continue
 
-            if state.is_message_complete(state_key, cfg.max_attempts) and all(
-                r.final_status == "success" for r in all_results if r.candidate.url in new_urls
-            ):
-                source.mark_complete(batch)
-    finally:
-        source.close()
+                assert clicker is not None  # narrowed by the extract_links branch above
+                state.increment_attempt(state_key)
+                new_urls = {c.url for c in new_candidates}
+                for idx, candidate in enumerate(new_candidates):
+                    if idx > 0:
+                        clicker.sleep_between()
+                    result = clicker.click(candidate)
+                    state.record_attempt(state_key, result)
+                    all_results.append(result)
+                    if result.final_status == "success" and candidate.estimated_points:
+                        estimated_pt_total += candidate.estimated_points
+                state.save()
+
+                if state.is_message_complete(state_key, cfg.max_attempts) and all(
+                    r.final_status == "success" for r in all_results if r.candidate.url in new_urls
+                ):
+                    source.mark_complete(batch)
+        finally:
+            source.close()
 
     # Discover daily-rotating banner URLs (e.g. hapitas top-page
     # 宝くじ交換券 click_get banners) via Playwright and feed them
@@ -718,8 +730,13 @@ def cmd_run(
     # session so a stuck panel in one doesn't poison another. dispatch_event
     # bypasses pointer-events interception from sibling panels during
     # the wizard's slide-in animations.
+    has_dynamic_wizards = (
+        cfg.adapter.dynamic_wizard_list_url is not None
+        and cfg.adapter.dynamic_wizard_link_selector is not None
+        and cfg.adapter.dynamic_wizard_template is not None
+    )
     if (
-        cfg.adapter.daily_wizards
+        (cfg.adapter.daily_wizards or has_dynamic_wizards)
         and not dry_run
         and not extract_links
         and clicker is not None
@@ -731,7 +748,55 @@ def cmd_run(
 
         host = urlparse(cfg.adapter.mypage_url).hostname or ""
         default_domain = "." + (host.split(".", 1)[-1] if "." in host else host)
-        for wizard in cfg.adapter.daily_wizards:
+
+        # Discover dynamic wizards (e.g. chanceit's daily-rotating prize
+        # roster on /present/list.jsp?type=6). Scrape the list page once,
+        # extract individual prize URLs, expand into per-prize wizards
+        # using the adapter's template.
+        wizards_to_run: list[DailyWizard] = list(cfg.adapter.daily_wizards)
+        if has_dynamic_wizards:
+            try:
+                with BrowserClicker(
+                    cookies=_jar_to_cookies(clicker),
+                    default_cookie_domain=default_domain,
+                ) as bc:
+                    page = bc.goto(
+                        cfg.adapter.dynamic_wizard_list_url,  # type: ignore[arg-type]
+                        wait_until="domcontentloaded",
+                    )
+                    try:
+                        list_url_str = cfg.adapter.dynamic_wizard_list_url
+                        link_selector_str = cfg.adapter.dynamic_wizard_link_selector
+                        assert list_url_str is not None
+                        assert link_selector_str is not None
+                        anchors = page.query_selector_all(link_selector_str)
+                        raw_hrefs = [a.get_attribute("href") for a in anchors]
+                        prize_urls = [urljoin(list_url_str, h) for h in raw_hrefs if h]
+                        seen_dyn: set[str] = set()
+                        unique_prize_urls: list[str] = []
+                        for u in prize_urls:
+                            if u not in seen_dyn:
+                                seen_dyn.add(u)
+                                unique_prize_urls.append(u)
+                        unique_prize_urls = unique_prize_urls[: cfg.adapter.dynamic_wizard_max_count]
+                    finally:
+                        page.close()
+                    _merge_browser_cookies(clicker, bc.export_cookies(), allowed_hosts=cfg.adapter.allowed_hosts)
+                template = cfg.adapter.dynamic_wizard_template
+                assert template is not None
+                from dataclasses import replace as _dc_replace
+
+                for idx, prize_url in enumerate(unique_prize_urls):
+                    wizards_to_run.append(_dc_replace(template, name=f"{template.name}_{idx}", url=prize_url))
+                logger.info(
+                    "discovered %d dynamic wizards (cap=%d)",
+                    len(unique_prize_urls),
+                    cfg.adapter.dynamic_wizard_max_count,
+                )
+            except Exception as exc:
+                logger.warning("dynamic wizard discovery failed: %s", exc)
+
+        for wizard in wizards_to_run:
             try:
                 with BrowserClicker(
                     cookies=_jar_to_cookies(clicker),
@@ -952,24 +1017,27 @@ def cmd_run(
                 # finished its work on the mail; the user does the actual
                 # clicking in their browser. Without this, ``newer_than:Nd``
                 # in the Gmail query would cause daily re-posting.
-                try:
-                    source.start(effective_cfg, http_session=http_session)
-                    for extracted_batch in extract_batches:
-                        try:
-                            source.mark_complete(extracted_batch)
-                        except Exception:
-                            logger.exception(
-                                "failed to mark extracted batch %s complete; URL may re-surface on next run",
-                                extracted_batch.state_key,
-                            )
-                except GmailAuthError as exc:
-                    logger.warning(
-                        "could not reopen source for extract-mode labeling: %s; "
-                        "extracted URLs may re-surface on next run",
-                        exc,
-                    )
-                finally:
-                    source.close()
+                if source is None:
+                    logger.warning("wizards-only adapter has no source; extracted URLs cannot be labeled")
+                else:
+                    try:
+                        source.start(effective_cfg, http_session=http_session)
+                        for extracted_batch in extract_batches:
+                            try:
+                                source.mark_complete(extracted_batch)
+                            except Exception:
+                                logger.exception(
+                                    "failed to mark extracted batch %s complete; URL may re-surface on next run",
+                                    extracted_batch.state_key,
+                                )
+                    except GmailAuthError as exc:
+                        logger.warning(
+                            "could not reopen source for extract-mode labeling: %s; "
+                            "extracted URLs may re-surface on next run",
+                            exc,
+                        )
+                    finally:
+                        source.close()
         else:
             notifier.send_summary(
                 summary,

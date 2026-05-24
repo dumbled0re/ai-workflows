@@ -1,0 +1,107 @@
+name: chanceit
+
+# ChanceIt (チャンスイット) 抽選自動応募。Daily cron で
+# /present/list.jsp?type=6 (応募が簡単 14 件) を scrape →
+# 各 prize page で「応募する」button を click → 応募完了。
+# 会員 cookie で server 側が氏名/住所/電話/メールを auto-fill。
+#
+# 既存 ポイ活 Gmail とは別 Gmail を使う設計 (memory
+# feedback_gmail_shared_hub_risk 2026-05-17 incident に従う)。
+# ただし source=None (wizards-only) なので Gmail API 設定は不要、
+# cookie のみで動く。
+
+on:
+  schedule:
+    - cron: "0 23 * * *"  # JST 8:00 (他 site cron と被らない時刻)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "no-op for wizards-only adapter (legacy field)"
+        type: boolean
+        default: false
+      extract_links:
+        description: "no-op for wizards-only adapter (legacy field)"
+        type: boolean
+        default: false
+      discover:
+        description: "read-only recon of /present/list.jsp?type=6 hub"
+        type: boolean
+        default: false
+      inspect_url:
+        description: "GET this URL with auth and dump body to log"
+        type: string
+        default: ""
+      inspect_browser:
+        description: "render inspect_url via Playwright Chromium so JS-driven content is visible"
+        type: boolean
+        default: false
+      inspect_cap:
+        description: "max stripped-body bytes to print (default 80000)"
+        type: string
+        default: "80000"
+      inspect_wait_selector:
+        description: "browser mode only: wait for this CSS selector before reading page.content()"
+        type: string
+        default: ""
+      inspect_anonymous:
+        description: "skip cookie loading and login verification (login form inspect)"
+        type: boolean
+        default: false
+      inspect_capture_network:
+        description: "browser mode only: log all network requests (for SPA API discovery)"
+        type: boolean
+        default: false
+      inspect_wait_until:
+        description: "browser mode only: page.goto wait condition (default networkidle; use domcontentloaded for ad-heavy pages)"
+        type: string
+        default: ""
+      inspect_referer:
+        description: "browser mode only: set Referer header"
+        type: string
+        default: ""
+      inspect_clicks:
+        description: "browser mode only: semicolon-separated CSS selectors clicked before content() capture"
+        type: string
+        default: ""
+      force_fresh_cookies:
+        description: "delete persisted cookie jar before run, forcing re-bootstrap from CHANCEIT_COOKIES"
+        type: boolean
+        default: false
+      force_password_login_test:
+        description: "DEBUG: skip cookie verify, exercise password_login fallback (no password_login configured for chanceit yet)"
+        type: boolean
+        default: false
+
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    uses: ./.github/workflows/_site-runner.yml
+    with:
+      site: chanceit
+      dry_run: ${{ inputs.dry_run == true }}
+      extract_links: ${{ inputs.extract_links == true }}
+      discover: ${{ inputs.discover == true }}
+      inspect_url: ${{ inputs.inspect_url }}
+      inspect_browser: ${{ inputs.inspect_browser == true }}
+      inspect_cap: ${{ inputs.inspect_cap }}
+      inspect_wait_selector: ${{ inputs.inspect_wait_selector }}
+      inspect_anonymous: ${{ inputs.inspect_anonymous == true }}
+      inspect_capture_network: ${{ inputs.inspect_capture_network == true }}
+      inspect_wait_until: ${{ inputs.inspect_wait_until }}
+      inspect_referer: ${{ inputs.inspect_referer }}
+      inspect_clicks: ${{ inputs.inspect_clicks }}
+      force_fresh_cookies: ${{ inputs.force_fresh_cookies == true }}
+      force_password_login_test: ${{ inputs.force_password_login_test == true }}
+    secrets:
+      slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
+      slack_channel: ${{ secrets.SLACK_CHANNEL_CHANCEIT }}
+      cookies: ${{ secrets.CHANCEIT_COOKIES }}
+      # gmail_* not used (source=None) but reusable workflow expects them
+      gmail_client_id: ${{ secrets.GMAIL_CLIENT_ID }}
+      gmail_client_secret: ${{ secrets.GMAIL_CLIENT_SECRET }}
+      gmail_refresh_token: ${{ secrets.GMAIL_REFRESH_TOKEN }}
+      login_user: ""
+      login_pass: ""

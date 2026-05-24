@@ -2,6 +2,8 @@
 
 各サイトで何を自動化しているか / 何ができないかの完全 inventory (2026-05-24 時点)。
 
+ポイ活 (ポイントサイト) と抽選 (chanceit 等) の両用 framework。
+
 新規 site 追加時 / 既存 site 改修時 / "もう実装できるものは無いのか" の質問が来た時にこのファイルを更新する。
 
 ## ✅ 自動化済 mechanism 表
@@ -18,8 +20,9 @@
 | **sugutama** | Gmail + 2 visit-only | **2** (game_hub + events、SPA anti-bot で visit-only) | — | `GmailSource`、`balance_uses_browser` |
 | **warau** | Gmail + 1 visit-only | **1** (play_hub、SPA anti-bot で visit-only) | — | `GmailSource` |
 | **gendama** | scaffolded (非 active) | 0 | — | 180-day inactivity rule で user 判断で disable |
+| **chanceit** (NEW 2026-05-24、抽選専用) | wizards-only (source=None) + dynamic_wizard discovery | dynamic (毎日 14 件) | — | 「応募が簡単」list を毎日 scrape → 各 prize で「応募する」button click。会員 cookie 経由で server 側が PII auto-fill |
 
-**合計**: 73 wizards + 23 daily banners + 1 endpoint poll + 2 browser actions + 7 Gmail/OnsiteInbox click pipelines
+**合計**: 73 wizards + 23 daily banners + 1 endpoint poll + 2 browser actions + 7 Gmail/OnsiteInbox click pipelines + **dynamic wizard discovery (chanceit 14+/日)**
 
 ## 📋 wizard 詳細 (site 別)
 
@@ -72,6 +75,17 @@
 ### warau (1 wizard)
 - **play_hub** (`/play/` visit-only)
 
+### chanceit (NEW 2026-05-24、抽選専用)
+- **dynamic discovery**: 毎日 `https://www.chance.com/present/list.jsp?type=6` を scrape
+  - `a[href*="/present/detail/"]` で個別 prize URL 抽出 (最大 20 件 cap)
+  - 各 prize page で `a[href*="/jump.srv?id="]` (「応募する」button) click
+  - 会員 cookie で server 側が PII (氏名/住所/電話/メール) を auto-fill
+  - 公式「30秒足らずで応募」モデル、1 click で entry 完了
+- **source = None**: 抽選専用、click-mail pipeline 不要。Gmail API setup 不要
+- **期待 yield**: 月 ~30-50 件 entry × 当選率 1-5% × 賞品平均 3000-8000円 = 2,000-4,000円/月 (保守)
+- **user 作業**: 新 Gmail で chanceit 会員登録 → cookie export → CHANCEIT_COOKIES Secret 登録
+- **TOS 注意**: chanceit 規約 第 5 条「コンピュータウィルス等」「虚偽情報送信」禁止、自動 click 自体は明示禁止されていないが「不正行為」判定で会員停止/損害賠償 リスクあり。大量応募抑制で max_count=20
+
 ## ❌ 実装できないもの (理由付き)
 
 | 項目 | 区分 | 理由 | 復活条件 |
@@ -99,6 +113,8 @@
 - `--referer` flag in `cmd_html`: referer-gated page (amefri /game/gacha 等) を referer 付き inspect 可能
 - `--inspect-click` repeating flag + navigation-context retry: post-click 構造 recon (moppy /pc_gacha/ 3-step recon に使用)
 - `inspect_referer` / `inspect_clicks` input を全 9 site workflow YAML に露出
+- **dynamic wizard discovery** (Adapter に 4 fields 追加): `dynamic_wizard_list_url` / `dynamic_wizard_link_selector` / `dynamic_wizard_template` / `dynamic_wizard_max_count`。daily で list page を scrape → 個別 link で wizard を動的生成 (chanceit 抽選専用)
+- **wizards-only mode** (source=None 対応): chanceit 等の抽選専用 adapter は click-URL source を持たず、wizards のみで動作可能
 
 ## 📊 ポイント増加期待値
 
