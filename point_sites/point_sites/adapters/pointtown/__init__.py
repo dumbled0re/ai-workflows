@@ -204,11 +204,18 @@ ADAPTER = Adapter(
             inter_step_ms=10000,
             final_wait_ms=20000,
         ),
-        # pointq は別 platform (pointQ クイズ系)、selector 不明。visit-only。
+        # pointq は別 platform (pointQ クイズ系)。2026-05-24 inspect で
+        # ``<a class="btn-default" href="/pointq/input">クイズに挑戦する</a>``
+        # を確認。/pointq/input への 1-step nav まで実装 (クイズ自動回答は
+        # CLAUDE.md policy NG なので深い click は禁止、impression-only)。
         DailyWizard(
             name="pointtown_pointq",
             url="https://www.pointtown.com/pointq",
-            clicks=(),
+            clicks=(('a.btn-default[href="/pointq/input"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=4000,
+            final_wait_ms=15000,
         ),
     ),
     # password_login config は意図的に **無効化**。2026-05-16 動作確認
