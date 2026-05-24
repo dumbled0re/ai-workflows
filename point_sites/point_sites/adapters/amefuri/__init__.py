@@ -161,6 +161,47 @@ ADAPTER = Adapter(
             url="https://www.amefri.net/video/ibridge/index/stamp",
             clicks=(),
         ),
+        # amefri.ib-game.jp/stamp/ hub の sub-game 5 種 (nanpre/keisan/
+        # eitango/shape_memory/sakana)。inspect (run 26351425825) で
+        # data-layout-nav-id 属性が static HTML にあることを確認。
+        # 各 wizard は hub に goto → 該当 sub-game の link を navigation_click
+        # → 15s 滞留で「entry 計上 + 広告 impression」を狙う。
+        # 完全実装 (各 game の interactive プレイ) は別 issue で escalate。
+        DailyWizard(
+            name="amefuri_stamp_nanpre",
+            url="https://www.amefri.net/video/ibridge/index/stamp",
+            clicks=(('[data-layout-nav-id="nanpre"]', 1),),
+            use_navigation_click=True,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="amefuri_stamp_keisan",
+            url="https://www.amefri.net/video/ibridge/index/stamp",
+            clicks=(('[data-layout-nav-id="keisan"]', 1),),
+            use_navigation_click=True,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="amefuri_stamp_eitango",
+            url="https://www.amefri.net/video/ibridge/index/stamp",
+            clicks=(('[data-layout-nav-id="eitango"]', 1),),
+            use_navigation_click=True,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="amefuri_stamp_shape_memory",
+            url="https://www.amefri.net/video/ibridge/index/stamp",
+            clicks=(('[data-layout-nav-id="shape_memory"]', 1),),
+            use_navigation_click=True,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="amefuri_stamp_sakana",
+            url="https://www.amefri.net/video/ibridge/index/stamp",
+            clicks=(('[data-layout-nav-id="sakana"]', 1),),
+            use_navigation_click=True,
+            final_wait_ms=15000,
+        ),
         DailyWizard(
             name="amefuri_ibridge_farm",
             url="https://www.amefri.net/video/ibridge/index/farm",
