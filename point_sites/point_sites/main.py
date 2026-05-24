@@ -729,7 +729,16 @@ def cmd_run(
                                 #   Right for navigation links.
                                 try:
                                     if wizard.use_navigation_click:
-                                        page.click(selector, timeout=5000)
+                                        # force=click_force lets us bypass
+                                        # actionability check when the
+                                        # target element is present but
+                                        # covered by ad-iframes. Default
+                                        # False keeps the strict check.
+                                        page.click(
+                                            selector,
+                                            timeout=5000,
+                                            force=wizard.click_force,
+                                        )
                                     else:
                                         page.dispatch_event(selector, "click", timeout=5000)
                                 except Exception as exc:

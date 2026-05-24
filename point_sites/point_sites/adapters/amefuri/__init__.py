@@ -159,16 +159,57 @@ ADAPTER = Adapter(
             url="https://www.amefri.net/video/ibridge/index/stamp",
             clicks=(),
         ),
-        # stamp sub-games の click-navigation は失敗 (data-layout-nav-id /
-        # href both で 5s timeout)。実 wizard 内で page.click() が要求する
-        # actionability check (visibility) が満たされない様子。framework に
-        # ``click_force=True`` 拡張で bypass する余地あるが、現状は visit-only
-        # で各 sub-game の入口 URL を直接 hit する迂回路に変更。
-        # ``amefri.ib-game.jp`` は amefri.net の subdomain として既に
-        # allowed_hosts に subdomain-match で許可される (clicker.py)。
-        # ただし sub-game URL の uid/syid query は per-user で hard-code 不可、
-        # framework に dynamic-href substitution が要る → 別 issue。
-        # 当面は ``amefuri_ibridge_stamp`` の hub visit-only で代用。
+        # stamp sub-games re-activated with click_force=True (framework
+        # 改修 後述 commit)。Playwright actionability check を bypass し、
+        # ad-iframe / sidebar collapse で hidden な link でも click 発火。
+        # selector は href-based で安定 (data-layout-nav-id は server-render
+        # 由来で確実、第三者 host も同形式)。各 sub-game の top.php
+        # navigation → 15s 滞留で「entry 計上」impression yield 狙い。
+        DailyWizard(
+            name="amefuri_stamp_nanpre",
+            url="https://www.amefri.net/video/ibridge/index/stamp",
+            clicks=(('a[href*="/nanpre/top.php"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="amefuri_stamp_keisan",
+            url="https://www.amefri.net/video/ibridge/index/stamp",
+            clicks=(('a[href*="/keisan/top.php"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="amefuri_stamp_eitango",
+            url="https://www.amefri.net/video/ibridge/index/stamp",
+            clicks=(('a[href*="/eitango/top.php"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="amefuri_stamp_shape_memory",
+            url="https://www.amefri.net/video/ibridge/index/stamp",
+            clicks=(('a[href*="/shape_memory/top.php"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="amefuri_stamp_sakana",
+            url="https://www.amefri.net/video/ibridge/index/stamp",
+            clicks=(('a[href*="/sakana/top.php"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            final_wait_ms=15000,
+        ),
         DailyWizard(
             name="amefuri_ibridge_farm",
             url="https://www.amefri.net/video/ibridge/index/farm",
