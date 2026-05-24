@@ -170,40 +170,60 @@ ADAPTER = Adapter(
             initial_wait_ms=6000,
             final_wait_ms=15000,
         ),
+        # 2026-05-24: amefri estlier_panbon_slot (`e8acc62`) で発見した
+        # i2ipoint platform の rule.php → game_start.php nav pattern を
+        # /pc/<game>/ 系の sub-game にも適用。inter_step_ms=12000 で
+        # 1st click 後の i2ipoint redirect chain settle を待つ。
         DailyWizard(
             name="fruitmail_almond_panbon_slot",
             url="https://almond.fruitmail.net/estlier/",
-            clicks=(('a[href*="/pc/panbon-slot/"]', 1),),
+            clicks=(
+                ('a[href*="/pc/panbon-slot/"]', 1),
+                ('a[href="game_start.php"]', 1),
+            ),
             use_navigation_click=True,
             click_force=True,
             initial_wait_ms=6000,
+            inter_step_ms=12000,
             final_wait_ms=15000,
         ),
         DailyWizard(
             name="fruitmail_almond_panbon_roulette",
             url="https://almond.fruitmail.net/estlier/",
-            clicks=(('a[href*="/pc/panbon-roulette/"]', 1),),
+            clicks=(
+                ('a[href*="/pc/panbon-roulette/"]', 1),
+                ('a[href="game_start.php"]', 1),
+            ),
             use_navigation_click=True,
             click_force=True,
             initial_wait_ms=6000,
+            inter_step_ms=12000,
             final_wait_ms=15000,
         ),
         DailyWizard(
             name="fruitmail_almond_kokuhaku",
             url="https://almond.fruitmail.net/estlier/",
-            clicks=(('a[href*="/pc/kokuhaku/"]', 1),),
+            clicks=(
+                ('a[href*="/pc/kokuhaku/"]', 1),
+                ('a[href="game_start.php"]', 1),
+            ),
             use_navigation_click=True,
             click_force=True,
             initial_wait_ms=6000,
+            inter_step_ms=12000,
             final_wait_ms=15000,
         ),
         DailyWizard(
             name="fruitmail_almond_highlow",
             url="https://almond.fruitmail.net/estlier/",
-            clicks=(('a[href*="/pc/highlow/"]', 1),),
+            clicks=(
+                ('a[href*="/pc/highlow/"]', 1),
+                ('a[href="game_start.php"]', 1),
+            ),
             use_navigation_click=True,
             click_force=True,
             initial_wait_ms=6000,
+            inter_step_ms=12000,
             final_wait_ms=15000,
         ),
         # 追加 sub-game 4 種 (sarasara / fashion / cook / dog)。同 pattern で動作 想定。
@@ -219,28 +239,40 @@ ADAPTER = Adapter(
         DailyWizard(
             name="fruitmail_almond_fashion",
             url="https://almond.fruitmail.net/estlier/",
-            clicks=(('a[href*="/pc/fashion/"]', 1),),
+            clicks=(
+                ('a[href*="/pc/fashion/"]', 1),
+                ('a[href="game_start.php"]', 1),
+            ),
             use_navigation_click=True,
             click_force=True,
             initial_wait_ms=6000,
+            inter_step_ms=12000,
             final_wait_ms=15000,
         ),
         DailyWizard(
             name="fruitmail_almond_cook",
             url="https://almond.fruitmail.net/estlier/",
-            clicks=(('a[href*="/pc/cook/"]', 1),),
+            clicks=(
+                ('a[href*="/pc/cook/"]', 1),
+                ('a[href="game_start.php"]', 1),
+            ),
             use_navigation_click=True,
             click_force=True,
             initial_wait_ms=6000,
+            inter_step_ms=12000,
             final_wait_ms=15000,
         ),
         DailyWizard(
             name="fruitmail_almond_dog",
             url="https://almond.fruitmail.net/estlier/",
-            clicks=(('a[href*="/pc/dog/"]', 1),),
+            clicks=(
+                ('a[href*="/pc/dog/"]', 1),
+                ('a[href="game_start.php"]', 1),
+            ),
             use_navigation_click=True,
             click_force=True,
             initial_wait_ms=6000,
+            inter_step_ms=12000,
             final_wait_ms=15000,
         ),
     ),
