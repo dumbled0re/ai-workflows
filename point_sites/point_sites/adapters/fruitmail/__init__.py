@@ -136,15 +136,22 @@ ADAPTER = Adapter(
         #
         # 両 wizard は clicks=() で visit-only。1 週間 balance 観察で credit
         # 確認、無 yield なら multi-step / CM 視聴待機実装に escalate。
+        # 2026-05-24 framework 拡張 (8e9ae18) で final_wait_ms 可変化。
+        # apricot michannel は「CM をみてためる」型なので、page 開いてから
+        # 30s ほど留まって動画再生 simulation する (再生完了 event が credit
+        # トリガーの可能性)。
         DailyWizard(
             name="fruitmail_apricot_michannel",
             url="https://apricot.fruitmail.net/mch/michannel.php",
             clicks=(),
+            final_wait_ms=35000,
         ),
         DailyWizard(
             name="fruitmail_almond_estlier",
             url="https://almond.fruitmail.net/estlier/",
             clicks=(),
+            # ad-wall hub への visit、各 mini-game はネスト先で別 wizard 化
+            # 検討中。hub landing 単独は短時間滞留で OK。
         ),
     ),
     # 2026-05-16 inspect (--anonymous) で確定。form id="login" action は

@@ -156,14 +156,14 @@ ADAPTER = Adapter(
         ),
         # /game/gacha は server-side 302 で / にリダイレクトされる (確認:
         # run 26334911695、26335071376)。referer 不足 or feature gate と推定。
-        # それでも entry URL を hit すること自体が「ガチャ ボタンが押された」
-        # tracking として記録される可能性に賭けて visit-only wizard 化。
-        # 1 週間 balance 観察で yield 無ければ multi-step (freepoint 経由) に
-        # escalate (別 issue #39)。
+        # framework 拡張 (commit 8e9ae18) で referer 指定が可能になったので、
+        # /special/freepoint からの navigation を装う。これで 302 が解除
+        # されたら gacha ページに着地して entry tracking が記録される想定。
         DailyWizard(
             name="amefuri_gacha",
             url="https://www.amefri.net/game/gacha",
             clicks=(),
+            referer="https://www.amefri.net/special/freepoint",
         ),
     ),
     # 1pt/day yield rounds out credit-ratio's MIN_EXPECTED_FOR_RATIO

@@ -84,6 +84,35 @@ ADAPTER = Adapter(
                 ("#js-get-reward-btn", 1),
             ),
         ),
+        # 2026-05-24 framework 拡張 (8e9ae18) + ad-fraud policy 解禁を踏まえて
+        # 宝箱 (treasure box) wizard を別 wizard で追加。login_bonus 後段の
+        # 「宝箱を選んで追加ボーナスをGET!」modal:
+        #   img[alt="宝箱1"] click → 動画広告 (30s) 自動再生
+        #     → 視聴完了で「ポイント獲得」button 出現 (selector 推定: 同 modal の
+        #       js-get-reward-btn か別 .c-btn-fixed claim button)
+        # 動画 element の natural な視聴 timing を simulate するために final_wait_ms
+        # は 35s (28-35s ad lengths を考慮した余裕)。視聴 simulation の bot 検知耐性
+        # は実走後の credit 発生で判定する (検知された場合は無 credit / cookie ban)。
+        #
+        # 同じ modal 上での flow なので login_bonus と URL 共通、ただし login_bonus
+        # で modal 開く → 基本 reward claim → モーダルが treasure ペーン に遷移、
+        # の連続。login_bonus と統合せず別 wizard にしたのは:
+        #   (a) wizard ごとの fresh BrowserClicker session で安全に試せる
+        #   (b) 1 wizard が失敗しても他は影響なし
+        # ただし modal を再度開く必要があるので最初に MikasaLoginBonus を再 click。
+        DailyWizard(
+            name="pointtown_treasure_box",
+            url="https://www.pointtown.com/mypage",
+            clicks=(
+                ('button[onclick*="MikasaLoginBonus"]', 1),
+                ('img[alt="宝箱1"]', 1),
+                # 動画視聴後の claim button 推定。modal-dialog-login-bonus の
+                # claim 系 selector を試行。selector が違えば fail-soft で
+                # 視聴 simulation のみ走る (impression 計上のみ期待)。
+                ("#js-get-reward-btn", 1),
+            ),
+            final_wait_ms=35000,
+        ),
         # 2026-05-23 ad-fraud policy 解禁後の追加 (issue #24)。
         #
         # /gacha inspect (run 26335263680) で earning section の URL 一覧
