@@ -683,15 +683,29 @@ def cmd_run(
                     cookies=_jar_to_cookies(clicker),
                     default_cookie_domain=default_domain,
                 ) as bc:
-                    # Use domcontentloaded instead of the default
-                    # networkidle: ad-heavy mypages (pointtown carries
-                    # Criteo + doubleclick polling iframes that never
-                    # settle) blow past the 30s timeout otherwise. The
-                    # wizard's click targets are server-rendered, so
-                    # the DOM being ready is enough; jQuery handlers
-                    # bind a beat later — covered by the explicit wait
-                    # below.
-                    page = bc.goto(wizard.url, wait_until="domcontentloaded")
+                    # ``wait_until`` defaults to ``domcontentloaded``:
+                    # ad-heavy mypages (pointtown carries Criteo + double-
+                    # click polling iframes that never settle) blow past
+                    # the 30s ``networkidle`` timeout. Per-wizard
+                    # override lets edge cases (e.g. ``commit`` for slow
+                    # SSO chains) pick a different condition.
+                    #
+                    # ``referer`` is for sites that gate access by referer
+                    # header (amefri /game/gacha returns 302 to / unless
+                    # the request came from /special/freepoint). When
+                    # set, navigate first to a blank-ish page then issue
+                    # the real goto with referer (Playwright's
+                    # page.goto supports referer kwarg via the
+                    # underlying API but BrowserClicker.goto wraps it).
+                    if wizard.referer:
+                        page = bc.new_page()
+                        page.goto(
+                            wizard.url,
+                            wait_until=wizard.wait_until,  # type: ignore[arg-type]
+                            referer=wizard.referer,
+                        )
+                    else:
+                        page = bc.goto(wizard.url, wait_until=wizard.wait_until)
                     completed = False
                     try:
                         # Let JS finish wiring up the wizard click handlers
@@ -700,13 +714,21 @@ def cmd_run(
                         page.wait_for_timeout(2000)
                         for step_idx, (selector, repeat) in enumerate(wizard.clicks):
                             for _ in range(repeat):
-                                # Fire via JS handler instead of synthetic
-                                # mouse events: most wizards bind via
-                                # jQuery .click() handlers and the
-                                # element-is-not-visible check fights us
-                                # when the panel hasn't slid in yet.
+                                # Click semantics:
+                                # - dispatch_event: fires JS click handler
+                                #   without going through the browser's
+                                #   default action (so <a href> doesn't
+                                #   navigate). Right for jQuery-bound
+                                #   modal buttons.
+                                # - page.click: native browser click with
+                                #   actionability check + follows default
+                                #   action including href navigation.
+                                #   Right for navigation links.
                                 try:
-                                    page.dispatch_event(selector, "click", timeout=5000)
+                                    if wizard.use_navigation_click:
+                                        page.click(selector, timeout=5000)
+                                    else:
+                                        page.dispatch_event(selector, "click", timeout=5000)
                                 except Exception as exc:
                                     logger.warning(
                                         "%s wizard step %d (%s) failed: %s",
@@ -716,13 +738,15 @@ def cmd_run(
                                         exc,
                                     )
                                     raise
-                                page.wait_for_timeout(300)
+                                page.wait_for_timeout(wizard.inter_click_ms)
                             # Longer wait between steps to let the panel
                             # animation settle before the next selector
                             # becomes actionable.
-                            page.wait_for_timeout(800)
+                            page.wait_for_timeout(wizard.inter_step_ms)
                         # Final settle for the credit XHR + success pane.
-                        page.wait_for_timeout(2500)
+                        # Bump per-wizard for video-watching wizards
+                        # (動画 CM 視聴 / 動画広告 30s 視聴 等).
+                        page.wait_for_timeout(wizard.final_wait_ms)
                         completed = True
                     except Exception:
                         pass
