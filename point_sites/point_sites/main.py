@@ -755,6 +755,8 @@ def cmd_run(
         # using the adapter's template.
         wizards_to_run: list[DailyWizard] = list(cfg.adapter.daily_wizards)
         if has_dynamic_wizards:
+            from urllib.parse import urljoin as _dyn_urljoin
+
             try:
                 with BrowserClicker(
                     cookies=_jar_to_cookies(clicker),
@@ -771,7 +773,7 @@ def cmd_run(
                         assert link_selector_str is not None
                         anchors = page.query_selector_all(link_selector_str)
                         raw_hrefs = [a.get_attribute("href") for a in anchors]
-                        prize_urls = [urljoin(list_url_str, h) for h in raw_hrefs if h]
+                        prize_urls = [_dyn_urljoin(list_url_str, h) for h in raw_hrefs if h]
                         seen_dyn: set[str] = set()
                         unique_prize_urls: list[str] = []
                         for u in prize_urls:
