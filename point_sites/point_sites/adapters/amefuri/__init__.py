@@ -134,15 +134,27 @@ ADAPTER = Adapter(
             url="https://www.amefri.net/video/gmomedia/spotdiff",
             clicks=(),
         ),
+        # PANBONスロット (i2ipoint.nail-monster.work redirect)。fruitmail
+        # present_slot と同 brand なので selector も同 (#start/#stop) と推定。
+        # final_wait_ms=12000 でスロット回転 (~5s) + 結果モーダル (~5s) を吸収。
+        # selector が違えば fail-soft で visit-only 相当の挙動に degrade。
         DailyWizard(
             name="amefuri_estlier_panbon_slot",
             url="https://www.amefri.net/video/estlier/index/83",
-            clicks=(),
+            clicks=(
+                ("#start", 1),
+                ("#stop", 1),
+            ),
+            final_wait_ms=12000,
         ),
+        # コラムとアンケート list page。visit-only だけど final_wait_ms を
+        # 長めにして「list を眺めて立ち去る」simulation。アンケート自動回答は
+        # しない (CLAUDE.md policy)。
         DailyWizard(
             name="amefuri_estlier_column",
             url="https://www.amefri.net/video/estlier/index/1",
             clicks=(),
+            final_wait_ms=15000,
         ),
         DailyWizard(
             name="amefuri_ibridge_stamp",

@@ -108,36 +108,62 @@ ADAPTER = Adapter(
     # で balance 動かなければ multi-step 進む sequence 実装に escalate。
     # interactive game (game1000 ふるふるパニック / ibgame / typing) は
     # 別途 follow-up issue で対応。
+    # estlier 6 種は NUMBERS DX 等の「進む × N → 数字選択 → submit」型。
+    # framework 拡張 (commit 8e9ae18) の use_navigation_click を活用して
+    # 「進む」link を 2 回 click。最初の click で rule.php → 2 回目 で
+    # 数字選択 page までは進む想定。数字選択は selector 不明なので submit
+    # まで行かないが、navigation の途中まで進めば「ゲーム参加」tracking に
+    # 計上される可能性あり。
+    # 6 種は同じ flow と仮定して同一 clicks tuple を使用。selector に共通性
+    # がない場合は fail-soft で degrade。
     daily_wizards=(
         DailyWizard(
             name="getmoney_estlier_38",
             url="https://dietnavi.com/pc/game/estlier/play.php?id=38",
-            clicks=(),
+            clicks=((".next_bt a", 2),),
+            use_navigation_click=True,
+            inter_click_ms=2000,
+            final_wait_ms=8000,
         ),
         DailyWizard(
             name="getmoney_estlier_71",
             url="https://dietnavi.com/pc/game/estlier/play.php?id=71",
-            clicks=(),
+            clicks=((".next_bt a", 2),),
+            use_navigation_click=True,
+            inter_click_ms=2000,
+            final_wait_ms=8000,
         ),
         DailyWizard(
             name="getmoney_estlier_83",
             url="https://dietnavi.com/pc/game/estlier/play.php?id=83",
-            clicks=(),
+            clicks=((".next_bt a", 2),),
+            use_navigation_click=True,
+            inter_click_ms=2000,
+            final_wait_ms=8000,
         ),
         DailyWizard(
             name="getmoney_estlier_94",
             url="https://dietnavi.com/pc/game/estlier/play.php?id=94",
-            clicks=(),
+            clicks=((".next_bt a", 2),),
+            use_navigation_click=True,
+            inter_click_ms=2000,
+            final_wait_ms=8000,
         ),
         DailyWizard(
             name="getmoney_estlier_102",
             url="https://dietnavi.com/pc/game/estlier/play.php?id=102",
-            clicks=(),
+            clicks=((".next_bt a", 2),),
+            use_navigation_click=True,
+            inter_click_ms=2000,
+            final_wait_ms=8000,
         ),
         DailyWizard(
             name="getmoney_estlier_112",
             url="https://dietnavi.com/pc/game/estlier/play.php?id=112",
-            clicks=(),
+            clicks=((".next_bt a", 2),),
+            use_navigation_click=True,
+            inter_click_ms=2000,
+            final_wait_ms=8000,
         ),
     ),
     # password_login は 2026-05-21 に試したが reCAPTCHA v2 (data-sitekey
