@@ -258,6 +258,29 @@ def _merge_browser_cookies(
         )
 
 
+def _content_with_retry(page: object, max_attempts: int = 5, wait_ms: int = 2000) -> str:
+    """Wrap ``page.content()`` with retries for transient navigation races.
+
+    Playwright raises ``Page.content: Unable to retrieve content because
+    the page is navigating and changing the content`` when content() is
+    called mid-navigation (typical for ad-heavy estlier/i2ipoint redirect
+    chains where the page chains through 3-4 hops before settling).
+
+    Each retry waits ``wait_ms`` and re-tries. Other exceptions bubble up.
+    """
+    last_exc: Exception | None = None
+    for _ in range(max_attempts):
+        try:
+            return page.content()  # type: ignore[attr-defined,no-any-return]
+        except Exception as exc:
+            if "navigating" not in str(exc):
+                raise
+            last_exc = exc
+            page.wait_for_timeout(wait_ms)  # type: ignore[attr-defined]
+    assert last_exc is not None
+    raise last_exc
+
+
 def _fetch_balance(clicker: Clicker, cfg: Config) -> int | None:
     if cfg.adapter.balance_uses_browser:
         # Lazy import keeps Playwright off the import path of adapters
@@ -1078,7 +1101,7 @@ def cmd_html(
                             page.wait_for_selector(wait_selector, timeout=wait_timeout_ms)
                         except Exception as exc:
                             logger.warning("wait_for_selector %r timed out: %s", wait_selector, exc)
-                    body_text = page.content()
+                    body_text = _content_with_retry(page)
                 finally:
                     page.close()
             original_len = len(body_text)
@@ -1148,7 +1171,7 @@ def cmd_html(
                         # capture whatever the DOM has at this point so
                         # the user can see how far hydration got.
                         logger.warning("wait_for_selector %r timed out: %s", wait_selector, exc)
-                body_text = page.content()
+                body_text = _content_with_retry(page)
             finally:
                 page.close()
             _merge_browser_cookies(clicker, bc.export_cookies(), allowed_hosts=cfg.adapter.allowed_hosts)

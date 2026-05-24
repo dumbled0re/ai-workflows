@@ -174,10 +174,18 @@ ADAPTER = Adapter(
         DailyWizard(
             name="fruitmail_almond_tarzan",
             url="https://almond.fruitmail.net/estlier/",
-            clicks=(('a[href*="/tarzan2/fruitmail/"]', 1),),
+            clicks=(
+                ('a[href*="/tarzan2/fruitmail/"]', 1),
+                # 2026-05-24 blind try: tarzan2 は sv0401.contents-group.work
+                # で i2ipoint 系 (contents-lump.net / woodcut.work) と異 host
+                # だが同 contents-group/lump 一族の可能性。game_start.php selector
+                # が match すれば deeper、しなければ silent no-op (click_force)。
+                ('a[href="game_start.php"]', 1),
+            ),
             use_navigation_click=True,
             click_force=True,
             initial_wait_ms=6000,
+            inter_step_ms=12000,
             final_wait_ms=15000,
         ),
         # 2026-05-24: amefri estlier_panbon_slot (`e8acc62`) で発見した
@@ -240,10 +248,19 @@ ADAPTER = Adapter(
         DailyWizard(
             name="fruitmail_almond_sarasara",
             url="https://almond.fruitmail.net/estlier/",
-            clicks=(('a[href*="/sarasara/"]', 1),),
+            clicks=(
+                ('a[href*="/sarasara/"]', 1),
+                # 2026-05-24 blind try: sarasara は fruitmail.woodcut.work
+                # の /sarasara/select.php に redirect (他 /pc/<game>/ と同 host)。
+                # select.php は number-selection 系で /pc/ game とは構造異なる
+                # が、game_start.php selector が match すれば deeper、しなければ
+                # silent no-op (click_force)。
+                ('a[href="game_start.php"]', 1),
+            ),
             use_navigation_click=True,
             click_force=True,
             initial_wait_ms=6000,
+            inter_step_ms=12000,
             final_wait_ms=15000,
         ),
         DailyWizard(
