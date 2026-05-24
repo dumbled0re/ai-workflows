@@ -132,10 +132,18 @@ ADAPTER = Adapter(
         #   - 宝箱: 動画広告 + multi-step、動画 skip は bot 検知リスク高い
         #     (login_bonus modal の後段で別 wizard 化検討、別 issue)
         #   - 本日ボーナスデー: UI overlay であって独立 URL なし
+        # /gacha hub から /gacha/play への navigation。inspect (run 26335263680)
+        # で <a href="/gacha/play"> link を確認。click_force JS evaluate で
+        # ad-iframe で隠れていても発火する想定 (hapitas/amefri pattern と同)。
+        # final_wait_ms=15000 で play page hydration + 「回す」button 出現待ち
+        # の simulation。「回す」button の実 click は selector 不明で別 follow-up。
         DailyWizard(
             name="pointtown_gacha",
             url="https://www.pointtown.com/gacha",
-            clicks=(),
+            clicks=(('a[href="/gacha/play"]', 1),),
+            use_navigation_click=True,
+            click_force=True,
+            final_wait_ms=15000,
         ),
         # GMO platform 系の game (easygame / gesoten / brain_quiz / nazotore) は
         # hapitas と共通 platform で「挑戦する」/「プレイする」class が
