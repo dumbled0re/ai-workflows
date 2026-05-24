@@ -9,6 +9,7 @@ follow the keys of ``REGISTRY``.
 from ..common.adapter import Adapter
 from .amefuri import ADAPTER as AMEFURI
 from .chanceit import ADAPTER as CHANCEIT
+from .dreammail import ADAPTER as DREAMMAIL
 from .fruitmail import ADAPTER as FRUITMAIL
 from .fruitmail_lottery import ADAPTER as FRUITMAIL_LOTTERY
 from .gendama import ADAPTER as GENDAMA
@@ -33,6 +34,7 @@ REGISTRY: dict[str, Adapter] = {
     WARAU.name: WARAU,
     SUGUTAMA.name: SUGUTAMA,
     CHANCEIT.name: CHANCEIT,
+    DREAMMAIL.name: DREAMMAIL,
 }
 
 

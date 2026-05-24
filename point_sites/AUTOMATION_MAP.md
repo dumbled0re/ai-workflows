@@ -22,8 +22,9 @@
 | **gendama** | scaffolded (非 active) | 0 | — | 180-day inactivity rule で user 判断で disable |
 | **chanceit** (NEW 2026-05-24、抽選専用) | wizards-only (source=None) + dynamic_wizard discovery | dynamic (毎日 14 件) | — | 「応募が簡単」list を毎日 scrape → 各 prize で「応募する」button click。会員 cookie 経由で server 側が PII auto-fill |
 | **fruitmail_lottery** (NEW 2026-05-25、抽選専用) | wizards-only (source=None) + 5 daily_wizards | **5** (everyday / everyweek / everymonth / gorgeous / premium) | — | 既存 fruitmail cookie を流用、`#applyForm` で submit → `/prize/step1/` → 確認 button → 完了。`title_selector` で hidden `item_name` を抽出して Slack 表示 |
+| **dreammail** (NEW 2026-05-25、抽選専用、Phase 1 skeleton) | wizards-only (source=None) + 2 daily_wizards + dynamic precam discovery | **2 + dynamic (~10)** (gacha + mmillion + /presents/precam/<id>) | — | Cookie 取得待ち、selector は blind guess。`/game/gacha` daily medal 獲得、`/mmillion` 50 medals で 100万円 entry、`/presents/precam/<id>` 0-medal promo の動的 discovery |
 
-**合計**: 78 wizards + 23 daily banners + 1 endpoint poll + 2 browser actions + 7 Gmail/OnsiteInbox click pipelines + **dynamic wizard discovery (chanceit 14+/日)** + **lottery wizards 5/日 (fruitmail_lottery)**
+**合計**: 80 wizards + dynamic (chanceit ~14 + dreammail precam ~10/日) + 23 daily banners + 1 endpoint poll + 2 browser actions + 7 Gmail/OnsiteInbox click pipelines
 
 ## 📋 wizard 詳細 (site 別)
 
@@ -75,6 +76,18 @@
 
 ### warau (1 wizard)
 - **play_hub** (`/play/` visit-only)
+
+### dreammail (NEW 2026-05-25、抽選専用、Phase 1)
+- **status**: cookie 取得待ち、blind selector で initial run、後で inspect-driven refine
+- **2 daily_wizards**:
+  - `dreammail_daily_gacha` (`/game/gacha`) — 1 日 1 回ガチャ、10-100 medals payout
+  - `dreammail_mmillion` (`/mmillion`) — 50 medals で 100万円 entry、月 1 抽選
+- **dynamic_wizard**: `/presents` page を scrape → `a[href*="/presents/precam/"]` で 0-medal promo URL を抽出 (max 10 件) → template wizard で各 page を訪問 → 「応募する」/「ゆめキャンで応募」button click
+- **source = None, lottery_mode = True, Gmail OAuth 不要**
+- **user 作業**: dreammail 会員登録 + cookie export → `DREAMMAIL_COOKIES` Secret
+- **Slack channel**: `SLACK_CHANNEL_CHANCEIT` (= #lottery) 共有
+- **期待 yield**: medals 蓄積 + monthly 100万円当選確率 + precam promo 抽選数件/月
+- **Phase 2 候補** (本実装には含まれない): GmailSource 経由のメルマガクリック型 (1000万円 entry path)、login bonus / 出席 wizard、`/game/seven` Amazon ギフト slot game
 
 ### fruitmail_lottery (NEW 2026-05-25、抽選専用)
 - **5 daily_wizards** (`/prize/<category>/`): everyday / everyweek / everymonth / gorgeous / premium

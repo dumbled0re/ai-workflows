@@ -1,0 +1,114 @@
+name: dreammail
+
+# dreammail.jp (ドリームメール) cookie-only 抽選自動応募 (Phase 1).
+# - /game/gacha 毎日 1 回 (medal payout)
+# - /mmillion 現金 100 万円 entry (50 medals/口/day)
+# - /presents/precam/<id> 0-medal promo の動的 discovery
+#
+# Cookie が DREAMMAIL_COOKIES Secret に未登録なら verify_login redirect
+# で exit code 2 (cron 失敗) → user 設定後に動作開始。
+#
+# Selector は Phase 1 で blind guess。最初の cron 後に
+# ``gh workflow run dreammail.yml -f inspect_url=...`` で実 HTML を確認、
+# adapter __init__.py を refine する。
+#
+# Cron: JST 8:45 (8:00 chanceit と 9:30 fruitmail_lottery の間)
+# Slack channel: 既存 #lottery (SLACK_CHANNEL_CHANCEIT を共有)
+
+on:
+  schedule:
+    - cron: "45 23 * * *"  # JST 8:45
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "no-op for wizards-only adapter (legacy field)"
+        type: boolean
+        default: false
+      extract_links:
+        description: "no-op for wizards-only adapter (legacy field)"
+        type: boolean
+        default: false
+      discover:
+        description: "read-only recon of /presents and /game hubs"
+        type: boolean
+        default: false
+      inspect_url:
+        description: "GET this URL with auth and dump body to log"
+        type: string
+        default: ""
+      inspect_browser:
+        description: "render inspect_url via Playwright Chromium so JS-driven content is visible"
+        type: boolean
+        default: false
+      inspect_cap:
+        description: "max stripped-body bytes to print (default 80000)"
+        type: string
+        default: "80000"
+      inspect_wait_selector:
+        description: "browser mode only: wait for this CSS selector before reading page.content()"
+        type: string
+        default: ""
+      inspect_anonymous:
+        description: "skip cookie loading and login verification (login form inspect)"
+        type: boolean
+        default: false
+      inspect_capture_network:
+        description: "browser mode only: log all network requests (for SPA API discovery)"
+        type: boolean
+        default: false
+      inspect_wait_until:
+        description: "browser mode only: page.goto wait condition (default networkidle; use domcontentloaded for ad-heavy pages)"
+        type: string
+        default: ""
+      inspect_referer:
+        description: "browser mode only: set Referer header"
+        type: string
+        default: ""
+      inspect_clicks:
+        description: "browser mode only: semicolon-separated CSS selectors clicked before content() capture"
+        type: string
+        default: ""
+      force_fresh_cookies:
+        description: "delete persisted cookie jar before run, forcing re-bootstrap from DREAMMAIL_COOKIES"
+        type: boolean
+        default: false
+      force_password_login_test:
+        description: "DEBUG: skip cookie verify, exercise password_login fallback (not configured yet for dreammail)"
+        type: boolean
+        default: false
+
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    uses: ./.github/workflows/_site-runner.yml
+    with:
+      site: dreammail
+      dry_run: ${{ inputs.dry_run == true }}
+      extract_links: ${{ inputs.extract_links == true }}
+      discover: ${{ inputs.discover == true }}
+      inspect_url: ${{ inputs.inspect_url }}
+      inspect_browser: ${{ inputs.inspect_browser == true }}
+      inspect_cap: ${{ inputs.inspect_cap }}
+      inspect_wait_selector: ${{ inputs.inspect_wait_selector }}
+      inspect_anonymous: ${{ inputs.inspect_anonymous == true }}
+      inspect_capture_network: ${{ inputs.inspect_capture_network == true }}
+      inspect_wait_until: ${{ inputs.inspect_wait_until }}
+      inspect_referer: ${{ inputs.inspect_referer }}
+      inspect_clicks: ${{ inputs.inspect_clicks }}
+      force_fresh_cookies: ${{ inputs.force_fresh_cookies == true }}
+      force_password_login_test: ${{ inputs.force_password_login_test == true }}
+    secrets:
+      slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
+      # #lottery channel (chanceit / fruitmail_lottery と共有)
+      slack_channel: ${{ secrets.SLACK_CHANNEL_CHANCEIT }}
+      cookies: ${{ secrets.DREAMMAIL_COOKIES }}
+      # password_login 未設定 (dreammail の login form selector 要 recon)
+      login_user: ""
+      login_pass: ""
+      # gmail_* 未使用 (source=None)
+      gmail_client_id: ${{ secrets.GMAIL_CLIENT_ID }}
+      gmail_client_secret: ${{ secrets.GMAIL_CLIENT_SECRET }}
+      gmail_refresh_token: ${{ secrets.GMAIL_REFRESH_TOKEN }}
