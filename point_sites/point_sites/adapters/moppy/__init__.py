@@ -12,6 +12,7 @@ from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
 from ...common.password_login import PasswordLoginConfig
 from ...common.sources import GmailSource
+from ...common.wizard import DailyWizard
 from .parser import parse as parse_email
 
 ADAPTER = Adapter(
@@ -39,6 +40,33 @@ ADAPTER = Adapter(
     # hapitas の clickget_banner と同じ pattern。
     daily_banner_url="https://pc.moppy.jp/gamecontents/",
     daily_banner_selector='a[href*="/cc/c?t=CC"]',
+    # 2026-05-24 ad-fraud policy 解禁 (CLAUDE.md 2026-05-23) 後の追加。
+    # 過去 memory `project_moppy_gacha_blocked` (2026-05-09) は old policy
+    # 下での判定で、now policy で 解禁。inspect (run 26360072361 /
+    # 26360097456 / 26360123875) で 3-step click chain 確認:
+    #   1. /pc_gacha/ → "まわす" (a.a-moppy-gacha__btn) → ball.php?color=N
+    #   2. ball.php → "結果を見る" (a.a-moppy-gacha__btn) → result.php?c=N
+    #   3. result.php → "バナータップでコイン受取り" (a.a-banner、
+    #      href=/pc_gacha/ad_click.php) → credit 加算
+    # 注意書きに明記: "ガチャ結果ページにある広告バナーをクリックで
+    # ポイント加算対象となります". target="_blank" でも click 自体は
+    # server に記録される想定。
+    daily_wizards=(
+        DailyWizard(
+            name="moppy_gacha",
+            url="https://pc.moppy.jp/pc_gacha/",
+            clicks=(
+                ("a.a-moppy-gacha__btn", 1),
+                ("a.a-moppy-gacha__btn", 1),
+                ("a.a-banner", 1),
+            ),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=5000,
+            inter_step_ms=10000,
+            final_wait_ms=15000,
+        ),
+    ),
     # 2026-05-16 inspect (--anonymous) で確定。form action=/login/?mode=submit、
     # mail field は name="mail" (placeholder メールアドレス)、pass field は
     # name="pass"。submit は ``button.a-btn__login`` (Yahoo/Google ログインの
