@@ -491,6 +491,10 @@ def cmd_run(
     anomaly_ids: list[str] = []
     all_results = []
     estimated_pt_total = 0
+    # Per-wizard outcomes for lottery_mode Slack notification.
+    # Initialized at function scope so the notifier branch can read it
+    # even when the wizard block didn't run (e.g. dry_run guarded out).
+    wizard_results: list[dict[str, object]] = []
     dry_run_view: list[tuple[str, str, list[str]]] = []
     extract_view: list[tuple[str, str, list[str]]] = []
     # Batches that fed extract_view, in the same order — so after a
@@ -754,6 +758,9 @@ def cmd_run(
         # extract individual prize URLs, expand into per-prize wizards
         # using the adapter's template.
         wizards_to_run: list[DailyWizard] = list(cfg.adapter.daily_wizards)
+        # url → prize title metadata for lottery_mode Slack output.
+        # Empty dict for non-lottery adapters.
+        prize_titles: dict[str, str] = {}
         if has_dynamic_wizards:
             from urllib.parse import urljoin as _dyn_urljoin
 
@@ -774,6 +781,55 @@ def cmd_run(
                         anchors = page.query_selector_all(link_selector_str)
                         raw_hrefs = [a.get_attribute("href") for a in anchors]
                         prize_urls = [_dyn_urljoin(list_url_str, h) for h in raw_hrefs if h]
+
+                        # For lottery_mode, also extract prize titles from
+                        # each anchor's parent card via JS heuristic (try
+                        # h2/h3/h4/.title/.name, fall back to anchor text).
+                        # Title used in Slack 「応募した賞品一覧」output.
+                        if cfg.adapter.lottery_mode:
+                            try:
+                                title_data = page.evaluate(
+                                    """(sel) => {
+                                        const links = document.querySelectorAll(sel);
+                                        return Array.from(links).map(a => {
+                                            const href = a.href;
+                                            // walk up to find a card-like container
+                                            let card = a.closest(
+                                                '[class*="item"], [class*="prize"], '
+                                                + '[class*="present"], [class*="card"], li, tr'
+                                            ) || a.parentElement;
+                                            let title = '';
+                                            if (card) {
+                                                const heading = card.querySelector(
+                                                    'h2, h3, h4, .title, .name, '
+                                                    + '[class*="title"], [class*="name"]'
+                                                );
+                                                if (heading) {
+                                                    title = (heading.textContent || '').trim();
+                                                }
+                                                if (!title && a.title) title = a.title;
+                                                if (!title && a.getAttribute('aria-label')) {
+                                                    title = a.getAttribute('aria-label');
+                                                }
+                                                if (!title) {
+                                                    const txt = (card.textContent || '').trim();
+                                                    title = txt.length > 80 ? txt.substring(0, 80) + '…' : txt;
+                                                }
+                                            }
+                                            return { href: href, title: title };
+                                        });
+                                    }""",
+                                    link_selector_str,
+                                )
+                                for entry in title_data or []:
+                                    if isinstance(entry, dict):
+                                        href_val = entry.get("href")
+                                        title_val = entry.get("title") or ""
+                                        if isinstance(href_val, str) and isinstance(title_val, str):
+                                            prize_titles.setdefault(href_val, title_val.strip())
+                            except Exception as exc:
+                                logger.warning("prize title extraction failed: %s", exc)
+
                         seen_dyn: set[str] = set()
                         unique_prize_urls: list[str] = []
                         for u in prize_urls:
@@ -894,8 +950,24 @@ def cmd_run(
                     wizard.name,
                     "succeeded" if completed else "failed",
                 )
+                wizard_results.append(
+                    {
+                        "name": wizard.name,
+                        "url": wizard.url,
+                        "title": prize_titles.get(wizard.url, ""),
+                        "success": completed,
+                    }
+                )
             except Exception as exc:
                 logger.warning("%s wizard session failed: %s", wizard.name, exc)
+                wizard_results.append(
+                    {
+                        "name": wizard.name,
+                        "url": wizard.url,
+                        "title": prize_titles.get(wizard.url, ""),
+                        "success": False,
+                    }
+                )
 
     # Run any browser-driven daily actions (login bonus visits, gacha
     # spins, banner clicks). One Chromium boot covers all of them so
@@ -1040,6 +1112,16 @@ def cmd_run(
                         )
                     finally:
                         source.close()
+        elif cfg.adapter.lottery_mode:
+            # 抽選専用 adapter (chanceit 等) は「応募した賞品一覧」format。
+            # Generic send_summary は point yield / balance delta 前提で
+            # 抽選 yield に合わない。
+            notifier.send_lottery_summary(
+                site_label=cfg.adapter.site_label,
+                started_at=started_at,
+                finished_at=datetime.now(UTC),
+                wizard_results=wizard_results,
+            )
         else:
             notifier.send_summary(
                 summary,

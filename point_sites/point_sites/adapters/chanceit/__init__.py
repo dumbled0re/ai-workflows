@@ -83,6 +83,9 @@ ADAPTER = Adapter(
         final_wait_ms=8000,
     ),
     dynamic_wizard_max_count=20,
+    # Lottery-style Slack: 「応募した賞品一覧」format。賞品名 + URL を
+    # 列挙、user が当選時に内容を識別できるよう。
+    lottery_mode=True,
     # 当選確率が低い & 1 日 14 件程度なので stagnation 判定難しい。
     # 1 月程度 yield 観察してから stagnation_window を設定する判断。
     stagnation_window=None,

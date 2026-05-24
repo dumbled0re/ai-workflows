@@ -116,6 +116,60 @@ class Notifier:
             logger.warning("slack notify failed: %s", exc)
             return False
 
+    def send_lottery_summary(
+        self,
+        site_label: str,
+        started_at: object,  # datetime, kept loose to avoid import cycles
+        finished_at: object,
+        wizard_results: list[dict[str, object]],
+    ) -> None:
+        """Slack 通知: 抽選専用 「応募した賞品一覧」 format.
+
+        ``wizard_results`` 各 entry: ``{name, url, title, success}``.
+        title が空なら URL から prize id (例: detail/710054) を抽出して
+        fallback 表示。
+        """
+        succeeded = [r for r in wizard_results if r.get("success")]
+        failed = [r for r in wizard_results if not r.get("success")]
+        lines: list[str] = []
+        # datetime formatting — guarded for type narrowing
+        from datetime import datetime as _dt
+
+        if isinstance(started_at, _dt) and isinstance(finished_at, _dt):
+            lines.append(f"【{site_label} 抽選応募完了】 {started_at:%Y-%m-%d %H:%M}")
+            lines.append(
+                f"✅ 応募成功: {len(succeeded)} 件 / ❌ 失敗: {len(failed)} 件 "
+                f"/ 処理時間 {(finished_at - started_at).total_seconds():.0f}秒"
+            )
+        else:
+            lines.append(f"【{site_label} 抽選応募完了】")
+            lines.append(f"✅ 応募成功: {len(succeeded)} 件 / ❌ 失敗: {len(failed)} 件")
+        if succeeded:
+            lines.append("")
+            lines.append("--- 応募した賞品 ---")
+            for entry in succeeded:
+                url = str(entry.get("url") or "")
+                title = str(entry.get("title") or "").strip()
+                if not title:
+                    # Fallback: extract /detail/<id>/ as identifier
+                    import re as _re
+
+                    m = _re.search(r"/detail/(\d+)", url)
+                    title = f"(prize id {m.group(1)})" if m else "(タイトル取得失敗)"
+                lines.append(f"✅ {title}")
+                if url:
+                    lines.append(f"   {url}")
+        if failed:
+            lines.append("")
+            lines.append("--- 失敗 (selector miss 等) ---")
+            for entry in failed[:10]:
+                url = str(entry.get("url") or "")
+                title = str(entry.get("title") or "") or "(タイトル不明)"
+                lines.append(f"❌ {title}")
+                if url:
+                    lines.append(f"   {url}")
+        self._post({"text": "\n".join(lines)})
+
     def send_summary(
         self,
         summary: RunSummary,

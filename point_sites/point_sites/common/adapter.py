@@ -130,6 +130,15 @@ class Adapter:
     # expiry (same as before this field existed).
     password_login: PasswordLoginConfig | None = None
 
+    # Lottery-style Slack notification: send「応募した賞品一覧」instead
+    # of generic point_sites summary. For chanceit / 抽選専用 adapter
+    # where yield is "entries submitted" + (later) "prize won notification"
+    # rather than "points credited". When True, dynamic_wizard discovery
+    # extracts per-prize title from the list page (heuristic JS), and
+    # the wizard loop tracks per-wizard success → final Slack message
+    # lists each prize with status emoji.
+    lottery_mode: bool = False
+
     # Recent-run window for balance-stagnation detection. Default
     # ``None`` disables it, which is the right call for high-yield
     # sites where credit-ratio degradation already covers them.
