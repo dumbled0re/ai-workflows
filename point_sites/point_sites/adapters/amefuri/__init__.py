@@ -135,17 +135,14 @@ ADAPTER = Adapter(
             clicks=(),
         ),
         # PANBONスロット (i2ipoint.nail-monster.work redirect)。fruitmail
-        # present_slot と同 brand なので selector も同 (#start/#stop) と推定。
-        # final_wait_ms=12000 でスロット回転 (~5s) + 結果モーダル (~5s) を吸収。
-        # selector が違えば fail-soft で visit-only 相当の挙動に degrade。
+        # present_slot と同 brand と推定して #start/#stop を試したが、
+        # 7ae1634 + 63ae054 verify run で element 未検出 (異なる brand or
+        # ad-network 経由で iframe 入れ子)。visit-only に降格 + 12s 滞留で
+        # impression yield のみ狙う。selector の正解は別 issue で recon 要。
         DailyWizard(
             name="amefuri_estlier_panbon_slot",
             url="https://www.amefri.net/video/estlier/index/83",
-            clicks=(
-                ("#start", 1),
-                ("#stop", 1),
-            ),
-            initial_wait_ms=8000,
+            clicks=(),
             final_wait_ms=12000,
         ),
         # コラムとアンケート list page。visit-only だけど final_wait_ms を
@@ -162,52 +159,16 @@ ADAPTER = Adapter(
             url="https://www.amefri.net/video/ibridge/index/stamp",
             clicks=(),
         ),
-        # amefri.ib-game.jp/stamp/ hub の sub-game 5 種 (nanpre/keisan/
-        # eitango/shape_memory/sakana)。inspect (run 26351425825) で
-        # data-layout-nav-id 属性が static HTML にあることを確認。
-        # 各 wizard は hub に goto → 該当 sub-game の link を navigation_click
-        # → 15s 滞留で「entry 計上 + 広告 impression」を狙う。
-        # 完全実装 (各 game の interactive プレイ) は別 issue で escalate。
-        DailyWizard(
-            name="amefuri_stamp_nanpre",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/nanpre/top.php"]', 1),),
-            use_navigation_click=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_stamp_keisan",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/keisan/top.php"]', 1),),
-            use_navigation_click=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_stamp_eitango",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/eitango/top.php"]', 1),),
-            use_navigation_click=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_stamp_shape_memory",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/shape_memory/top.php"]', 1),),
-            use_navigation_click=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_stamp_sakana",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/sakana/top.php"]', 1),),
-            use_navigation_click=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
+        # stamp sub-games の click-navigation は失敗 (data-layout-nav-id /
+        # href both で 5s timeout)。実 wizard 内で page.click() が要求する
+        # actionability check (visibility) が満たされない様子。framework に
+        # ``click_force=True`` 拡張で bypass する余地あるが、現状は visit-only
+        # で各 sub-game の入口 URL を直接 hit する迂回路に変更。
+        # ``amefri.ib-game.jp`` は amefri.net の subdomain として既に
+        # allowed_hosts に subdomain-match で許可される (clicker.py)。
+        # ただし sub-game URL の uid/syid query は per-user で hard-code 不可、
+        # framework に dynamic-href substitution が要る → 別 issue。
+        # 当面は ``amefuri_ibridge_stamp`` の hub visit-only で代用。
         DailyWizard(
             name="amefuri_ibridge_farm",
             url="https://www.amefri.net/video/ibridge/index/farm",

@@ -109,66 +109,48 @@ ADAPTER = Adapter(
     # interactive game (game1000 ふるふるパニック / ibgame / typing) は
     # 別途 follow-up issue で対応。
     # estlier 6 種は NUMBERS DX 等の「進む × N → 数字選択 → submit」型。
-    # framework 拡張 (commit 8e9ae18) の use_navigation_click を活用して
-    # 「進む」link を 2 回 click。最初の click で rule.php → 2 回目 で
-    # 数字選択 page までは進む想定。数字選択は selector 不明なので submit
-    # まで行かないが、navigation の途中まで進めば「ゲーム参加」tracking に
-    # 計上される可能性あり。
-    # 6 種は同じ flow と仮定して同一 clicks tuple を使用。selector に共通性
-    # がない場合は fail-soft で degrade。
+    # use_navigation_click で .next_bt a click を試したが、第 3 者 ad-network
+    # 経由の host (heisei-housewarming.work 等) で selector visibility check
+    # に弾かれ、Playwright page.click() が 5s timeout (commit 51f0bb1 → 7ae1634
+    # で initial_wait_ms=5000 まで bump しても不通)。visit-only に降格 +
+    # final_wait_ms=8000 で entry visit 計上のみ狙う。
+    # 完全な multi-step navigation は framework に dynamic-href substitution
+    # or click_force option を追加して再挑戦 (別 issue)。
     daily_wizards=(
         DailyWizard(
             name="getmoney_estlier_38",
             url="https://dietnavi.com/pc/game/estlier/play.php?id=38",
-            clicks=((".next_bt a", 2),),
-            use_navigation_click=True,
-            initial_wait_ms=5000,
-            inter_click_ms=2000,
+            clicks=(),
             final_wait_ms=8000,
         ),
         DailyWizard(
             name="getmoney_estlier_71",
             url="https://dietnavi.com/pc/game/estlier/play.php?id=71",
-            clicks=((".next_bt a", 2),),
-            use_navigation_click=True,
-            initial_wait_ms=5000,
-            inter_click_ms=2000,
+            clicks=(),
             final_wait_ms=8000,
         ),
         DailyWizard(
             name="getmoney_estlier_83",
             url="https://dietnavi.com/pc/game/estlier/play.php?id=83",
-            clicks=((".next_bt a", 2),),
-            use_navigation_click=True,
-            initial_wait_ms=5000,
-            inter_click_ms=2000,
+            clicks=(),
             final_wait_ms=8000,
         ),
         DailyWizard(
             name="getmoney_estlier_94",
             url="https://dietnavi.com/pc/game/estlier/play.php?id=94",
-            clicks=((".next_bt a", 2),),
-            use_navigation_click=True,
-            initial_wait_ms=5000,
-            inter_click_ms=2000,
+            clicks=(),
             final_wait_ms=8000,
         ),
         DailyWizard(
             name="getmoney_estlier_102",
             url="https://dietnavi.com/pc/game/estlier/play.php?id=102",
-            clicks=((".next_bt a", 2),),
-            use_navigation_click=True,
-            initial_wait_ms=5000,
-            inter_click_ms=2000,
+            clicks=(),
             final_wait_ms=8000,
         ),
         DailyWizard(
             name="getmoney_estlier_112",
             url="https://dietnavi.com/pc/game/estlier/play.php?id=112",
-            clicks=((".next_bt a", 2),),
-            use_navigation_click=True,
-            initial_wait_ms=5000,
-            inter_click_ms=2000,
+            clicks=(),
             final_wait_ms=8000,
         ),
     ),
