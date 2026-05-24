@@ -137,26 +137,42 @@ ADAPTER = Adapter(
             url="https://www.pointtown.com/gacha",
             clicks=(),
         ),
+        # GMO platform 系の game (easygame / gesoten / brain_quiz / nazotore) は
+        # hapitas と共通 platform で「挑戦する」/「プレイする」class が
+        # ``c-n-btn-gameplay--start``。click_force JS evaluate で確実発火。
         DailyWizard(
             name="pointtown_easygame",
             url="https://www.pointtown.com/game/redirect/easygame",
-            clicks=(),
+            clicks=(("a.c-n-btn-gameplay--start", 1),),
+            use_navigation_click=True,
+            click_force=True,
+            final_wait_ms=20000,
         ),
         DailyWizard(
             name="pointtown_gesoten",
             url="https://www.pointtown.com/gesoten/redirect",
-            clicks=(),
+            clicks=(("a.c-n-btn-gameplay--start", 1),),
+            use_navigation_click=True,
+            click_force=True,
+            final_wait_ms=20000,
         ),
         DailyWizard(
             name="pointtown_brain_quiz",
             url="https://www.pointtown.com/quiz/redirect/brain-training",
-            clicks=(),
+            clicks=(("a.c-n-btn-gameplay--start", 1),),
+            use_navigation_click=True,
+            click_force=True,
+            final_wait_ms=20000,
         ),
         DailyWizard(
             name="pointtown_nazotore",
             url="https://www.pointtown.com/nazotore/redirect",
-            clicks=(),
+            clicks=(("a.c-n-btn-gameplay--start", 1),),
+            use_navigation_click=True,
+            click_force=True,
+            final_wait_ms=20000,
         ),
+        # pointq は別 platform (pointQ クイズ系)、selector 不明。visit-only。
         DailyWizard(
             name="pointtown_pointq",
             url="https://www.pointtown.com/pointq",

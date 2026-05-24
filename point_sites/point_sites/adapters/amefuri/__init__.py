@@ -119,20 +119,32 @@ ADAPTER = Adapter(
     # escalate (別 follow-up issue)。期待値は user screenshot の最大値で
     # 合計 ~5000-50000 pt 範囲 (10pt=1円換算なので月 ~1500-15000 円相当)。
     daily_wizards=(
+        # GMO platform 共通の「挑戦する」class ``c-n-btn-gameplay--start`` を
+        # click_force JS evaluate で確実発火 → game プレイ画面へ navigate
+        # して 20s 滞留 simulation。
         DailyWizard(
             name="amefuri_gmomedia_easygame",
             url="https://www.amefri.net/video/gmomedia/easygame",
-            clicks=(),
+            clicks=(("a.c-n-btn-gameplay--start", 1),),
+            use_navigation_click=True,
+            click_force=True,
+            final_wait_ms=20000,
         ),
         DailyWizard(
             name="amefuri_gmomedia_quiz",
             url="https://www.amefri.net/video/gmomedia/quiz",
-            clicks=(),
+            clicks=(("a.c-n-btn-gameplay--start", 1),),
+            use_navigation_click=True,
+            click_force=True,
+            final_wait_ms=20000,
         ),
         DailyWizard(
             name="amefuri_gmomedia_spotdiff",
             url="https://www.amefri.net/video/gmomedia/spotdiff",
-            clicks=(),
+            clicks=(("a.c-n-btn-gameplay--start", 1),),
+            use_navigation_click=True,
+            click_force=True,
+            final_wait_ms=20000,
         ),
         # PANBONスロット (i2ipoint.nail-monster.work redirect)。fruitmail
         # present_slot と同 brand と推定して #start/#stop を試したが、
