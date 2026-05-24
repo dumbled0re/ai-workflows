@@ -275,6 +275,104 @@ ADAPTER = Adapter(
             inter_step_ms=12000,
             final_wait_ms=15000,
         ),
+        # 2026-05-24 inspect (run 26356102677) で almond hub に既存 9 種以外
+        # 7 種の sub-game を発見: otsukai/yuusha/train/egg/teruteru/scratch/
+        # uranai。同 i2ipoint platform (fruitmail.woodcut.work/pc/<game>/) で
+        # rule.php / index.php に redirect。同 pattern (2-step click,
+        # inter_step_ms=12000) で展開。woodcut.work は allowed_hosts 外で
+        # direct inspect 不可だが、2nd click は silent no-op 許容
+        # (selector miss でも例外なし、1st click まではナビゲートする)。
+        DailyWizard(
+            name="fruitmail_almond_otsukai",
+            url="https://almond.fruitmail.net/estlier/",
+            clicks=(
+                ('a[href*="/pc/otsukai/"]', 1),
+                ('a[href="game_start.php"]', 1),
+            ),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            inter_step_ms=12000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="fruitmail_almond_yuusha",
+            url="https://almond.fruitmail.net/estlier/",
+            clicks=(
+                ('a[href*="/pc/yuusha/"]', 1),
+                ('a[href="game_start.php"]', 1),
+            ),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            inter_step_ms=12000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="fruitmail_almond_train",
+            url="https://almond.fruitmail.net/estlier/",
+            clicks=(
+                ('a[href*="/pc/train/"]', 1),
+                ('a[href="game_start.php"]', 1),
+            ),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            inter_step_ms=12000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="fruitmail_almond_egg",
+            url="https://almond.fruitmail.net/estlier/",
+            clicks=(
+                ('a[href*="/pc/egg/"]', 1),
+                ('a[href="game_start.php"]', 1),
+            ),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            inter_step_ms=12000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="fruitmail_almond_teruteru",
+            url="https://almond.fruitmail.net/estlier/",
+            clicks=(
+                ('a[href*="/pc/teruteru/"]', 1),
+                ('a[href="game_start.php"]', 1),
+            ),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            inter_step_ms=12000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="fruitmail_almond_scratch",
+            url="https://almond.fruitmail.net/estlier/",
+            clicks=(
+                ('a[href*="/pc/scratch/"]', 1),
+                ('a[href="game_start.php"]', 1),
+            ),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            inter_step_ms=12000,
+            final_wait_ms=15000,
+        ),
+        DailyWizard(
+            name="fruitmail_almond_uranai",
+            url="https://almond.fruitmail.net/estlier/",
+            clicks=(
+                ('a[href*="/pc/uranai/"]', 1),
+                ('a[href="game_start.php"]', 1),
+            ),
+            use_navigation_click=True,
+            click_force=True,
+            initial_wait_ms=6000,
+            inter_step_ms=12000,
+            final_wait_ms=15000,
+        ),
     ),
     # 2026-05-16 inspect (--anonymous) で確定。form id="login" action は
     # 同 URL POST。identifier は email or 会員 ID 両対応 (name="identifier")、
