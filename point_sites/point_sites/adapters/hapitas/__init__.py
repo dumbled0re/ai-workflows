@@ -94,20 +94,34 @@ ADAPTER = Adapter(
         # ``c-n-btn-gameplay--start`` class は GMO 共通の「挑戦する/
         # プレイする」start button。click_force JS evaluate で ad-iframe
         # 隠れていても発火。
+        # 2026-05-24: amefri gmomedia 3 (`0e12fc0`) で確認した kantangame hub
+        # の ``a.c-n-btn-requid--medium`` 「プレイする」link 2nd click を
+        # propagate (inspect run 26354954997 で hapitas.kantangame.com にも
+        # 同構造 carousel link 確認済)。``inter_step_ms=10000`` で hub load 完了待ち。
         DailyWizard(
             name="hapitas_gmo_easygame",
             url="https://m.hapitas.jp/gmo/game/easygame",
-            clicks=(("a.c-n-btn-gameplay--start", 1),),
+            clicks=(
+                ("a.c-n-btn-gameplay--start", 1),
+                ("a.c-n-btn-requid--medium", 1),
+            ),
             use_navigation_click=True,
             click_force=True,
+            initial_wait_ms=5000,
+            inter_step_ms=10000,
             final_wait_ms=20000,
         ),
         DailyWizard(
             name="hapitas_gmo_gesoten",
             url="https://m.hapitas.jp/gmo/game/gesoten",
-            clicks=(("a.c-n-btn-gameplay--start", 1),),
+            clicks=(
+                ("a.c-n-btn-gameplay--start", 1),
+                ("a.c-n-btn-requid--medium", 1),
+            ),
             use_navigation_click=True,
             click_force=True,
+            initial_wait_ms=5000,
+            inter_step_ms=10000,
             final_wait_ms=20000,
         ),
         DailyWizard(
@@ -119,17 +133,25 @@ ADAPTER = Adapter(
                 # ad-iframe 状態次第で visibility check に弾かれるので
                 # click_force JS evaluate で確実 click。
                 ("a.c-n-btn-gameplay--start", 1),
+                ("a.c-n-btn-requid--medium", 1),
             ),
             use_navigation_click=True,
             click_force=True,
+            initial_wait_ms=5000,
+            inter_step_ms=10000,
             final_wait_ms=20000,
         ),
         DailyWizard(
             name="hapitas_gmo_spotdiff",
             url="https://m.hapitas.jp/gmo/game/spotdiff",
-            clicks=(("a.c-n-btn-gameplay--start", 1),),
+            clicks=(
+                ("a.c-n-btn-gameplay--start", 1),
+                ("a.c-n-btn-requid--medium", 1),
+            ),
             use_navigation_click=True,
             click_force=True,
+            initial_wait_ms=5000,
+            inter_step_ms=10000,
             final_wait_ms=20000,
         ),
     ),
