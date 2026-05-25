@@ -80,12 +80,21 @@ from ...common.wizard import DailyWizard
 # ``:not(.prizeComponent_common__button--secondary)`` で back を除外して
 # 全 step 共通の forward-only selector にする (2026-05-25 buttons_dump で確定)。
 _FORWARD_SUBMIT = 'button.prizeComponent_common__button[type="submit"]:not(.prizeComponent_common__button--secondary)'
+# 2026-05-25 第三発見: fruitmail の応募 flow は **4 step**:
+#   /prize/<cat>/  → 応募する         → /prize/step1/ (登録情報の確認)
+#   /prize/step1/  → 確認して次へ     → /prize/step2/ (送付先の確認)
+#   /prize/step2/  → 確認して次へ     → /prize/step3/ (最終確認)
+#   /prize/step3/  → 応募する         → /prize/complete/? (完了)
+# step3 にも「戻る」 button が混じるので、forward-only selector を 4 step
+# 全部に適用 (step0 だけ #applyForm 内の submit で済む)。
 _PRIZE_CLICKS: tuple[tuple[str, int], ...] = (
     # Step 0 → Step 1: /prize/<category>/ の #applyForm submit
     ('#applyForm button[type="submit"]', 1),
     # Step 1 → Step 2: /prize/step1/ 「登録情報を確認する」
     (_FORWARD_SUBMIT, 1),
-    # Step 2 → 完了: /prize/step2/ 「確認して次へ」 (back を除外)
+    # Step 2 → Step 3: /prize/step2/ 「確認して次へ」 (back 除外)
+    (_FORWARD_SUBMIT, 1),
+    # Step 3 → 完了: /prize/step3/ 「応募する」 (final submit、back 除外)
     (_FORWARD_SUBMIT, 1),
 )
 
