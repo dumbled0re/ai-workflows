@@ -53,74 +53,83 @@ from ...common.wizard import DailyWizard
 # - 第 1 selector: 「ガチャを回す」 button (id / class 未確認)
 # - 第 2 selector: 後続の confirm / 結果 button
 # click_force でどの selector も silent no-op fail-soft。
+# /game/gacha 構造 (2026-05-25 inspect run 26380200255 で確定):
+#   <form action="/game/gacha/lottery" id="form-submit" method="post">
+#     <input id="btn-submit" class="btn-gacha" type="submit" value="ガチャを回す">
+#   </form>
+# 1 click で POST → /game/gacha/lottery (結果 page)、結果は即時メール送付。
 _GACHA_WIZARD = DailyWizard(
     name="dreammail_daily_gacha",
     url="https://www.dreammail.jp/game/gacha",
-    clicks=(
-        # 候補 1: id="play_button" or "gacha_start" pattern
-        ('button[id*="play"], button[id*="gacha"], a[id*="play"]', 1),
-        # 候補 2: class に "gacha" or "play" or "spin" を含む button/anchor
-        ('button[class*="gacha"], button[class*="play"], a[class*="gacha"]', 1),
-        # 候補 3: 結果モーダルの「閉じる」/「OK」 button
-        ('button[id*="close"], button[class*="close"], button[type="submit"]', 1),
-    ),
+    clicks=(("#btn-submit", 1),),
     use_navigation_click=True,
     click_force=True,
-    initial_wait_ms=4000,
-    inter_step_ms=3000,
+    initial_wait_ms=3000,
     final_wait_ms=5000,
-    title_selector="h1, h2",  # gacha タイトルを 「応募成功」表示用に流用
-    # 2026-05-25 false-positive 防止: 真の成功 marker (URL 変化 or 完了
-    # text) を inspect で確定するまでは verified=True を出さない。
-    # __NEVER_MATCH__ という URL は存在しないので必ず unverified。
-    success_url_pattern=r"__NEVER_MATCH__",
+    title_selector="h1, h2",
+    success_url_pattern=r"/game/gacha/lottery",
 )
 
 
 # /mmillion 現金 100 万円 (毎日応募、50 メダル/口)。
 # blind selector で 「応募する」ボタンを推測。fruitmail と同じ
 # ``#applyForm button[type="submit"]`` pattern なら通る可能性高い。
+# /mmillion 構造 (2026-05-25 inspect run 26380225558 で確定):
+#   <form action="/mmillion/apply" method="post" id="formMmillionDailyApply">
+#     <button type="button" id="btnMmillionDailyApply" class="btn-black">
+#       デイリー応募（50メダル）
+#     </button>
+#   </form>
+#   ↓ click → confirm modal:
+#   <button id="confirmYes" class="btn-black">はい</button>
+#   <button id="confirmNo" class="btn-default">いいえ</button>
+#   ↓ 「はい」 click → form JS submits → POST /mmillion/apply
+# 注意: 50 メダル必要。残高 0 で発火しても server エラー → success_url_pattern
+# 不一致で「未確定」になる (期待通り)。gacha 数日蓄積後に有効になる流れ。
 _MMILLION_WIZARD = DailyWizard(
     name="dreammail_mmillion",
     url="https://www.dreammail.jp/mmillion",
     clicks=(
-        # 候補 1: 標準的な form submit
-        ('form button[type="submit"], form input[type="submit"]', 1),
-        # 候補 2: anchor with "entry" or "応募"
-        ('a[href*="/entry/"], a[href*="/presents/entry"]', 1),
-        # 候補 3: 確認 page の最終 submit
-        ('button[type="submit"], form input[type="submit"]', 1),
+        # Step 1: デイリー応募 button → confirm modal を開く (JS handler)
+        ("#btnMmillionDailyApply", 1),
+        # Step 2: 「はい」 → form JS submit → POST /mmillion/apply
+        ("#confirmYes", 1),
     ),
     use_navigation_click=True,
     click_force=True,
     initial_wait_ms=4000,
-    inter_step_ms=4000,
+    inter_step_ms=3000,
     final_wait_ms=5000,
-    title_selector="h1",  # ページタイトルを流用
-    # 2026-05-25 false-positive 防止 (gacha と同じ理由)
-    success_url_pattern=r"__NEVER_MATCH__",
+    title_selector="h1",
+    success_url_pattern=r"/mmillion/apply",
 )
 
 
 # /presents/precam/<id> 0-medal promo の動的 discovery template。
 # user cookie 取得後の inspect で確実な selector に refine する。
 # anchor click で外部 ゆめキャン site にリダイレクト → impression credit。
+# precam (0-medal promo) 構造 (inspect run 26380251527 で確定):
+#   <a href="https://act.gro-fru.net/..." target="_blank"
+#      class="gotoLink btn-black gtm-imp">このキャンペーンに参加する（無料）</a>
+# 外部 ad-network (gro-fru.net) への redirect、参加 click 自体が credit。
+# target="_blank" のため URL が現 page で変わらず success_url_pattern で
+# verify 不可。click 自体は発火するが「成功確認」は別途別 path で必要。
+# 暫定で NEVER_MATCH のまま — 真の verify path を別 commit で検討。
+# Phase 2 案: framework に「target='' に書換えてから click」 option を
+# 追加して same-tab navigation 化、URL で verify。
 _PRECAM_TEMPLATE = DailyWizard(
     name="dreammail_precam",  # _<idx> suffix が runtime で付く
     url="<placeholder>",
     clicks=(
-        # precam page 内の「応募する」/「ゆめキャンで応募」button
-        ('a[href*="yumecam"], a[href*="precam"][href*="entry"], a.entry, button.entry', 1),
-        # 標準的な form submit fallback
-        ('form button[type="submit"], button[type="submit"]', 1),
+        # 「このキャンペーンに参加する」 anchor
+        ("a.gotoLink.btn-black, a.gotoLink", 1),
     ),
     use_navigation_click=True,
     click_force=True,
     initial_wait_ms=3500,
-    inter_step_ms=3000,
     final_wait_ms=5000,
     title_selector="h1, h2, .prize_title, .campaign_title",
-    # 2026-05-25 false-positive 防止 (gacha / mmillion と同じ理由)
+    # target="_blank" で同 page URL 変化なし → URL-based verify 不可
     success_url_pattern=r"__NEVER_MATCH__",
 )
 
