@@ -81,13 +81,22 @@ ADAPTER = Adapter(
         click_force=True,
         initial_wait_ms=3000,
         final_wait_ms=8000,
-        # 2026-05-25 防御: success_url_pattern 未設定だと wizard 完走 = 「応募
-        # 確認済」になるが、chanceit の jump.srv click 後の真の完了 URL を
-        # まだ inspect で pin していない (cookie 失効中で確認できず)。
-        # NEVER_MATCH で defensive にして偽陽性を防ぐ。user が cookie 更新
-        # 後 /jump.srv?id=... の遷移先を inspect して pattern を決める。
-        # 過去 (2026-05-24) の「応募確認済 13 件」も実は偽陽性の可能性あり。
-        success_url_pattern=r"__NEVER_MATCH_TBD__",
+        # 2026-05-25 確定 (run 26387678417 inspect):
+        # apply anchor は ``target="_blank"`` で新 tab を開く構造のため、
+        # 素朴な click では現 page URL が変化せず silent no-op になる。
+        # dreammail precam と同じく pre_click_evaluate で target を剥離して
+        # same-tab navigation 化、/jump.srv?id=<id> へ遷移させる。
+        pre_click_evaluate=(
+            "document.querySelectorAll('a[href*=\"/jump.srv?id=\"]')"
+            ".forEach(function(a) { a.target = '_self'; a.removeAttribute('target'); });"
+        ),
+        # click 後の遷移先候補:
+        #   - /jump.srv?id=<id> → 外部 partner サイト (= chance.com 以外)
+        #   - /jump.srv?id=<id> → /thanks/ や /complete/ (chance.com 内)
+        # /present/detail/<id>/ に残っていれば click 不発 = 未確定。
+        # /jump.srv または chance.com 以外の host にいれば応募 click 成立。
+        # ``error`` 含むのは 失敗 URL なので除外。
+        success_url_pattern=r"^(?!.*/present/detail/)(?!.*error)",
     ),
     dynamic_wizard_max_count=20,
     # Lottery-style Slack: 「応募した賞品一覧」format。賞品名 + URL を
