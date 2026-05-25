@@ -136,10 +136,15 @@ ADAPTER = Adapter(
             "yumecam.dreammail.jp",  # precam の外部リダイレクト先 subdomain
         }
     ),
-    # TEMP DEBUG (2026-05-25): empty keyword で verify_login を常時 pass
-    # させ、/my/modify / / の cookies 付き body を inspect で見て真の
-    # logged-in 状態を確認する。次の commit で正しい keyword に戻す。
-    login_keyword="",
+    # 2026-05-25 確認: cookie 経由認証が server に reject されている
+    # (login_keyword="" で verify_login を bypass して / inspect → body の
+    # nav が anonymous render `class="nav-login"` のまま)。
+    # 原因候補: session 切れ / UA bind / Cookie-Editor が HttpOnly session
+    # cookie を export し損ね。
+    # 復旧戦略: password_login=PasswordLoginConfig(...) で Playwright fresh
+    # login fallback を導入 + DREAMMAIL_USER / DREAMMAIL_PASS Secret 登録。
+    # 未着手のため cron は停止中 (.github/workflows/dreammail.yml)。
+    login_keyword="/logout",
     # No click-mail pipeline (cookie-only Phase 1). future Phase 2 could
     # add GmailSource for メルマガクリック型 entries (1000万円 entry path)
     # but requires user-side Gmail OAuth setup.
