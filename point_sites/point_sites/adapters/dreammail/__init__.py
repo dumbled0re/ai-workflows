@@ -119,9 +119,11 @@ _PRECAM_TEMPLATE = DailyWizard(
 ADAPTER = Adapter(
     name="dreammail",
     site_label="ドリームメール",
-    # mypage_url verified anonymously to return logged-in marker
-    # (ログアウト link) when cookie is valid.
-    mypage_url="https://www.dreammail.jp/mypage",
+    # mypage_url: ``/my/modify`` (登録情報の確認・変更) is the canonical
+    # authenticated page. Anonymous access redirects to /login; with a
+    # valid cookie the header carries "ログアウト" (login_keyword).
+    # ``/mypage`` is a 404; the path prefix for member pages is ``/my/``.
+    mypage_url="https://www.dreammail.jp/my/modify",
     allowed_hosts=frozenset(
         {
             "dreammail.jp",
