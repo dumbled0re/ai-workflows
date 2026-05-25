@@ -16,11 +16,16 @@ name: dreammail
 # Slack channel: 既存 #lottery (SLACK_CHANNEL_CHANCEIT を共有)
 
 on:
-  # 2026-05-25 cron 停止: fruitmail_lottery と同じ false-positive 問題
-  # + dreammail は cookie 認証エラーで 1 度も実 wizard 実行できていない。
-  # 仕様 (登録情報・口数・実 success 検証) 確定後に再開。
-  # schedule:
-  #   - cron: "45 23 * * *"  # JST 8:45 — DISABLED 2026-05-25
+  # 2026-05-25 cron 再有効化:
+  #   - password_login (DREAMMAIL_USER/PASS) で ID/PW 認証 verified
+  #   - gacha (success_url_pattern=/game/gacha/lotteried) → 真の応募完了
+  #     確認済
+  #   - precam (pre_click_evaluate で target='_blank' 剥離 + URL pattern
+  #     で dreammail.jp 以外 + error 除外) → 外部 ad-network へ実遷移確認
+  #   - mmillion は 50 メダル必要、現在 0 残高 → 「未確定」表示。medals が
+  #     gacha 経由で蓄積されたら自動的に「応募確認済」 に変わる
+  schedule:
+    - cron: "45 23 * * *"  # JST 8:45
   workflow_dispatch:
     inputs:
       dry_run:
