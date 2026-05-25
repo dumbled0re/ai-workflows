@@ -57,16 +57,28 @@ from ...common.balance import DEFAULT_BALANCE_PATTERNS
 from ...common.password_login import PasswordLoginConfig
 from ...common.wizard import DailyWizard
 
-# Shared prize-form click sequence. All 5 categories use the same
-# ``#applyForm`` POST to /prize/step1/ then a final submit to /prize/step2/.
-# Each step is fail-soft (selector miss = silent no-op under click_force).
+# Shared prize-form click sequence. fruitmail の応募 flow は **3 step**:
+#   /prize/<category>/  → #applyForm submit → /prize/step1/
+#   /prize/step1/       → 「登録情報を確認する」 → /prize/step2/ (送付先の確認)
+#   /prize/step2/       → 「応募する」 / 「送付先を確定して応募」 → /prize/complete/ など
+#
+# 2026-05-25 false-positive 事故: 当初 step2 到達を「応募完了」と判定した
+# が、実際の step2 page title は 「送付先の確認」 で 1 step 足りない事が
+# /prize/everymonth/ の post-wizard inspect で発覚 (form が消えず残っていた)。
+# 3 つ目の click を追加して **真の応募完了** まで到達させる。
+#
+# 各 step の submit button は class ``prizeComponent_common__button`` で
+# 統一されているので、同 selector を 3 回 click する click_force 設計で
+# 各 step を順次進めていく。selector miss は silent no-op。
 _PRIZE_CLICKS: tuple[tuple[str, int], ...] = (
-    # Step 0: submit /prize/<category>/ form → navigates to /prize/step1/
+    # Step 0 → Step 1: /prize/<category>/ の #applyForm 内 submit
     ('#applyForm button[type="submit"]', 1),
-    # Step 1: on /prize/step1/, submit「登録情報を確認する」→ /prize/step2/
-    # The step1 page is the only one with a 2nd form whose submit button
-    # carries class ``prizeComponent_common__button``; pick that as the
-    # most-specific safe selector.
+    # Step 1 → Step 2: /prize/step1/ の 「登録情報を確認する」
+    ('button.prizeComponent_common__button[type="submit"]', 1),
+    # Step 2 → 完了: /prize/step2/ (送付先の確認) の最終 submit
+    # 同 class の button が step2 にもある想定。実 URL は次 run の title
+    # log で確認 (page title が「応募完了」「ご応募ありがとう」系なら
+    # 真の終端、URL は /prize/complete/ や /prize/finish/ など)。
     ('button.prizeComponent_common__button[type="submit"]', 1),
 )
 
@@ -100,17 +112,12 @@ def _prize_wizard(name: str, slug: str) -> DailyWizard:
         final_wait_ms=5000,
         pre_click_evaluate=_SET_APPLY_NUMBER_JS,
         title_selector='input[name="item_name"]',
-        # Real-success marker: only count as success if the POST chain
-        # actually reached /prize/step2/. ``/prize/<category>/`` 残留は
-        # submit blocked (select required validator fail / PII missing
-        # server-side / silent selector miss) を意味する。2026-05-25 false-
-        # positive 事故 (登録情報未入力 account で「応募成功」誤通知) の
-        # 直接の対策。
-        # NOTE: step2 到達 = 受理という確証はまだ取れていない。step2 が
-        # success / error 両方の終点になる可能性があり、ユーザが mypage
-        # 応募履歴で実 entry を確認した後に必要なら success_text_marker
-        # も追加する (例「応募完了」「ご応募ありがとう」)。
-        success_url_pattern=r"/prize/step2/?$",
+        # Real-success marker: 2026-05-25 false-positive 第二弾で判明 ——
+        # /prize/step2/ は 「送付先の確認」 page (中間 step) であり完了で
+        # はない。真の完了は step2 の次の URL (本 commit 後の run で確定)。
+        # 暫定的に step2 以降を許可 (``step[2-9]`` or ``/complete``)。
+        # Next-run の title log を見て pin する。
+        success_url_pattern=r"/prize/(step[3-9]|complete|finish|done|thanks)/?$",
     )
 
 
