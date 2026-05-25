@@ -136,7 +136,10 @@ ADAPTER = Adapter(
             "yumecam.dreammail.jp",  # precam の外部リダイレクト先 subdomain
         }
     ),
-    login_keyword="/logout",
+    # TEMP DEBUG (2026-05-25): empty keyword で verify_login を常時 pass
+    # させ、/my/modify / / の cookies 付き body を inspect で見て真の
+    # logged-in 状態を確認する。次の commit で正しい keyword に戻す。
+    login_keyword="",
     # No click-mail pipeline (cookie-only Phase 1). future Phase 2 could
     # add GmailSource for メルマガクリック型 entries (1000万円 entry path)
     # but requires user-side Gmail OAuth setup.
