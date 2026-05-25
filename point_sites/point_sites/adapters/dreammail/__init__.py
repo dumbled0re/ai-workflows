@@ -70,6 +70,10 @@ _GACHA_WIZARD = DailyWizard(
     inter_step_ms=3000,
     final_wait_ms=5000,
     title_selector="h1, h2",  # gacha タイトルを 「応募成功」表示用に流用
+    # 2026-05-25 false-positive 防止: 真の成功 marker (URL 変化 or 完了
+    # text) を inspect で確定するまでは verified=True を出さない。
+    # __NEVER_MATCH__ という URL は存在しないので必ず unverified。
+    success_url_pattern=r"__NEVER_MATCH__",
 )
 
 
@@ -93,6 +97,8 @@ _MMILLION_WIZARD = DailyWizard(
     inter_step_ms=4000,
     final_wait_ms=5000,
     title_selector="h1",  # ページタイトルを流用
+    # 2026-05-25 false-positive 防止 (gacha と同じ理由)
+    success_url_pattern=r"__NEVER_MATCH__",
 )
 
 
@@ -114,6 +120,8 @@ _PRECAM_TEMPLATE = DailyWizard(
     inter_step_ms=3000,
     final_wait_ms=5000,
     title_selector="h1, h2, .prize_title, .campaign_title",
+    # 2026-05-25 false-positive 防止 (gacha / mmillion と同じ理由)
+    success_url_pattern=r"__NEVER_MATCH__",
 )
 
 
