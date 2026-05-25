@@ -989,12 +989,39 @@ def cmd_run(
                             final_wizard_url = page.url
                         except Exception:
                             final_wizard_url = "<unknown>"
+                        # Validate against success markers (URL pattern +
+                        # optional body text). For lottery_mode wizards
+                        # this guards against false-positive 「応募成功」
+                        # Slack notifications — a wizard whose click
+                        # sequence completed but whose form was blocked
+                        # (validation / silent selector miss / server-
+                        # side PII check) stays on the original URL and
+                        # MUST NOT be reported as a successful entry.
+                        success_url_ok = True
+                        success_text_ok = True
+                        if wizard.success_url_pattern:
+                            import re as _re
+
+                            success_url_ok = bool(_re.search(wizard.success_url_pattern, final_wizard_url))
+                        if wizard.success_text_marker:
+                            try:
+                                body_text = page.content()
+                                success_text_ok = wizard.success_text_marker in body_text
+                            except Exception as exc:
+                                logger.warning(
+                                    "%s success_text_marker check failed: %s",
+                                    wizard.name,
+                                    exc,
+                                )
+                                success_text_ok = False
+                        verified = success_url_ok and success_text_ok
                         logger.info(
-                            "%s wizard ended at url=%s",
+                            "%s wizard ended at url=%s verified=%s",
                             wizard.name,
                             final_wizard_url,
+                            verified,
                         )
-                        completed = True
+                        completed = verified
                     except Exception:
                         pass
                     finally:

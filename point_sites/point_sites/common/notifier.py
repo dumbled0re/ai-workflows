@@ -123,31 +123,40 @@ class Notifier:
         finished_at: object,
         wizard_results: list[dict[str, object]],
     ) -> None:
-        """Slack 通知: 抽選専用 「応募した賞品一覧」 format.
+        """Slack 通知: 抽選専用 「応募状況一覧」 format.
 
         ``wizard_results`` 各 entry: ``{name, url, title, success}``.
-        title が空なら URL から prize id (例: detail/710054) を抽出して
-        fallback 表示。
+        ``success=True`` は **wizard.success_url_pattern / success_text_marker
+        による server-side 受理 verify 済み**を意味する (DailyWizard 側で
+        verified=True のときだけ立つ)。verify 失敗 (form blocked / PII
+        check fail / silent selector miss) は ``success=False`` で
+        「未確定」section に振り分ける。
+
+        2026-05-25 user 指摘: wizard 完走を「応募成功」と直結させた false
+        positive 通知が大事故。本 method 単独では真偽判定できないので、
+        前段の wizard executor が verify した上で success フラグを立てる
+        前提。title が空なら URL から prize id (例: detail/710054) を抽出
+        して fallback 表示。
         """
-        succeeded = [r for r in wizard_results if r.get("success")]
-        failed = [r for r in wizard_results if not r.get("success")]
+        verified = [r for r in wizard_results if r.get("success")]
+        unconfirmed = [r for r in wizard_results if not r.get("success")]
         lines: list[str] = []
         # datetime formatting — guarded for type narrowing
         from datetime import datetime as _dt
 
         if isinstance(started_at, _dt) and isinstance(finished_at, _dt):
-            lines.append(f"【{site_label} 抽選応募完了】 {started_at:%Y-%m-%d %H:%M}")
+            lines.append(f"【{site_label} 抽選応募 run】 {started_at:%Y-%m-%d %H:%M}")
             lines.append(
-                f"✅ 応募成功: {len(succeeded)} 件 / ❌ 失敗: {len(failed)} 件 "
+                f"✅ 応募確認済: {len(verified)} 件 / ⚠️ 未確定: {len(unconfirmed)} 件 "
                 f"/ 処理時間 {(finished_at - started_at).total_seconds():.0f}秒"
             )
         else:
-            lines.append(f"【{site_label} 抽選応募完了】")
-            lines.append(f"✅ 応募成功: {len(succeeded)} 件 / ❌ 失敗: {len(failed)} 件")
-        if succeeded:
+            lines.append(f"【{site_label} 抽選応募 run】")
+            lines.append(f"✅ 応募確認済: {len(verified)} 件 / ⚠️ 未確定: {len(unconfirmed)} 件")
+        if verified:
             lines.append("")
-            lines.append("--- 応募した賞品 ---")
-            for entry in succeeded:
+            lines.append("--- 応募確認済 (server-side verify pass) ---")
+            for entry in verified:
                 url = str(entry.get("url") or "")
                 title = str(entry.get("title") or "").strip()
                 if not title:
@@ -159,13 +168,16 @@ class Notifier:
                 lines.append(f"✅ {title}")
                 if url:
                     lines.append(f"   {url}")
-        if failed:
+        if unconfirmed:
             lines.append("")
-            lines.append("--- 失敗 (selector miss 等) ---")
-            for entry in failed[:10]:
+            lines.append(
+                "--- 未確定 (click は完走、success_url / success_text 不一致 — "
+                "実応募が成立したか要 mypage 応募履歴 check) ---"
+            )
+            for entry in unconfirmed[:10]:
                 url = str(entry.get("url") or "")
                 title = str(entry.get("title") or "") or "(タイトル不明)"
-                lines.append(f"❌ {title}")
+                lines.append(f"⚠️ {title}")
                 if url:
                     lines.append(f"   {url}")
         self._post({"text": "\n".join(lines)})

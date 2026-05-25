@@ -100,6 +100,17 @@ def _prize_wizard(name: str, slug: str) -> DailyWizard:
         final_wait_ms=5000,
         pre_click_evaluate=_SET_APPLY_NUMBER_JS,
         title_selector='input[name="item_name"]',
+        # Real-success marker: only count as success if the POST chain
+        # actually reached /prize/step2/. ``/prize/<category>/`` 残留は
+        # submit blocked (select required validator fail / PII missing
+        # server-side / silent selector miss) を意味する。2026-05-25 false-
+        # positive 事故 (登録情報未入力 account で「応募成功」誤通知) の
+        # 直接の対策。
+        # NOTE: step2 到達 = 受理という確証はまだ取れていない。step2 が
+        # success / error 両方の終点になる可能性があり、ユーザが mypage
+        # 応募履歴で実 entry を確認した後に必要なら success_text_marker
+        # も追加する (例「応募完了」「ご応募ありがとう」)。
+        success_url_pattern=r"/prize/step2/?$",
     )
 
 

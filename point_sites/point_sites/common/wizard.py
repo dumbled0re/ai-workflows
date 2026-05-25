@@ -109,3 +109,23 @@ class DailyWizard:
     # other elements use ``textContent``. Empty result silently falls
     # back to the static name (notifier's "(タイトル取得失敗)" path).
     title_selector: str | None = None
+
+    # Regex matched against ``page.url`` after the click sequence to
+    # distinguish a real form submission from a silent selector miss /
+    # blocked submit. When set, the wizard is only marked successful if
+    # the final URL matches. Critical for lottery_mode wizards: without
+    # this check, "wizard succeeded" is a false-positive signal because
+    # click_force=True drops "element not found" exceptions silently and
+    # an HTML5-required form validator can block submit without raising.
+    # When ``None`` (default), legacy behavior — completion is based
+    # solely on the click loop running without exceptions.
+    # Example: ``r"/prize/step2/"`` for fruitmail prize forms whose POST
+    # navigates from /prize/<category>/ → /prize/step1/ → /prize/step2/
+    # only when validation + PII checks pass server-side.
+    success_url_pattern: str | None = None
+
+    # Optional text marker checked in the final page body. Same intent
+    # as ``success_url_pattern`` but for sites whose URL doesn't change
+    # (e.g. SPA-style success modal in place). When both pattern and
+    # text marker are set, BOTH must match for completion. None=skip.
+    success_text_marker: str | None = None
