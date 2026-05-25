@@ -1041,12 +1041,15 @@ def cmd_run(
                         try:
                             buttons_dump = page.evaluate(
                                 """() => {
-                                    const els = document.querySelectorAll('button, input[type="submit"], a.prizeComponent_common__button');
+                                    const sel = 'button, input[type="submit"], '
+                                        + 'a.prizeComponent_common__button';
+                                    const els = document.querySelectorAll(sel);
                                     return Array.from(els).slice(0, 30).map(e => ({
                                         tag: e.tagName,
                                         type: e.type || '',
                                         cls: e.className || '',
-                                        text: (e.textContent || e.value || '').trim().substring(0, 50),
+                                        text: (e.textContent || e.value || '')
+                                            .trim().substring(0, 50),
                                         ga: e.getAttribute('data-click-ga') || '',
                                         href: e.getAttribute('href') || '',
                                     }));
