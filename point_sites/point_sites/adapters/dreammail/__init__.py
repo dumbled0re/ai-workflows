@@ -123,11 +123,21 @@ _MMILLION_WIZARD = DailyWizard(
 # 暫定で NEVER_MATCH のまま — 真の verify path を別 commit で検討。
 # Phase 2 案: framework に「target='' に書換えてから click」 option を
 # 追加して same-tab navigation 化、URL で verify。
+# precam の参加 anchor は ``target="_blank"`` で新 tab を開くため click
+# しても現 page URL が変わらず、URL-based verify が使えなかった。
+# 2026-05-25: pre_click_evaluate で全 anchor の target を空にすれば
+# same-tab navigation 化できる。click 後 page.url が外部 ad-network
+# (gro-fru.net, ms-imp.net 等) に遷移するので、dreammail.jp 以外の host
+# にいる = 参加 click が server-side で発火した、と verify できる。
+_PRECAM_STRIP_TARGET_JS = (
+    "document.querySelectorAll('a.gotoLink, a[target=\"_blank\"]')"
+    ".forEach(function(a) { a.target = '_self'; a.removeAttribute('target'); });"
+)
 _PRECAM_TEMPLATE = DailyWizard(
     name="dreammail_precam",  # _<idx> suffix が runtime で付く
     url="<placeholder>",
     clicks=(
-        # 「このキャンペーンに参加する」 anchor
+        # 「このキャンペーンに参加する」 anchor (target を pre_click で剥離済)
         ("a.gotoLink.btn-black, a.gotoLink", 1),
     ),
     use_navigation_click=True,
@@ -135,8 +145,11 @@ _PRECAM_TEMPLATE = DailyWizard(
     initial_wait_ms=3500,
     final_wait_ms=5000,
     title_selector="h1, h2, .prize_title, .campaign_title",
-    # target="_blank" で同 page URL 変化なし → URL-based verify 不可
-    success_url_pattern=r"__NEVER_MATCH__",
+    pre_click_evaluate=_PRECAM_STRIP_TARGET_JS,
+    # target 剥離後の click で外部 ad-network host に遷移する → dreammail.jp
+    # 以外の host にいれば参加 click が server に伝わった = verify 成功。
+    # 外部 host の例: act.gro-fru.net, sp.ms-imp.net 等。
+    success_url_pattern=r"^https://(?!.*dreammail\.jp)",
 )
 
 
