@@ -978,6 +978,22 @@ def cmd_run(
                         # Bump per-wizard for video-watching wizards
                         # (動画 CM 視聴 / 動画広告 30s 視聴 等).
                         page.wait_for_timeout(wizard.final_wait_ms)
+                        # Log the final page URL so we can verify form-
+                        # submit wizards actually navigated past the
+                        # original landing (e.g. /prize/everyday/ →
+                        # /prize/step1/ → /prize/step2/). Without this,
+                        # "wizard succeeded" only means the click sequence
+                        # didn't throw — a silent selector miss looks
+                        # identical to a real submit.
+                        try:
+                            final_wizard_url = page.url
+                        except Exception:
+                            final_wizard_url = "<unknown>"
+                        logger.info(
+                            "%s wizard ended at url=%s",
+                            wizard.name,
+                            final_wizard_url,
+                        )
                         completed = True
                     except Exception:
                         pass
