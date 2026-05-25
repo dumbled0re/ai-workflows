@@ -148,8 +148,14 @@ _PRECAM_TEMPLATE = DailyWizard(
     pre_click_evaluate=_PRECAM_STRIP_TARGET_JS,
     # target 剥離後の click で外部 ad-network host に遷移する → dreammail.jp
     # 以外の host にいれば参加 click が server に伝わった = verify 成功。
-    # 外部 host の例: act.gro-fru.net, sp.ms-imp.net 等。
-    success_url_pattern=r"^https://(?!.*dreammail\.jp)",
+    # 外部 host の例: shopping.yahoo.co.jp, cp.manara.jp, fasttrack-2hr.com 等。
+    # 2026-05-25 dispatch (run 26381185075) で発覚: error page (例:
+    # ``tr.smaad.net/error?key=error_ip``) も外部 host なので素朴な
+    # negative lookahead で verify=True に届く。``error`` を含む URL を
+    # 除外して偽陽性を更に削減。
+    # 注意: アンケート系 precam (cp.manara.jp 等) は CLAUDE.md policy で
+    # 自動応募 NG。要 user 判断、discovery 段階で filter する別途検討。
+    success_url_pattern=r"^https://(?!.*dreammail\.jp)(?!.*error)",
 )
 
 
