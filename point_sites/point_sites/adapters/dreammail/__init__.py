@@ -119,11 +119,16 @@ _PRECAM_TEMPLATE = DailyWizard(
 ADAPTER = Adapter(
     name="dreammail",
     site_label="ドリームメール",
-    # mypage_url: ``/my/modify`` (登録情報の確認・変更) is the canonical
-    # authenticated page. Anonymous access redirects to /login; with a
-    # valid cookie the header carries "ログアウト" (login_keyword).
-    # ``/mypage`` is a 404; the path prefix for member pages is ``/my/``.
-    mypage_url="https://www.dreammail.jp/my/modify",
+    # mypage_url: トップページ (``/``)。anonymous でも 200 で返るが、nav の
+    # logged-in/anonymous で差分が出る:
+    #   - anonymous: ``<a href="/login?redirect_url=/" class="nav-login">ログイン</a>``
+    #   - logged-in: ``<a href="/logout?...">ログアウト</a>`` (推定)
+    # login_keyword=``/logout`` で logged-in 状態を検知 (anonymous body には
+    # /logout URL が出ない、一方 logged-in body には header の logout link
+    # として必ず登場する想定)。2026-05-25 inspect で確定。
+    # 過去使った ``/my/modify`` + ``ログアウト`` の組合せは "stale cookies"
+    # と判定されて inspect すらできなかった (verify_login 突破要)。
+    mypage_url="https://www.dreammail.jp/",
     allowed_hosts=frozenset(
         {
             "dreammail.jp",
@@ -131,7 +136,7 @@ ADAPTER = Adapter(
             "yumecam.dreammail.jp",  # precam の外部リダイレクト先 subdomain
         }
     ),
-    login_keyword="ログアウト",
+    login_keyword="/logout",
     # No click-mail pipeline (cookie-only Phase 1). future Phase 2 could
     # add GmailSource for メルマガクリック型 entries (1000万円 entry path)
     # but requires user-side Gmail OAuth setup.
