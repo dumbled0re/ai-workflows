@@ -99,9 +99,13 @@ jobs:
       slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
       slack_channel: ${{ secrets.SLACK_CHANNEL_CHANCEIT }}
       cookies: ${{ secrets.CHANCEIT_COOKIES }}
+      # 2026-05-25 追加: chanceit cookie が短命 (1-2 日で失効する観察)
+      # への復旧策。CHANCEIT_USER (会員 ID or 登録メール) + CHANCEIT_PASS を
+      # Secret 登録すると、cookie 失効時に Playwright で fresh login → cookie
+      # rotate → wizard 続行。fruitmail / dreammail と同じ仕組み。
+      login_user: ${{ secrets.CHANCEIT_USER }}
+      login_pass: ${{ secrets.CHANCEIT_PASS }}
       # gmail_* not used (source=None) but reusable workflow expects them
       gmail_client_id: ${{ secrets.GMAIL_CLIENT_ID }}
       gmail_client_secret: ${{ secrets.GMAIL_CLIENT_SECRET }}
       gmail_refresh_token: ${{ secrets.GMAIL_REFRESH_TOKEN }}
-      login_user: ""
-      login_pass: ""

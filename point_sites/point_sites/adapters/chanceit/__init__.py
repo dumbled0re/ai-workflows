@@ -44,6 +44,7 @@ from __future__ import annotations
 
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
+from ...common.password_login import PasswordLoginConfig
 from ...common.wizard import DailyWizard
 
 ADAPTER = Adapter(
@@ -105,4 +106,21 @@ ADAPTER = Adapter(
     # 当選確率が低い & 1 日 14 件程度なので stagnation 判定難しい。
     # 1 月程度 yield 観察してから stagnation_window を設定する判断。
     stagnation_window=None,
+    # 2026-05-25 追加: cookie 寿命が短い chanceit に password_login fallback
+    # を導入。fruitmail / dreammail と同じ仕組み。
+    # /member/login.srv form 構造 (run 26390588179 inspect で確定):
+    #   - <form action="https://www.chance.com/member/login.srv" method="post">
+    #   - <input type="text" name="id" class="ipass">       (ユーザ ID)
+    #   - <input type="password" name="password" class="ipass">
+    #   - <input type="image" name="search_btn" class="bt"> (submit、画像 button)
+    # success_marker は login 成功後 redirect 先 (top や mypage) に必ず存在する
+    # 「ログアウト」 link。
+    # 必要 Secret: CHANCEIT_USER / CHANCEIT_PASS
+    password_login=PasswordLoginConfig(
+        login_url="https://www.chance.com/member/login.jsp",
+        username_selector='input[name="id"]',
+        password_selector='input[name="password"]',
+        submit_selector='input[name="search_btn"]',
+        success_marker="ログアウト",
+    ),
 )
