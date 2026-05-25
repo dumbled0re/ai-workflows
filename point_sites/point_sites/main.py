@@ -1015,11 +1015,24 @@ def cmd_run(
                                 )
                                 success_text_ok = False
                         verified = success_url_ok and success_text_ok
+                        # On a verified success without an explicit text
+                        # marker, capture the page <title> + first 200
+                        # chars of body so we can pin a text marker in
+                        # a later commit. This is the cheapest way to
+                        # discover the canonical "応募完了" string for a
+                        # site without running another inspect.
+                        title_hint = ""
+                        if verified and not wizard.success_text_marker:
+                            try:
+                                title_hint = page.title() or ""
+                            except Exception:
+                                title_hint = "<title-error>"
                         logger.info(
-                            "%s wizard ended at url=%s verified=%s",
+                            "%s wizard ended at url=%s verified=%s title=%r",
                             wizard.name,
                             final_wizard_url,
                             verified,
+                            title_hint[:100],
                         )
                         completed = verified
                     except Exception:
