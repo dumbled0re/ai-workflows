@@ -44,7 +44,6 @@ from __future__ import annotations
 
 from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
-from ...common.password_login import PasswordLoginConfig
 from ...common.wizard import DailyWizard
 
 ADAPTER = Adapter(
