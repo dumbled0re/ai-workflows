@@ -97,8 +97,12 @@ _MMILLION_WIZARD = DailyWizard(
         # Step 2: 「はい」 → form JS submit → POST /mmillion/apply
         ("#confirmYes", 1),
     ),
-    use_navigation_click=True,
-    click_force=True,
+    # 2026-05-25 第二試行: click_force=True (evaluate-based el.click()) で
+    # 初回 run が click 不発 → URL 変化なし。jQuery handler は dispatch_event
+    # で確実に発火するので、click_force=False + use_navigation_click=False
+    # にして dispatch_event 方式に切替。
+    use_navigation_click=False,
+    click_force=False,
     initial_wait_ms=4000,
     inter_step_ms=3000,
     final_wait_ms=5000,

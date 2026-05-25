@@ -81,6 +81,13 @@ ADAPTER = Adapter(
         click_force=True,
         initial_wait_ms=3000,
         final_wait_ms=8000,
+        # 2026-05-25 防御: success_url_pattern 未設定だと wizard 完走 = 「応募
+        # 確認済」になるが、chanceit の jump.srv click 後の真の完了 URL を
+        # まだ inspect で pin していない (cookie 失効中で確認できず)。
+        # NEVER_MATCH で defensive にして偽陽性を防ぐ。user が cookie 更新
+        # 後 /jump.srv?id=... の遷移先を inspect して pattern を決める。
+        # 過去 (2026-05-24) の「応募確認済 13 件」も実は偽陽性の可能性あり。
+        success_url_pattern=r"__NEVER_MATCH_TBD__",
     ),
     dynamic_wizard_max_count=20,
     # Lottery-style Slack: 「応募した賞品一覧」format。賞品名 + URL を
