@@ -1,8 +1,8 @@
 # point_sites 自動化マップ
 
-各サイトで何を自動化しているか / 何ができないかの完全 inventory (2026-05-24 時点)。
+各サイトで何を自動化しているか / 何ができないかの完全 inventory (2026-05-25 時点)。
 
-ポイ活 (ポイントサイト) と抽選 (chanceit 等) の両用 framework。
+ポイ活 (ポイントサイト) と抽選 (chanceit / fruitmail_lottery / dreammail) の両用 framework。
 
 新規 site 追加時 / 既存 site 改修時 / "もう実装できるものは無いのか" の質問が来た時にこのファイルを更新する。
 
@@ -20,11 +20,11 @@
 | **sugutama** | Gmail + 2 visit-only | **2** (game_hub + events、SPA anti-bot で visit-only) | — | `GmailSource`、`balance_uses_browser` |
 | **warau** | Gmail + 1 visit-only | **1** (play_hub、SPA anti-bot で visit-only) | — | `GmailSource` |
 | **gendama** | scaffolded (非 active) | 0 | — | 180-day inactivity rule で user 判断で disable |
-| **chanceit** (NEW 2026-05-24、抽選専用) | wizards-only (source=None) + dynamic_wizard discovery | dynamic (毎日 14 件) | — | 「応募が簡単」list を毎日 scrape → 各 prize で「応募する」button click。会員 cookie 経由で server 側が PII auto-fill |
-| **fruitmail_lottery** (NEW 2026-05-25、抽選専用) | wizards-only (source=None) + 5 daily_wizards | **5** (everyday / everyweek / everymonth / gorgeous / premium) | — | 既存 fruitmail cookie を流用、`#applyForm` で submit → `/prize/step1/` → 確認 button → 完了。`title_selector` で hidden `item_name` を抽出して Slack 表示 |
-| **dreammail** (NEW 2026-05-25、抽選専用、Phase 1 skeleton) | wizards-only (source=None) + 2 daily_wizards + dynamic precam discovery | **2 + dynamic (~10)** (gacha + mmillion + /presents/precam/<id>) | — | Cookie 取得待ち、selector は blind guess。`/game/gacha` daily medal 獲得、`/mmillion` 50 medals で 100万円 entry、`/presents/precam/<id>` 0-medal promo の動的 discovery |
+| **chanceit** (2026-05-24 初実装 / 2026-05-25 target-strip 修正 + verify 確立) | wizards-only (source=None) + dynamic discovery | dynamic **12-20 件/日** verified | — | `?type=6` 「応募が簡単」list を毎日 scrape → 各 prize page の `a[href*="/jump.srv?id="]` (`target="_blank"` を `pre_click_evaluate` で剥離) を click → 外部 partner site に遷移 (server 側で PII auto-fill)。`success_url_pattern=r"^(?!.*/present/detail/)(?!.*error)"` で server 受理確認 |
+| **fruitmail_lottery** (NEW 2026-05-25、抽選専用) | wizards-only (source=None) + 5 daily_wizards | **5** verified (everyday / everyweek / everymonth / gorgeous / premium) | — | 既存 fruitmail cookie + ID/PW を流用、4-step click flow: `/prize/<cat>/` → step1 (登録情報確認) → step2 (送付先確認) → step3 (最終確認) → `/prize/end/?page=<cat>` (応募完了)。`success_url_pattern=r"/prize/end/"` で真の完了 verify、`title_selector='input[name="item_name"]'` で hidden 賞品名を Slack 表示 |
+| **dreammail** (NEW 2026-05-25、抽選専用 Phase 1 完了) | wizards-only (source=None) + 2 daily_wizards + dynamic precam discovery | **2 verified + dynamic ~7/日** (gacha + mmillion + /presents/precam/<id>) | — | password_login (ID/PW) で fresh login → cookie rotate。gacha: `#btn-submit` → `/game/gacha/lotteried`。precam: `pre_click_evaluate` で target=_blank 剥離 → 外部 ad-network 遷移。mmillion: 50 medals/口 必要 (medals 蓄積後に動く、現状「未確定」) |
 
-**合計**: 80 wizards + dynamic (chanceit ~14 + dreammail precam ~10/日) + 23 daily banners + 1 endpoint poll + 2 browser actions + 7 Gmail/OnsiteInbox click pipelines
+**合計**: **85 static wizards** (73 ポイ活 + 12 抽選) + **dynamic (chanceit 12-20 + dreammail precam ~7)/日** + 23 daily banners + 1 endpoint poll + 2 browser actions + 7 Gmail/OnsiteInbox click pipelines + 2 password_login fallback (fruitmail / dreammail、chanceit は IP block で不可)
 
 ## 📋 wizard 詳細 (site 別)
 
@@ -77,39 +77,60 @@
 ### warau (1 wizard)
 - **play_hub** (`/play/` visit-only)
 
-### dreammail (NEW 2026-05-25、抽選専用、Phase 1)
-- **status**: cookie 取得待ち、blind selector で initial run、後で inspect-driven refine
-- **2 daily_wizards**:
-  - `dreammail_daily_gacha` (`/game/gacha`) — 1 日 1 回ガチャ、10-100 medals payout
-  - `dreammail_mmillion` (`/mmillion`) — 50 medals で 100万円 entry、月 1 抽選
-- **dynamic_wizard**: `/presents` page を scrape → `a[href*="/presents/precam/"]` で 0-medal promo URL を抽出 (max 10 件) → template wizard で各 page を訪問 → 「応募する」/「ゆめキャンで応募」button click
-- **source = None, lottery_mode = True, Gmail OAuth 不要**
-- **user 作業**: dreammail 会員登録 + cookie export → `DREAMMAIL_COOKIES` Secret
-- **Slack channel**: `SLACK_CHANNEL_CHANCEIT` (= #lottery) 共有
-- **期待 yield**: medals 蓄積 + monthly 100万円当選確率 + precam promo 抽選数件/月
-- **Phase 2 候補** (本実装には含まれない): GmailSource 経由のメルマガクリック型 (1000万円 entry path)、login bonus / 出席 wizard、`/game/seven` Amazon ギフト slot game
-
-### fruitmail_lottery (NEW 2026-05-25、抽選専用)
-- **5 daily_wizards** (`/prize/<category>/`): everyday / everyweek / everymonth / gorgeous / premium
-  - 各 wizard: navigate → `pre_click_evaluate` で `<select name="selected_apply_number">` を 1 に set → `#applyForm button[type="submit"]` で `/prize/step1/` に POST → 確認 page で `button.prizeComponent_common__button[type="submit"]` を click → `/prize/step2/` で完了
-  - `title_selector='input[name="item_name"]'` で hidden input の賞品名 (例: 「ドリームジャンボ宝くじ 10枚」) を抽出 → 「応募した賞品一覧」Slack に表示
-- **source = None, lottery_mode = True**: click-mail は親 `fruitmail` adapter が処理。本 adapter は懸賞応募のみで「応募した賞品一覧」format
-- **共有 credentials**: workflow で `FRUITMAIL_COOKIES` / `FRUITMAIL_USER` / `FRUITMAIL_PASS` を流用、user 追加作業ゼロ
-- **Slack channel**: `SLACK_CHANNEL_CHANCEIT` (= #lottery) を共有
-- **無料**: 「口数」は応募権数 (default 1 件/日)、ポイント消費なし。アンケート回答で口数追加できるが survey 自動回答は CLAUDE.md policy NG なので default 1 件/日で運用
-- **premium 注意**: Diamond/Platinum/Black ランク限定、未到達アカウントは form 不在で fail-soft (silent no-op)
-- **期待 yield**: 5 件/日 × 当選率 0.5-2% × 賞品平均 1,000-5,000円 = 100-500円/月 (保守)。豪華は 10 万円現金、毎日はジャンボ宝くじ 10 枚等
-
-### chanceit (NEW 2026-05-24、抽選専用)
-- **dynamic discovery**: 毎日 `https://www.chance.com/present/list.jsp?type=6` を scrape
+### chanceit (2026-05-24 初実装 / 2026-05-25 target-strip + verify 確立)
+- **status**: ✅ 動作確認済 (run 26387753635 で 12/12 が外部 partner サイト遷移)
+- **dynamic discovery**: 毎日 `https://www.chance.com/present/list.jsp?type=6` 「応募が簡単」を scrape
   - `a[href*="/present/detail/"]` で個別 prize URL 抽出 (最大 20 件 cap)
   - 各 prize page で `a[href*="/jump.srv?id="]` (「応募する」button) click
-  - 会員 cookie で server 側が PII (氏名/住所/電話/メール) を auto-fill
-  - 公式「30秒足らずで応募」モデル、1 click で entry 完了
-- **source = None**: 抽選専用、click-mail pipeline 不要。Gmail API setup 不要
-- **期待 yield**: 月 ~30-50 件 entry × 当選率 1-5% × 賞品平均 3000-8000円 = 2,000-4,000円/月 (保守)
-- **user 作業**: 新 Gmail で chanceit 会員登録 → cookie export → CHANCEIT_COOKIES Secret 登録
-- **TOS 注意**: chanceit 規約 第 5 条「コンピュータウィルス等」「虚偽情報送信」禁止、自動 click 自体は明示禁止されていないが「不正行為」判定で会員停止/損害賠償 リスクあり。大量応募抑制で max_count=20
+- **target='_blank' 対応**: apply anchor は `target="_blank"` で新 tab を開く構造のため、`pre_click_evaluate` で全 anchor の target を `_self` に書換える → click 後 same-tab で外部 partner site (`genki-mama.com` / `shopping.yahoo.co.jp` / `mosimo.net` / `nipponham-furusato.jp` 等) に navigation。会員 cookie で server 側 PII auto-fill
+- **success_url_pattern**: `r"^(?!.*/present/detail/)(?!.*error)"` で `/present/detail/<id>/` 残留 = silent no-op = 未確定、それ以外 = verified
+- **password_login 不可**: GitHub Actions runner IP (US data center) からの login を chanceit server が拒否 (IP geofence + device fingerprint anti-bot)。cookie 失効時は user 手動 Cookie-Editor 再 export が必要 (`CHANCEIT_COOKIES` Secret 更新)
+- **2026-05-24 偽陽性事故 (resolved)**: 元実装は target=_blank で全 click silent no-op + success_url_pattern 未設定で「応募確認済 13 件」誤通知。`success_url_pattern` + `pre_click_evaluate` の 2 段構えで対処済
+- **source = None, lottery_mode = True**: click-mail pipeline 不要、Gmail API setup 不要
+- **Slack channel**: `SLACK_CHANNEL_CHANCEIT` (= #lottery) — 抽選 3 site で共有
+- **期待 yield**: 月 ~360-600 件 entry × 当選率 0.5-2% × 賞品平均 1000-5000円 = 1,500-3,000円/月 (保守)
+- **TOS 注意**: 利用規約 第 5 条「コンピュータウィルス等」「虚偽情報送信」禁止、自動 click 自体は明示禁止されていないが「不正行為」判定で会員停止/損害賠償リスクあり。大量応募抑制で `dynamic_wizard_max_count=20`
+
+### fruitmail_lottery (NEW 2026-05-25、抽選専用)
+- **status**: ✅ **server-confirmed** (run 26381148051 で `/prize/everyweek/` の「応募済み口数: 8」widget で実応募登録を直接確認)
+- **5 daily_wizards** (`/prize/<category>/`): everyday / everyweek / everymonth / gorgeous / premium
+- **4-step click flow** (2026-05-25 数次の inspect で確定):
+  - Step 0: navigate `/prize/<cat>/` → `pre_click_evaluate` で `<select name="selected_apply_number">` を 1 に set → `#applyForm button[type="submit"]` で POST → `/prize/step1/`
+  - Step 1 (`/prize/step1/` 登録情報の確認): forward-only submit → `/prize/step2/`
+  - Step 2 (`/prize/step2/` 送付先の確認): `:not(.prizeComponent_common__button--secondary)` で back button 除外 → forward submit → `/prize/step3/`
+  - Step 3 (`/prize/step3/` 最終確認): forward submit (「応募する」) → **`/prize/end/?page=<cat>` (応募完了)**
+- **forward selector**: `button.prizeComponent_common__button[type="submit"]:not(.prizeComponent_common__button--secondary)` で 「戻る」を除外して 「確認して次へ / 応募する」 だけを hit
+- **success_url_pattern**: `r"/prize/end/"`
+- **title_selector**: `input[name="item_name"]` で hidden input の賞品名 (例: 「ドリームジャンボ宝くじ 10枚」) を抽出 → Slack 「応募した賞品一覧」 に表示
+- **source = None, lottery_mode = True**: click-mail は親 `fruitmail` adapter が処理。本 adapter は懸賞応募のみで「応募確認済 / 未確定」 format
+- **共有 credentials**: workflow で `FRUITMAIL_COOKIES` / `FRUITMAIL_USER` / `FRUITMAIL_PASS` を流用、user 追加作業ゼロ。cookie 失効時は password_login fallback で自動復旧
+- **Slack channel**: `SLACK_CHANNEL_CHANCEIT` (= #lottery) を共有
+- **無料**: 「口数」は応募権数 (default 1 件/日)、ポイント消費なし。アンケート回答で口数追加できるが survey 自動回答は CLAUDE.md policy NG なので default 1 件/日で運用
+- **multi-口 カテゴリ**: 毎週 (「何度も応募してGET」) / 豪華 (「応募すればするほど」) は 1 日複数口可能。cron daily で累積する設計
+- **premium 注意**: Diamond/Platinum/Black ランク限定、未到達アカウントは form 不在で「未確定」になる (fail-soft)
+- **期待 yield**: 5 件/日 × 当選率 0.5-2% × 賞品平均 1,000-5,000円 = 100-500円/月 (保守)。豪華は 10 万円現金、毎日はジャンボ宝くじ 10 枚等
+
+### dreammail (NEW 2026-05-25、抽選専用 Phase 1 完了)
+- **status**: ✅ password_login + gacha + precam 動作確認済 (run 26380319824 / 26381185075)、mmillion は medals 蓄積待ち
+- **2 daily_wizards**:
+  - `dreammail_daily_gacha` (`/game/gacha`): `#btn-submit` 1 click → form POST → **`/game/gacha/lotteried`** (lottery 過去形) で完了、結果メール送付。success_url_pattern=`r"/game/gacha/lotteried"`
+  - `dreammail_mmillion` (`/mmillion`): `#btnMmillionDailyApply` (50 medals/口、type=button で confirm modal を開く) → `#confirmYes` (modal の「はい」) → form JS submit → `/mmillion/apply`。**残高 0 メダルで silent fail、gacha 蓄積後に動作開始**
+- **dynamic_wizard (precam, 0-medal promo)**:
+  - `/presents` page から `a[href*="/presents/precam/"]` で URL 抽出 (max 10 件、実 7 件程度)
+  - 各 precam page で `pre_click_evaluate` (`document.querySelectorAll('a.gotoLink, a[target="_blank"]').forEach(a => a.target = '_self')`) で target を剥離して same-tab navigation 化
+  - click 後 外部 ad-network host (`shopping.yahoo.co.jp` / `cp.manara.jp` / `fasttrack-2hr.com` / `life.bang.co.jp` 等) に遷移、success_url_pattern=`r"^https://(?!.*dreammail\.jp)(?!.*error)"` で verify
+  - **注意**: アンケート系 precam (`cp.manara.jp` 等) が混入する → CLAUDE.md policy NG、要 discovery 段階 filter (Phase 2)
+- **source = None, lottery_mode = True, Gmail OAuth 不要**
+- **password_login fallback**: ID/PW で fresh login (run 26379981201 で動作確認)。cookie 寿命短い chanceit と違い自動復旧する
+- **user 作業 (1 回)**: dreammail 会員登録 (PII 必要) + `DREAMMAIL_COOKIES` Secret + `DREAMMAIL_USER` + `DREAMMAIL_PASS` Secret
+- **Slack channel**: `SLACK_CHANNEL_CHANCEIT` (= #lottery) を共有
+- **期待 yield**: gacha 10-100 medals/日 + precam ~7 件/日 × 当選率 ~1% + (medals 50 蓄積後) mmillion 1 口/日 (月 1 抽選 100 万円)
+- **Phase 2 候補 (未着手、HANDOFF.md 参照)**:
+  - 他ゲーム (`/game/farm`, `/game/uquiz`, `/game/bingo` 等 20+ 種) — 1-click 系のみ実装方針
+  - マンスリーキーワード (16 口蓄積で 0-medal 追加応募)
+  - シークレットキーワード (SNS scrape 必要)
+  - 1000 万円 (`/tenmillion`) — メルマガクリック型 (lottery Gmail OAuth 必要)
+  - 通常懸賞 (`/presents/landing/<id>`) — 10 medals/口、medal 経済の implementation 重い
 
 ## ❌ 実装できないもの (理由付き)
 
@@ -131,6 +152,13 @@
 | amefri ibridge_farm | 最深到達済 | 既に「ゲームスタート」nav + 30s simulation | n/a |
 | moppy daily_banner 以外の direct credit | 設計通り | Gmail / daily_banner で網羅、wizard 不要 | n/a |
 | gendama | 非 active | 180-day inactivity rule、user 判断で disable | user が活性化決定すれば実装 |
+| chanceit password_login (cookie 失効時の自動復旧) | server 側の IP / fingerprint anti-bot | GitHub Actions runner IP (US data center) からの login を server-side 拒否、credentials 正しくても login.srv に form 再表示 (run 26400839026 / 26400937339)。fruitmail / dreammail の password_login は同 runner から動くため、chanceit 固有の挙動。pointincome JP geofence と同種 | JP IP からの login (self-hosted JP runner or VPS)、ただし TOS リスク考慮要 |
+| dreammail 1000万円 (`/tenmillion`) | 設計判断で skip | メルマガクリック型 = lottery Gmail OAuth setup が user 作業重い (Google Cloud Console での credential 作成 + `LOTTERY_GMAIL_*` Secrets 登録) | user が OAuth setup OK 出せば実装可、yield は月 1000 万当選確率なので低めだが 1 回 hit すれば桁外れ |
+| dreammail 通常懸賞 (`/presents/landing/<id>`) | medal 経済の重さ | 10 medals/口 + 1 口目 PII form。40+ 件/日存在するが medals 蓄積戦略 (gacha + ゲーム + メルマガ) が複雑、yield 対 effort 悪い | medal-economy framework 整備後 |
+| dreammail `/game/seven` Amazon ギフト | anti-bot リスク | 3-reel slot game、揃え判定。auto-play で「ツール検出」される懸念 (warau 前例同様) | n/a (out of scope) |
+| dreammail シークレットキーワード | discovery 困難 | SNS / メール / サイト内に散在する keyword を発見 → 入力。自動 scrape は不安定 + 範囲外 | manual keyword feed 仕組み |
+| fruitmail ポイント懸賞 / ポイントde豪華懸賞 | 設計判断で skip | fruitmail points 消費型 (= 金銭等価)。policy 上 ポイ活 で貯めた point を使う応募は意図的に除外 | n/a (point 消費の方針変更必要) |
+| fruitmail ルーレット / 漢字クイズ | 別 mechanism | `/prize/roulette/` `/prize/kanjiquiz/` は別 UI、inspect 未確認。クイズは answer 必要で policy NG 確度高 | mechanism 検出 + policy 検証 |
 
 ## 🛠 framework patches (本セッション追加)
 
@@ -140,8 +168,24 @@
 - `inspect_referer` / `inspect_clicks` input を全 9 site workflow YAML に露出
 - **dynamic wizard discovery** (Adapter に 4 fields 追加): `dynamic_wizard_list_url` / `dynamic_wizard_link_selector` / `dynamic_wizard_template` / `dynamic_wizard_max_count`。daily で list page を scrape → 個別 link で wizard を動的生成 (chanceit 抽選専用)
 - **wizards-only mode** (source=None 対応): chanceit 等の抽選専用 adapter は click-URL source を持たず、wizards のみで動作可能
-- **DailyWizard.pre_click_evaluate** (2026-05-25 追加): navigation 後 / clicks 前に走る任意 JS。fruitmail_lottery で `<select>` の値設定に使用 (form `required` を越えるため)
+- **DailyWizard.pre_click_evaluate** (2026-05-25 追加): navigation 後 / clicks 前に走る任意 JS。fruitmail_lottery で `<select>` の値設定、dreammail precam / chanceit で `target="_blank"` 剥離 (same-tab navigation 化) に使用
 - **DailyWizard.title_selector** (2026-05-25 追加): static lottery_mode wizards 向け prize title 抽出。INPUT/TEXTAREA は `value` 属性、それ以外は `textContent` を読む。空なら notifier の「(タイトル取得失敗)」fallback へ
+- **DailyWizard.success_url_pattern** (2026-05-25 追加): wizard 完走後の `page.url` を regex match → 真の server-side 受理を verify。fruitmail で `/prize/end/`、chanceit で `^(?!.*/present/detail/)(?!.*error)`、dreammail gacha で `/game/gacha/lotteried`、precam で `^https://(?!.*dreammail\.jp)(?!.*error)`。**この field 未設定だと wizard 完走 = verified=True default で false positive (2026-05-25 chanceit / fruitmail / dreammail で 3 連発した偽陽性事故の根本原因)**
+- **DailyWizard.success_text_marker** (2026-05-25 追加): body text marker での verify (URL pattern と AND 判定)。lottery_mode で `/prize/end/` 到達後の specific 完了 text を確認したい場合の二重 verify。現状は URL pattern だけで十分動作中
+- **PasswordLoginConfig.submit_via_form_selector** (2026-05-25 追加): `page.click()` on `<input type="image">` で submit が発火しない form 向け、JS `form.submit()` bypass。chanceit 用に実装したが server 側 IP block で login 自体不可で fruitmail / dreammail は不要だったため、現状 chanceit では disable
+- **Notifier.send_lottery_summary 文言改善** (2026-05-25): 旧「応募成功 N 件 / 失敗 M 件」 → 新「応募確認済 N 件 / 未確定 M 件」。「click は完走したが server-side 受理は不明」を明示する設計、偽陽性通知を構造的に防ぐ
+- **password_login fallback** (既存 framework): fruitmail / dreammail で 動作確認 ✅、chanceit は IP block で ❌
+
+## 🚧 未着手 (次セッション候補) — 抽選系
+
+詳細は `point_sites/HANDOFF.md` 参照 (transient、commit されない)。
+
+| Priority | 項目 | 推定工数 | 現実性 |
+|---|---|---|---|
+| 🟢 P1 | chanceit 他カテゴリ拡張 (`?type=1〜5,7`) | 1-2h | **高** — 同 jump.srv mechanism と推測、framework に `dynamic_wizard_list_urls` 拡張で対応 |
+| 🟢 P2 | chanceit `/mypage/tasklist.jsp` 毎日コツコツ貯める | 1-2h | **中** — inspect 次第。1-click 系のみ実装方針 |
+| 🟡 P3 | dreammail 他ゲーム (1-click 系のみ) | 変動 (2-4h) | **部分的** — 20+ 種中 canvas/quiz/multi-step を除外すると 2-5 件程度の見込み |
+| 🔴 P4 | dreammail マンスリー / シークレットキーワード | 不能 (scope 外) | **次セッション内では不可能**: マンスリーは medal 蓄積 + 16 日連続応募が前提、シークレットは SNS scrape (TOS リスク + 複雑度) |
 
 ## 📊 ポイント増加期待値
 
@@ -161,4 +205,4 @@
 
 新 wizard 追加 / 既存 wizard 改修 / 「もう実装できるもの無い？」確認時に本ファイル更新。最終 commit hash を git log で追える状態にする。
 
-最新更新: 2026-05-24 (moppy_gacha 追加、ultrathink audit 完了)
+最新更新: 2026-05-25 (3 抽選 site 完全動作確認 + framework に success_url_pattern / pre_click_evaluate / title_selector / submit_via_form_selector 追加、false-positive 防御線確立)
