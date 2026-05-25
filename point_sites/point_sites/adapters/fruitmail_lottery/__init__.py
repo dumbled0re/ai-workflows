@@ -70,15 +70,23 @@ from ...common.wizard import DailyWizard
 # 各 step の submit button は class ``prizeComponent_common__button`` で
 # 統一されているので、同 selector を 3 回 click する click_force 設計で
 # 各 step を順次進めていく。selector miss は silent no-op。
+# step2 (送付先の確認) page には 2 つの submit button があり、両方 class
+# ``prizeComponent_common__button`` を持つ:
+#   - "戻る" button: 追加で ``--secondary`` modifier class
+#   - "確認して次へ" button: modifier class なし、これが forward submit
+# step1 → step2 までは forward button が DOM 順で先なので素朴な
+# ``button.prizeComponent_common__button[type="submit"]`` で意図通り。
+# step2 → 完了は back button が先 → 同 selector が back を click してしまう。
+# ``:not(.prizeComponent_common__button--secondary)`` で back を除外して
+# 全 step 共通の forward-only selector にする (2026-05-25 buttons_dump で確定)。
+_FORWARD_SUBMIT = 'button.prizeComponent_common__button[type="submit"]:not(.prizeComponent_common__button--secondary)'
 _PRIZE_CLICKS: tuple[tuple[str, int], ...] = (
-    # Step 0 → Step 1: /prize/<category>/ の #applyForm 内 submit
+    # Step 0 → Step 1: /prize/<category>/ の #applyForm submit
     ('#applyForm button[type="submit"]', 1),
-    # Step 1 → Step 2: /prize/step1/ の 「登録情報を確認する」
-    # 2026-05-25 第二修正試行で 3 つ目 click 追加したら step2 から step1
-    # に戻る挙動 → step2 forward 用の正しい selector を pin するため一旦
-    # 2 click に戻し、step2 HTML を debug log で capture することにした。
-    # 次の commit で 3 つ目 click を正しい selector で再導入予定。
-    ('button.prizeComponent_common__button[type="submit"]', 1),
+    # Step 1 → Step 2: /prize/step1/ 「登録情報を確認する」
+    (_FORWARD_SUBMIT, 1),
+    # Step 2 → 完了: /prize/step2/ 「確認して次へ」 (back を除外)
+    (_FORWARD_SUBMIT, 1),
 )
 
 # JS executed after navigation but before clicks. Sets
@@ -116,8 +124,10 @@ def _prize_wizard(name: str, slug: str) -> DailyWizard:
         # はない。真の完了は step2 の次の URL (本 commit 後の run で確定)。
         # 暫定的に step2 以降を許可 (``step[2-9]`` or ``/complete``)。
         # Next-run の title log を見て pin する。
-        # 暫定 (step3 forward selector を pin するまで)
-        success_url_pattern=r"/prize/step2/?$",
+        # 真の完了 URL は未確定 — step2 「確認して次へ」 click 後の遷移先
+        # を本 commit 後 1 回 run の URL log で pin する。暫定的に step3
+        # または complete / finish / done / thanks のいずれかにマッチ。
+        success_url_pattern=r"/prize/(step[3-9]|complete|finish|done|thanks)",
     )
 
 
