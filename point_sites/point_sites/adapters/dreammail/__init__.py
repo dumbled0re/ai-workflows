@@ -67,7 +67,9 @@ _GACHA_WIZARD = DailyWizard(
     initial_wait_ms=3000,
     final_wait_ms=5000,
     title_selector="h1, h2",
-    success_url_pattern=r"/game/gacha/lottery",
+    # 完了 URL: ``/game/gacha/lotteried`` (lottery の過去形、抽選済結果 page)。
+    # POST /game/gacha/lottery が 302 → /lotteried に redirect される実装。
+    success_url_pattern=r"/game/gacha/lotteried",
 )
 
 
