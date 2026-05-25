@@ -1034,34 +1034,6 @@ def cmd_run(
                             verified,
                             title_hint[:100],
                         )
-                        # TEMP DEBUG (2026-05-25): capture button HTML on
-                        # the final page so we can pin the correct
-                        # forward-submit selector for fruitmail step2 →
-                        # step3. Removed once selectors are stable.
-                        try:
-                            buttons_dump = page.evaluate(
-                                """() => {
-                                    const sel = 'button, input[type="submit"], '
-                                        + 'a.prizeComponent_common__button';
-                                    const els = document.querySelectorAll(sel);
-                                    return Array.from(els).slice(0, 30).map(e => ({
-                                        tag: e.tagName,
-                                        type: e.type || '',
-                                        cls: e.className || '',
-                                        text: (e.textContent || e.value || '')
-                                            .trim().substring(0, 50),
-                                        ga: e.getAttribute('data-click-ga') || '',
-                                        href: e.getAttribute('href') || '',
-                                    }));
-                                }"""
-                            )
-                            logger.info(
-                                "%s buttons_dump=%s",
-                                wizard.name,
-                                buttons_dump,
-                            )
-                        except Exception as exc:
-                            logger.warning("%s buttons_dump failed: %s", wizard.name, exc)
                         completed = verified
                     except Exception:
                         pass

@@ -133,10 +133,10 @@ def _prize_wizard(name: str, slug: str) -> DailyWizard:
         # はない。真の完了は step2 の次の URL (本 commit 後の run で確定)。
         # 暫定的に step2 以降を許可 (``step[2-9]`` or ``/complete``)。
         # Next-run の title log を見て pin する。
-        # 真の完了 URL は未確定 — step2 「確認して次へ」 click 後の遷移先
-        # を本 commit 後 1 回 run の URL log で pin する。暫定的に step3
-        # または complete / finish / done / thanks のいずれかにマッチ。
-        success_url_pattern=r"/prize/(step[3-9]|complete|finish|done|thanks)",
+        # 完了 URL は ``/prize/end/?page=<category>``。step3「応募する」
+        # click 後にここに redirect される (run 26378313632 で確認、page 内
+        # は header しか無く forward submit ボタン無 = 確実な終端)。
+        success_url_pattern=r"/prize/end/",
     )
 
 
