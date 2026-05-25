@@ -1,6 +1,6 @@
 # point_sites 自動化マップ
 
-各サイトで何を自動化しているか / 何ができないかの完全 inventory (2026-05-25 時点)。
+各サイトで何を自動化しているか / 何ができないかの完全 inventory (2026-05-25 時点、HANDOFF P1-P3 反映)。
 
 ポイ活 (ポイントサイト) と抽選 (chanceit / fruitmail_lottery / dreammail) の両用 framework。
 
@@ -20,11 +20,11 @@
 | **sugutama** | Gmail + 2 visit-only | **2** (game_hub + events、SPA anti-bot で visit-only) | — | `GmailSource`、`balance_uses_browser` |
 | **warau** | Gmail + 1 visit-only | **1** (play_hub、SPA anti-bot で visit-only) | — | `GmailSource` |
 | **gendama** | scaffolded (非 active) | 0 | — | 180-day inactivity rule で user 判断で disable |
-| **chanceit** (2026-05-24 初実装 / 2026-05-25 target-strip 修正 + verify 確立) | wizards-only (source=None) + dynamic discovery | dynamic **12-20 件/日** verified | — | `?type=6` 「応募が簡単」list を毎日 scrape → 各 prize page の `a[href*="/jump.srv?id="]` (`target="_blank"` を `pre_click_evaluate` で剥離) を click → 外部 partner site に遷移 (server 側で PII auto-fill)。`success_url_pattern=r"^(?!.*/present/detail/)(?!.*error)"` で server 受理確認 |
+| **chanceit** (2026-05-24 初実装 / 2026-05-25 target-strip + verify 確立 + 4 カテゴリ拡張 + 9 daily missions) | wizards-only (source=None) + 9 static + dynamic 4-list discovery | **9 static + dynamic 30-40 件/日** | — | 4 list URL (`easy-entry/` + `daily-weekly-entry/` + `instant-win/` + `cash-giftcard/`) を毎日 scrape → URL dedup → 各 prize page で `a[href*="/jump.srv?id="]` (`target="_blank"` を `pre_click_evaluate` で剥離) を click。`success_url_pattern=r"^(?!.*/present/detail/)(?!.*error)"` で server 受理確認。加えて `/mypage/tasklist.jsp` の article-view 系 9 件 (visit-only) を毎日訪問してスタンプ加算 |
 | **fruitmail_lottery** (NEW 2026-05-25、抽選専用) | wizards-only (source=None) + 5 daily_wizards | **5** verified (everyday / everyweek / everymonth / gorgeous / premium) | — | 既存 fruitmail cookie + ID/PW を流用、4-step click flow: `/prize/<cat>/` → step1 (登録情報確認) → step2 (送付先確認) → step3 (最終確認) → `/prize/end/?page=<cat>` (応募完了)。`success_url_pattern=r"/prize/end/"` で真の完了 verify、`title_selector='input[name="item_name"]'` で hidden 賞品名を Slack 表示 |
 | **dreammail** (NEW 2026-05-25、抽選専用 Phase 1 完了) | wizards-only (source=None) + 2 daily_wizards + dynamic precam discovery | **2 verified + dynamic ~7/日** (gacha + mmillion + /presents/precam/<id>) | — | password_login (ID/PW) で fresh login → cookie rotate。gacha: `#btn-submit` → `/game/gacha/lotteried`。precam: `pre_click_evaluate` で target=_blank 剥離 → 外部 ad-network 遷移。mmillion: 50 medals/口 必要 (medals 蓄積後に動く、現状「未確定」) |
 
-**合計**: **85 static wizards** (73 ポイ活 + 12 抽選) + **dynamic (chanceit 12-20 + dreammail precam ~7)/日** + 23 daily banners + 1 endpoint poll + 2 browser actions + 7 Gmail/OnsiteInbox click pipelines + 2 password_login fallback (fruitmail / dreammail、chanceit は IP block で不可)
+**合計**: **94 static wizards** (73 ポイ活 + 21 抽選) + **dynamic (chanceit 30-40 + dreammail precam ~7)/日** + 23 daily banners + 1 endpoint poll + 2 browser actions + 7 Gmail/OnsiteInbox click pipelines + 2 password_login fallback (fruitmail / dreammail、chanceit は IP block で不可)
 
 ## 📋 wizard 詳細 (site 別)
 
@@ -77,11 +77,26 @@
 ### warau (1 wizard)
 - **play_hub** (`/play/` visit-only)
 
-### chanceit (2026-05-24 初実装 / 2026-05-25 target-strip + verify 確立)
-- **status**: ✅ 動作確認済 (run 26387753635 で 12/12 が外部 partner サイト遷移)
-- **dynamic discovery**: 毎日 `https://www.chance.com/present/list.jsp?type=6` 「応募が簡単」を scrape
-  - `a[href*="/present/detail/"]` で個別 prize URL 抽出 (最大 20 件 cap)
+### chanceit (2026-05-24 初実装 / 2026-05-25 target-strip + verify 確立 + 4 カテゴリ拡張 + tasklist 9 missions)
+- **status**: ✅ 動作確認済 (run 26387753635 で 12/12 が外部 partner サイト遷移)。2026-05-25 dyn discovery を 4 list URL に拡張、最大 40 件 cap。9 static daily missions (article visit) を追加 (要 cookie 再 export 後 verify)
+- **dynamic discovery**: 毎日 4 list URL を scrape (slug-based 形式に移行済 — legacy `?type=N` は redirect が変)
+  - `https://www.chance.com/present/list/easy-entry/` (応募が簡単、原実装)
+  - `https://www.chance.com/present/list/daily-weekly-entry/` (毎日・毎週応募可)
+  - `https://www.chance.com/present/list/instant-win/` (その場で当たる)
+  - `https://www.chance.com/present/list/cash-giftcard/` (現金・商品券)
+  - `a[href*="/present/detail/"]` で個別 prize URL 抽出 → URL dedup → 最大 40 件 cap
   - 各 prize page で `a[href*="/jump.srv?id="]` (「応募する」button) click
+- **9 static daily missions** (`/mypage/tasklist.jsp` article visits, visit-only):
+  - `/article/ranking/?g=6` 芸能人ランキング (10pt)
+  - `/article/ranking/?g=5` エンタメランキング (10pt)
+  - `/article/ranking/?g=7` ライフスタイルランキング (10pt)
+  - `/article/prenew-entertainment/` (3pt)
+  - `/article/prenew-lifestyle/` (3pt)
+  - `/article/dog/` いぬのきもち (3pt)
+  - `/article/cat/` ねこのきもち (3pt)
+  - `/article/ichioshi.srv` イチオシ (3pt)
+  - `/article/ai/` (3pt)
+  - 各 wizard は clicks=() の URL 訪問のみで server-side スタンプ加算を期待。`success_url_pattern=r"chance\.com/article/"` で page load 確認
 - **target='_blank' 対応**: apply anchor は `target="_blank"` で新 tab を開く構造のため、`pre_click_evaluate` で全 anchor の target を `_self` に書換える → click 後 same-tab で外部 partner site (`genki-mama.com` / `shopping.yahoo.co.jp` / `mosimo.net` / `nipponham-furusato.jp` 等) に navigation。会員 cookie で server 側 PII auto-fill
 - **success_url_pattern**: `r"^(?!.*/present/detail/)(?!.*error)"` で `/present/detail/<id>/` 残留 = silent no-op = 未確定、それ以外 = verified
 - **password_login 不可**: GitHub Actions runner IP (US data center) からの login を chanceit server が拒否 (IP geofence + device fingerprint anti-bot)。cookie 失効時は user 手動 Cookie-Editor 再 export が必要 (`CHANCEIT_COOKIES` Secret 更新)
@@ -166,7 +181,7 @@
 - `--referer` flag in `cmd_html`: referer-gated page (amefri /game/gacha 等) を referer 付き inspect 可能
 - `--inspect-click` repeating flag + navigation-context retry: post-click 構造 recon (moppy /pc_gacha/ 3-step recon に使用)
 - `inspect_referer` / `inspect_clicks` input を全 9 site workflow YAML に露出
-- **dynamic wizard discovery** (Adapter に 4 fields 追加): `dynamic_wizard_list_url` / `dynamic_wizard_link_selector` / `dynamic_wizard_template` / `dynamic_wizard_max_count`。daily で list page を scrape → 個別 link で wizard を動的生成 (chanceit 抽選専用)
+- **dynamic wizard discovery** (Adapter に 5 fields): `dynamic_wizard_list_url` (legacy 単一 URL) / `dynamic_wizard_list_urls` (2026-05-25 追加、複数 URL を順次 scrape → URL dedup) / `dynamic_wizard_link_selector` / `dynamic_wizard_template` / `dynamic_wizard_max_count`。daily で list page を scrape → 個別 link で wizard を動的生成 (chanceit 抽選専用)。`_list_urls` (plural) を指定すると単一 `_list_url` より優先
 - **wizards-only mode** (source=None 対応): chanceit 等の抽選専用 adapter は click-URL source を持たず、wizards のみで動作可能
 - **DailyWizard.pre_click_evaluate** (2026-05-25 追加): navigation 後 / clicks 前に走る任意 JS。fruitmail_lottery で `<select>` の値設定、dreammail precam / chanceit で `target="_blank"` 剥離 (same-tab navigation 化) に使用
 - **DailyWizard.title_selector** (2026-05-25 追加): static lottery_mode wizards 向け prize title 抽出。INPUT/TEXTAREA は `value` 属性、それ以外は `textContent` を読む。空なら notifier の「(タイトル取得失敗)」fallback へ
@@ -182,9 +197,9 @@
 
 | Priority | 項目 | 推定工数 | 現実性 |
 |---|---|---|---|
-| 🟢 P1 | chanceit 他カテゴリ拡張 (`?type=1〜5,7`) | 1-2h | **高** — 同 jump.srv mechanism と推測、framework に `dynamic_wizard_list_urls` 拡張で対応 |
-| 🟢 P2 | chanceit `/mypage/tasklist.jsp` 毎日コツコツ貯める | 1-2h | **中** — inspect 次第。1-click 系のみ実装方針 |
-| 🟡 P3 | dreammail 他ゲーム (1-click 系のみ) | 変動 (2-4h) | **部分的** — 20+ 種中 canvas/quiz/multi-step を除外すると 2-5 件程度の見込み |
+| ✅ P1 (2026-05-25) | chanceit 他カテゴリ拡張 → `dynamic_wizard_list_urls` で 4 list URL 対応、cap 20→40 | done | 実装済 (要 cookie 再 export 後 cron で verify) |
+| ✅ P2 (2026-05-25) | chanceit tasklist 9 missions (article visits, visit-only) | done | 実装済 (要 cookie 再 export 後 cron で verify) |
+| ⏭ P3 (2026-05-25) | dreammail 他ゲーム inspect 完了、追加 wizard なし | done (negative) | 7+ game inspect 結果 1-click + URL-verifiable な game は gacha のみ。 omkj は XHR-only で false positive 不可避、他は canvas/multi-step → 見送り |
 | 🔴 P4 | dreammail マンスリー / シークレットキーワード | 不能 (scope 外) | **次セッション内では不可能**: マンスリーは medal 蓄積 + 16 日連続応募が前提、シークレットは SNS scrape (TOS リスク + 複雑度) |
 
 ## 📊 ポイント増加期待値
@@ -205,4 +220,4 @@
 
 新 wizard 追加 / 既存 wizard 改修 / 「もう実装できるもの無い？」確認時に本ファイル更新。最終 commit hash を git log で追える状態にする。
 
-最新更新: 2026-05-25 (3 抽選 site 完全動作確認 + framework に success_url_pattern / pre_click_evaluate / title_selector / submit_via_form_selector 追加、false-positive 防御線確立)
+最新更新: 2026-05-25 (HANDOFF P1-P3 反映 — chanceit 4-list dynamic + 9 article missions、dreammail 他ゲーム inspect 結果 negative finding + framework に `dynamic_wizard_list_urls` 追加)

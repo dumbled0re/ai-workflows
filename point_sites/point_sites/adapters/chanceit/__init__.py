@@ -4,10 +4,13 @@ ChanceIt is a Japanese lottery (懸賞) portal aggregating ~500 active
 prize campaigns. Unlike point_sites' other Gmail-driven adapters, the
 yield mechanism here is **dynamic-list-discovery + button-click**:
 
-  1. Visit /present/list.jsp?type=6 ("応募が簡単" 14 件 daily-rotating)
-  2. For each prize page (/present/detail/<id>/), click the 「応募する」
+  1. Visit multiple list pages (easy-entry / daily-weekly-entry /
+     instant-win / cash-giftcard) — each is a daily-rotating roster
+     of prizes filtered by 1-click suitability or prize-type
+  2. URL-dedup the union, cap to 40 total
+  3. For each prize page (/present/detail/<id>/), click the 「応募する」
      anchor (href=/jump.srv?id=<id>) — fires the application
-  3. Member cookie 由来で氏名 / 住所 / 電話 / メール は server 側で
+  4. Member cookie 由来で氏名 / 住所 / 電話 / メール は server 側で
      自動付与、bot 側に PII 不要 (cookie だけで動く)
 
 Setup (user side, 1 回だけ):
@@ -28,8 +31,8 @@ Setup (user side, 1 回だけ):
   - **dynamic_wizard_* fields**: chanceit の prize 一覧は毎日入れ替わる
     ので static daily_wizards では追従できない。framework 拡張で
     list page を毎 cron scrape して動的に wizards を生成
-  - **dynamic_wizard_max_count=30**: 1 日 14 件 + バッファ。selector
-    misfire で 100 件超 click とかを防ぐ safety cap
+  - **dynamic_wizard_max_count=40**: 4 list × ~14 件 + dedup → 30-40 件
+    想定。selector misfire で 100 件超 click とかを防ぐ safety cap
 
 TOS 注意 (memory project_chanceit_tos 参照、本 adapter で明文化):
   - chanceit 利用規約 第 5 条: 「コンピュータウィルス等」「虚偽の
@@ -46,6 +49,64 @@ from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
 from ...common.wizard import DailyWizard
 
+
+# /mypage/tasklist.jsp 「毎日コツコツ貯める」 daily missions の visit-only
+# wizards. 2026-05-25 anonymous inspect (run 26402797581) で確定:
+#
+#   <div id="task_list"><div class="my_task">
+#     <table><tbody>
+#       <tr><td class="pt_contents"><div class="do">
+#         <a href="https://www.chance.com/article/ranking/?g=6">芸能人...</a>
+#       </div></td>
+#       <td><p>スタンプ10個獲得</p></td>
+#       <td><p class="get-pt"><span class="point_red">10pt</span></p></td>
+#       </tr>...
+#
+# 9 件の article 系 mission は URL を訪問するだけで server-side でスタンプが
+# 加算される (= 1-click visit-only)。会員 cookie 必須なので anonymous で
+# inspect 出来ても credit はされない。各 article は別 page なので 1 wizard
+# = 1 article visit。
+#
+# 除外 mission:
+#   - /game/ibgame/, /game/typing/, /game/mpgame/: 実プレイ必要 (canvas /
+#     score-gated)。anti-cheat 検出リスク
+#   - /game/estlier/play.jsp?id=XX: getmoney と同じ NUMBERS DX 系で
+#     anti-cheat (run 26357587465) 警告あり、skip
+#   - /pjump.srv?id=25677: アンケート → CLAUDE.md policy NG (survey
+#     data fraud)
+#   - /#potitto-chance: home page fragment、別 mechanism
+#   - /getfriend.srv: 友達紹介 referral、out of scope
+#
+# success_url_pattern: 訪問先がそのまま article page に着地するなら
+# chance.com/article/ で match。login redirect / error 時は別 URL に
+# なるので不一致 → 「未確定」表示。
+# title_selector: h1.header_title が article のタイトル要素。
+def _article_visit(name: str, url: str) -> DailyWizard:
+    return DailyWizard(
+        name=name,
+        url=url,
+        clicks=(),
+        initial_wait_ms=2000,
+        # 5s 滞留で広告 impression + view-tracking XHR が走る時間を確保。
+        final_wait_ms=5000,
+        title_selector="h1.header_title, h1",
+        success_url_pattern=r"chance\.com/article/",
+    )
+
+
+_TASKLIST_WIZARDS: tuple[DailyWizard, ...] = (
+    _article_visit("chanceit_task_ranking_geinou", "https://www.chance.com/article/ranking/?g=6"),
+    _article_visit("chanceit_task_ranking_entame", "https://www.chance.com/article/ranking/?g=5"),
+    _article_visit("chanceit_task_ranking_life", "https://www.chance.com/article/ranking/?g=7"),
+    _article_visit("chanceit_task_prenew_entertainment", "https://www.chance.com/article/prenew-entertainment/"),
+    _article_visit("chanceit_task_prenew_lifestyle", "https://www.chance.com/article/prenew-lifestyle/"),
+    _article_visit("chanceit_task_dog", "https://www.chance.com/article/dog/"),
+    _article_visit("chanceit_task_cat", "https://www.chance.com/article/cat/"),
+    _article_visit("chanceit_task_ichioshi", "https://www.chance.com/article/ichioshi.srv"),
+    _article_visit("chanceit_task_ai", "https://www.chance.com/article/ai/"),
+)
+
+
 ADAPTER = Adapter(
     name="chanceit",
     site_label="チャンスイット",
@@ -60,13 +121,41 @@ ADAPTER = Adapter(
     source=None,
     balance_patterns=DEFAULT_BALANCE_PATTERNS,
     discover_seeds=(
-        "https://www.chance.com/present/list.jsp?type=6",  # 応募が簡単
+        "https://www.chance.com/present/list/easy-entry/",  # 応募が簡単
     ),
-    # Dynamic wizard discovery: daily で /present/list.jsp?type=6 を
-    # scrape → 個別 prize page link 全部を wizard に変換 →
-    # 各 page で 応募 button を click。
-    # selector: 個別 prize page anchor (`/present/detail/<id>/`)
-    dynamic_wizard_list_url="https://www.chance.com/present/list.jsp?type=6",
+    # Static daily missions: /mypage/tasklist.jsp の article-view 系 9 件。
+    # 各 wizard は visit-only (clicks=()) で server-side stamp 加算を期待。
+    # dynamic_wizard とは別パスで並列実行される (main.py の wizards_to_run は
+    # daily_wizards + 動的展開 wizards の concat)。
+    daily_wizards=_TASKLIST_WIZARDS,
+    # Dynamic wizard discovery: daily で複数 list page を scrape →
+    # 個別 prize page link を URL でユニーク化 → 各 page で 応募 button
+    # を click。
+    # 2026-05-25 確認: chanceit は ``?type=N`` legacy 形式から
+    # slug-based 形式 (``/present/list/<slug>/``) に移行済。anonymous で
+    # ``?type=1`` は ``/new-today/`` に redirect されるなど挙動が変わる。
+    # slug ベースに直接書く方が安定。
+    # 対象 4 カテゴリ (1-click 適性で選定):
+    #   - easy-entry/: 応募が簡単 (原実装、~14 件/日)
+    #   - daily-weekly-entry/: 毎日・毎週応募可 (毎日 reset、yield 高)
+    #   - instant-win/: その場で当たる (即時抽選)
+    #   - cash-giftcard/: 現金・商品券 (額の高い prize、応募 form は
+    #     cookie auto-fill で 1-click 維持)
+    # 除外 (CLAUDE.md policy or 仕組み):
+    #   - quiz/, contest/, monitor/, x-twitter-entry/ ほか SNS 系
+    #   - all-present-or-first-come/: 先着 = 実購入伴うケース多い
+    # selector: 個別 prize page anchor (`/present/detail/<id>/`)。
+    # 検出済の全 4 list page は同一 `/present/detail/<id>/` 構造を共有
+    # するので selector は一律。 jump.srv apply mechanism も全 prize
+    # 共通の server-side route なので detail page も同 wizard で
+    # 処理可能。dedup は URL で行うため easy-entry にも出る prize は
+    # 1 度しか click されない。
+    dynamic_wizard_list_urls=(
+        "https://www.chance.com/present/list/easy-entry/",
+        "https://www.chance.com/present/list/daily-weekly-entry/",
+        "https://www.chance.com/present/list/instant-win/",
+        "https://www.chance.com/present/list/cash-giftcard/",
+    ),
     dynamic_wizard_link_selector='a[href*="/present/detail/"]',
     dynamic_wizard_template=DailyWizard(
         name="chanceit_easy_apply",  # name suffixed with _<index> at runtime
@@ -98,7 +187,10 @@ ADAPTER = Adapter(
         # ``error`` 含むのは 失敗 URL なので除外。
         success_url_pattern=r"^(?!.*/present/detail/)(?!.*error)",
     ),
-    dynamic_wizard_max_count=20,
+    # 4 カテゴリで dedup 後の総数を absorb する cap (元 20 → 40)。
+    # easy-entry の 14 件 + 他カテゴリの uniques で 30-40 件想定。
+    # over cap は最初に出てきた順 (≒ list 順 ≒ 新着) で truncate。
+    dynamic_wizard_max_count=40,
     # Lottery-style Slack: 「応募した賞品一覧」format。賞品名 + URL を
     # 列挙、user が当選時に内容を識別できるよう。
     lottery_mode=True,

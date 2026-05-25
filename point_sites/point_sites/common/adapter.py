@@ -105,8 +105,17 @@ class Adapter:
     # build wizards on-the-fly with the discovered URLs. Used for sites
     # where the daily prize roster changes (chanceit 応募が簡単 14 件
     # 毎日入れ替え 等)。
-    # ``dynamic_wizard_list_url``: list page to scrape (e.g.
-    #   "https://www.chance.com/present/list.jsp?type=6")
+    # ``dynamic_wizard_list_url``: list page to scrape (single URL).
+    #   Kept for backward compatibility (chanceit / dreammail original
+    #   shape). New adapters should prefer ``dynamic_wizard_list_urls``.
+    # ``dynamic_wizard_list_urls``: tuple of list pages to scrape in
+    #   sequence. Prizes are merged + URL-deduped across all sources
+    #   before the per-prize wizards are expanded. ``_max_count`` is
+    #   applied to the *combined* unique-URL set, not per-list. Used by
+    #   sites with multiple category pages sharing the same prize-detail
+    #   schema (chanceit easy-entry / daily-weekly-entry / instant-win
+    #   etc all surface ``/present/detail/<id>/`` with the same jump.srv
+    #   apply mechanism). If both fields are set, ``_list_urls`` wins.
     # ``dynamic_wizard_link_selector``: CSS selector for individual
     #   prize page anchors on the list (e.g. 'a[href*="/present/detail/"]')
     # ``dynamic_wizard_template``: template DailyWizard whose ``url``
@@ -116,6 +125,7 @@ class Adapter:
     # ``dynamic_wizard_max_count``: safety cap on wizards/cron run
     #   (default 30) to avoid runaway from a buggy selector match.
     dynamic_wizard_list_url: str | None = None
+    dynamic_wizard_list_urls: tuple[str, ...] = field(default_factory=tuple)
     dynamic_wizard_link_selector: str | None = None
     dynamic_wizard_template: DailyWizard | None = None
     dynamic_wizard_max_count: int = 30

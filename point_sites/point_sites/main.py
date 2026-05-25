@@ -472,7 +472,11 @@ def cmd_run(
     notifier = Notifier(cfg.slack_bot_token, cfg.slack_channel) if notify else None
 
     source = cfg.adapter.source
-    has_wizards_only = source is None and (cfg.adapter.daily_wizards or cfg.adapter.dynamic_wizard_list_url is not None)
+    has_wizards_only = source is None and (
+        cfg.adapter.daily_wizards
+        or cfg.adapter.dynamic_wizard_list_url is not None
+        or bool(cfg.adapter.dynamic_wizard_list_urls)
+    )
     if source is None and not has_wizards_only:
         # Adapters without a click-URL source (e.g. balance-only test fixtures)
         # have nothing to drive the run loop with. Fail fast rather than no-op.
@@ -735,7 +739,7 @@ def cmd_run(
     # bypasses pointer-events interception from sibling panels during
     # the wizard's slide-in animations.
     has_dynamic_wizards = (
-        cfg.adapter.dynamic_wizard_list_url is not None
+        (cfg.adapter.dynamic_wizard_list_url is not None or bool(cfg.adapter.dynamic_wizard_list_urls))
         and cfg.adapter.dynamic_wizard_link_selector is not None
         and cfg.adapter.dynamic_wizard_template is not None
     )
@@ -764,81 +768,92 @@ def cmd_run(
         if has_dynamic_wizards:
             from urllib.parse import urljoin as _dyn_urljoin
 
+            # Resolve the list-URL set: ``_list_urls`` (plural) wins when set,
+            # else fall back to the single ``_list_url``. Both feed into the
+            # same scrape loop; dedup happens across the union.
+            list_urls: list[str] = []
+            if cfg.adapter.dynamic_wizard_list_urls:
+                list_urls = list(cfg.adapter.dynamic_wizard_list_urls)
+            elif cfg.adapter.dynamic_wizard_list_url is not None:
+                list_urls = [cfg.adapter.dynamic_wizard_list_url]
+            link_selector_str = cfg.adapter.dynamic_wizard_link_selector
+            assert link_selector_str is not None
+
             try:
+                seen_dyn: set[str] = set()
+                unique_prize_urls: list[str] = []
                 with BrowserClicker(
                     cookies=_jar_to_cookies(clicker),
                     default_cookie_domain=default_domain,
                 ) as bc:
-                    page = bc.goto(
-                        cfg.adapter.dynamic_wizard_list_url,  # type: ignore[arg-type]
-                        wait_until="domcontentloaded",
-                    )
-                    try:
-                        list_url_str = cfg.adapter.dynamic_wizard_list_url
-                        link_selector_str = cfg.adapter.dynamic_wizard_link_selector
-                        assert list_url_str is not None
-                        assert link_selector_str is not None
-                        anchors = page.query_selector_all(link_selector_str)
-                        raw_hrefs = [a.get_attribute("href") for a in anchors]
-                        prize_urls = [_dyn_urljoin(list_url_str, h) for h in raw_hrefs if h]
+                    for list_url in list_urls:
+                        page = bc.goto(list_url, wait_until="domcontentloaded")
+                        try:
+                            anchors = page.query_selector_all(link_selector_str)
+                            raw_hrefs = [a.get_attribute("href") for a in anchors]
+                            prize_urls = [_dyn_urljoin(list_url, h) for h in raw_hrefs if h]
 
-                        # For lottery_mode, also extract prize titles from
-                        # each anchor's parent card via JS heuristic (try
-                        # h2/h3/h4/.title/.name, fall back to anchor text).
-                        # Title used in Slack 「応募した賞品一覧」output.
-                        if cfg.adapter.lottery_mode:
-                            try:
-                                title_data = page.evaluate(
-                                    """(sel) => {
-                                        const links = document.querySelectorAll(sel);
-                                        return Array.from(links).map(a => {
-                                            const href = a.href;
-                                            // walk up to find a card-like container
-                                            let card = a.closest(
-                                                '[class*="item"], [class*="prize"], '
-                                                + '[class*="present"], [class*="card"], li, tr'
-                                            ) || a.parentElement;
-                                            let title = '';
-                                            if (card) {
-                                                const heading = card.querySelector(
-                                                    'h2, h3, h4, .title, .name, '
-                                                    + '[class*="title"], [class*="name"]'
-                                                );
-                                                if (heading) {
-                                                    title = (heading.textContent || '').trim();
+                            # For lottery_mode, also extract prize titles from
+                            # each anchor's parent card via JS heuristic (try
+                            # h2/h3/h4/.title/.name, fall back to anchor text).
+                            # Title used in Slack 「応募した賞品一覧」output.
+                            if cfg.adapter.lottery_mode:
+                                try:
+                                    title_data = page.evaluate(
+                                        """(sel) => {
+                                            const links = document.querySelectorAll(sel);
+                                            return Array.from(links).map(a => {
+                                                const href = a.href;
+                                                // walk up to find a card-like container
+                                                let card = a.closest(
+                                                    '[class*="item"], [class*="prize"], '
+                                                    + '[class*="present"], [class*="card"], li, tr'
+                                                ) || a.parentElement;
+                                                let title = '';
+                                                if (card) {
+                                                    const heading = card.querySelector(
+                                                        'h2, h3, h4, .title, .name, '
+                                                        + '[class*="title"], [class*="name"]'
+                                                    );
+                                                    if (heading) {
+                                                        title = (heading.textContent || '').trim();
+                                                    }
+                                                    if (!title && a.title) title = a.title;
+                                                    if (!title && a.getAttribute('aria-label')) {
+                                                        title = a.getAttribute('aria-label');
+                                                    }
+                                                    if (!title) {
+                                                        const txt = (card.textContent || '').trim();
+                                                        title = txt.length > 80 ? txt.substring(0, 80) + '…' : txt;
+                                                    }
                                                 }
-                                                if (!title && a.title) title = a.title;
-                                                if (!title && a.getAttribute('aria-label')) {
-                                                    title = a.getAttribute('aria-label');
-                                                }
-                                                if (!title) {
-                                                    const txt = (card.textContent || '').trim();
-                                                    title = txt.length > 80 ? txt.substring(0, 80) + '…' : txt;
-                                                }
-                                            }
-                                            return { href: href, title: title };
-                                        });
-                                    }""",
-                                    link_selector_str,
-                                )
-                                for entry in title_data or []:
-                                    if isinstance(entry, dict):
-                                        href_val = entry.get("href")
-                                        title_val = entry.get("title") or ""
-                                        if isinstance(href_val, str) and isinstance(title_val, str):
-                                            prize_titles.setdefault(href_val, title_val.strip())
-                            except Exception as exc:
-                                logger.warning("prize title extraction failed: %s", exc)
+                                                return { href: href, title: title };
+                                            });
+                                        }""",
+                                        link_selector_str,
+                                    )
+                                    for entry in title_data or []:
+                                        if isinstance(entry, dict):
+                                            href_val = entry.get("href")
+                                            title_val = entry.get("title") or ""
+                                            if isinstance(href_val, str) and isinstance(title_val, str):
+                                                prize_titles.setdefault(href_val, title_val.strip())
+                                except Exception as exc:
+                                    logger.warning("prize title extraction failed: %s", exc)
 
-                        seen_dyn: set[str] = set()
-                        unique_prize_urls: list[str] = []
-                        for u in prize_urls:
-                            if u not in seen_dyn:
-                                seen_dyn.add(u)
-                                unique_prize_urls.append(u)
-                        unique_prize_urls = unique_prize_urls[: cfg.adapter.dynamic_wizard_max_count]
-                    finally:
-                        page.close()
+                            for u in prize_urls:
+                                if u not in seen_dyn:
+                                    seen_dyn.add(u)
+                                    unique_prize_urls.append(u)
+                            logger.info(
+                                "scraped %d prize URLs from %s (unique-so-far=%d)",
+                                len(prize_urls),
+                                list_url,
+                                len(unique_prize_urls),
+                            )
+                        finally:
+                            page.close()
+                    unique_prize_urls = unique_prize_urls[: cfg.adapter.dynamic_wizard_max_count]
                     _merge_browser_cookies(clicker, bc.export_cookies(), allowed_hosts=cfg.adapter.allowed_hosts)
                 template = cfg.adapter.dynamic_wizard_template
                 assert template is not None
@@ -847,9 +862,10 @@ def cmd_run(
                 for idx, prize_url in enumerate(unique_prize_urls):
                     wizards_to_run.append(_dc_replace(template, name=f"{template.name}_{idx}", url=prize_url))
                 logger.info(
-                    "discovered %d dynamic wizards (cap=%d)",
+                    "discovered %d dynamic wizards (cap=%d, from %d list URLs)",
                     len(unique_prize_urls),
                     cfg.adapter.dynamic_wizard_max_count,
+                    len(list_urls),
                 )
             except Exception as exc:
                 logger.warning("dynamic wizard discovery failed: %s", exc)
