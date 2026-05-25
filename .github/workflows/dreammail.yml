@@ -16,8 +16,11 @@ name: dreammail
 # Slack channel: 既存 #lottery (SLACK_CHANNEL_CHANCEIT を共有)
 
 on:
-  schedule:
-    - cron: "45 23 * * *"  # JST 8:45
+  # 2026-05-25 cron 停止: fruitmail_lottery と同じ false-positive 問題
+  # + dreammail は cookie 認証エラーで 1 度も実 wizard 実行できていない。
+  # 仕様 (登録情報・口数・実 success 検証) 確定後に再開。
+  # schedule:
+  #   - cron: "45 23 * * *"  # JST 8:45 — DISABLED 2026-05-25
   workflow_dispatch:
     inputs:
       dry_run:

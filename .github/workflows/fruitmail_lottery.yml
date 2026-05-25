@@ -16,8 +16,16 @@ name: fruitmail_lottery
 # fruitmail_lottery has its own queue.
 
 on:
-  schedule:
-    - cron: "30 0 * * *"  # JST 9:30
+  # 2026-05-25 cron 停止: user 確認で発覚した critical issue
+  #   - 「wizard succeeded」 は click sequence 完走を意味するだけで、
+  #     サーバー側の応募登録は未検証 (false-positive Slack 通知)
+  #   - 登録情報 (PII) が user account に入っていない状態では server-side
+  #     で受理されないが、framework は完了として扱っていた
+  #   - 口数 (selected_apply_number) を hardcode '1' していたが、prize
+  #     ごとに保有ポイント / rank 依存の上限があるべき
+  # 仕様を見直すまで cron 停止。手動 workflow_dispatch は引き続き可。
+  # schedule:
+  #   - cron: "30 0 * * *"  # JST 9:30 — DISABLED 2026-05-25
   workflow_dispatch:
     inputs:
       dry_run:
