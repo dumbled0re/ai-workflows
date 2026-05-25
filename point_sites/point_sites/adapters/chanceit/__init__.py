@@ -122,5 +122,9 @@ ADAPTER = Adapter(
         password_selector='input[name="password"]',
         submit_selector='input[name="search_btn"]',
         success_marker="ログアウト",
+        # 2026-05-25 確認: page.click() on ``<input type="image">`` だと
+        # submit 不発で login.srv に form 再表示。form.submit() を JS から
+        # 直接呼ぶ bypass で POST を確実に飛ばす。
+        submit_via_form_selector='form[action*="/member/login.srv"]',
     ),
 )

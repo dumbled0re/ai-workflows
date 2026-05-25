@@ -73,6 +73,17 @@ class PasswordLoginConfig:
     # between filling username and filling password.
     intermediate_submit_selector: str | None = None
 
+    # 2026-05-25 追加: ``<input type="image">`` submit button や、native
+    # page.click() で submit が確実に発火しない form 用の bypass。CSS
+    # selector で form 要素自体を指定すると、framework は
+    # ``page.evaluate(form.submit())`` で JS から form を直接 POST する。
+    # chanceit のように type=image button + 特殊な server validation を
+    # 持つ site で必要。``submit_selector`` 経由の click が試行された後
+    # success_marker が見つからなければ自動的に form.submit() フォール
+    # バックすることで、何もしなくていい安全策ではなく、明示的に副系統を
+    # 走らせる。``None`` (default) のままなら従来通り button click のみ。
+    submit_via_form_selector: str | None = None
+
     def resolve_username_env(self, adapter_name: str) -> str:
         return self.username_env or f"{adapter_name.upper()}_USER"
 
@@ -127,7 +138,17 @@ def login_with_password(
         # as a real submit signal — the click looks "clicked" but the
         # form never POSTs. page.click() does a real mouse-down/up which
         # both bound handlers and native form submit handle uniformly.
-        page.click(config.submit_selector, timeout=5000)
+        if config.submit_via_form_selector:
+            # JS-driven form.submit() bypass — for sites whose submit
+            # button is e.g. ``<input type="image">`` that Playwright's
+            # page.click() doesn't reliably POST. Skips the click event
+            # entirely and triggers HTMLFormElement.submit().
+            page.evaluate(
+                "(sel) => { const f = document.querySelector(sel); if (f) f.submit(); }",
+                config.submit_via_form_selector,
+            )
+        else:
+            page.click(config.submit_selector, timeout=5000)
         # networkidle so the post-login redirect and any session-cookie
         # set-cookies finish landing before we check the marker. ad-heavy
         # sites can keep polling forever; fall through and check content
