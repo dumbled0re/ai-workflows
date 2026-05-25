@@ -74,11 +74,10 @@ _PRIZE_CLICKS: tuple[tuple[str, int], ...] = (
     # Step 0 → Step 1: /prize/<category>/ の #applyForm 内 submit
     ('#applyForm button[type="submit"]', 1),
     # Step 1 → Step 2: /prize/step1/ の 「登録情報を確認する」
-    ('button.prizeComponent_common__button[type="submit"]', 1),
-    # Step 2 → 完了: /prize/step2/ (送付先の確認) の最終 submit
-    # 同 class の button が step2 にもある想定。実 URL は次 run の title
-    # log で確認 (page title が「応募完了」「ご応募ありがとう」系なら
-    # 真の終端、URL は /prize/complete/ や /prize/finish/ など)。
+    # 2026-05-25 第二修正試行で 3 つ目 click 追加したら step2 から step1
+    # に戻る挙動 → step2 forward 用の正しい selector を pin するため一旦
+    # 2 click に戻し、step2 HTML を debug log で capture することにした。
+    # 次の commit で 3 つ目 click を正しい selector で再導入予定。
     ('button.prizeComponent_common__button[type="submit"]', 1),
 )
 
@@ -117,7 +116,8 @@ def _prize_wizard(name: str, slug: str) -> DailyWizard:
         # はない。真の完了は step2 の次の URL (本 commit 後の run で確定)。
         # 暫定的に step2 以降を許可 (``step[2-9]`` or ``/complete``)。
         # Next-run の title log を見て pin する。
-        success_url_pattern=r"/prize/(step[3-9]|complete|finish|done|thanks)/?$",
+        # 暫定 (step3 forward selector を pin するまで)
+        success_url_pattern=r"/prize/step2/?$",
     )
 
 
