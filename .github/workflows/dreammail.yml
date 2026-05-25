@@ -108,9 +108,13 @@ jobs:
       # #lottery channel (chanceit / fruitmail_lottery と共有)
       slack_channel: ${{ secrets.SLACK_CHANNEL_CHANCEIT }}
       cookies: ${{ secrets.DREAMMAIL_COOKIES }}
-      # password_login 未設定 (dreammail の login form selector 要 recon)
-      login_user: ""
-      login_pass: ""
+      # 2026-05-25 追加: cookie 経由認証が server に reject される問題への
+      # 復旧路として password_login fallback を有効化。user が
+      # DREAMMAIL_USER (メールアドレス) と DREAMMAIL_PASS (パスワード) を
+      # GitHub Secrets に登録すると、cookie 失効時に Playwright で fresh
+      # login 試行 → cookie 取得 → wizard 続行。
+      login_user: ${{ secrets.DREAMMAIL_USER }}
+      login_pass: ${{ secrets.DREAMMAIL_PASS }}
       # gmail_* 未使用 (source=None)
       gmail_client_id: ${{ secrets.GMAIL_CLIENT_ID }}
       gmail_client_secret: ${{ secrets.GMAIL_CLIENT_SECRET }}
