@@ -11,8 +11,14 @@ name: chanceit
 # cookie のみで動く。
 
 on:
-  schedule:
-    - cron: "0 23 * * *"  # JST 8:00 (他 site cron と被らない時刻)
+  # 2026-05-27: chanceit cron 一時停止。理由: 49件「応募確認済」と通知して
+  # いたが、jump.srv が飛ぶ外部 partner サイトでは X 投稿/フォロー RT/
+  # アンケート等の追加条件があり、実 entry できていない false positive
+  # 通知だった (feedback_no_false_positive_notifications 違反)。
+  # B案 (応募条件 keyword filter) 実装後に cron 再開する。
+  # それまでは手動 dispatch のみ可能。
+  # schedule:
+  #   - cron: "0 23 * * *"  # JST 8:00 (他 site cron と被らない時刻)
   workflow_dispatch:
     inputs:
       dry_run:
