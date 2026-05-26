@@ -29,19 +29,24 @@ from ...common.models import ClickCandidate
 
 logger = logging.getLogger(__name__)
 
-# Best-guess click-coin URL pattern. Match anything under pointi.jp that
-# looks like a tracking/click endpoint. After discover confirms the real
-# pattern, tighten this to the specific path (e.g. ``/click/c\?t=...``).
+# Click-coin URL pattern. 2026-05-27 user fixture (sample mail body):
+#   https://pointi.jp/al/click_mail_magazine.php?no=...&hash=...&html=1&a=...
+# 既存の ``(?:click|cc|access|c)`` に ``al`` パスを追加。実 mail で確認した
+# pointincome のメルマガクリック URL は ``/al/click_mail_magazine.php``。
 CLICK_COIN_URL_RE: Final[re.Pattern[str]] = re.compile(
-    r"https://(?:www\.)?pointi\.jp/(?:click|cc|access|c)/[A-Za-z0-9+/=_\-?&%.]+"
+    r"https://(?:www\.)?pointi\.jp/(?:al|click|cc|access|c)/[A-Za-z0-9+/=_\-?&%.]+"
 )
 
-# Callout pattern to confirm a URL is actually a click-coin URL (not a
-# guide/login/etc link). Initial guess: "上記URLアクセスでXpt" / "クリックでXpt"
-# style. Refine with real fixture.
+# Callout pattern. 2026-05-27 user fixture:
+#   "▼クリックで3ptゲット（※有効期限：05月29日まで）"
+# 「クリックでXpt」 style で match 確認済。
 CALLOUT_RE: Final[re.Pattern[str]] = re.compile(
     r"(?:クリックで|上記URLアクセスで|タップで)\s*[【\[]?\s*(\d{1,3})\s*(?:pt|P|ポイント|コイン)"
 )
+# 2026-05-27 user fixture で判明: pointincome のメルマガは callout が URL の
+# **前** 行にある (「▼クリックで3ptゲット\nhttps://pointi.jp/al/...」)。
+# 旧実装は URL の後 200 文字だけ検索していたため見逃していた。前後両方を
+# 走査するため window は URL の前後それぞれ CALLOUT_WINDOW_CHARS で取る。
 CALLOUT_WINDOW_CHARS: Final[int] = 200
 
 # URLs to exclude even if they match (login, FAQ, etc).
@@ -101,8 +106,13 @@ def parse(body: str, is_html: bool = False) -> tuple[list[ClickCandidate], list[
         if EXCLUSION_URL_RE.match(url):
             continue
 
+        # 2026-05-27 fix: callout は URL の前後どちらにも置かれる
+        # (pointincome 実 mail では「▼クリックでXptゲット\nhttps://...」 と
+        # URL の **前** に出る)。URL の前後 ``CALLOUT_WINDOW_CHARS`` 文字を
+        # 走査して match を探す。
+        window_start = max(0, match.start() - CALLOUT_WINDOW_CHARS)
         window_end = min(len(text), match.end() + CALLOUT_WINDOW_CHARS)
-        window = text[match.end() : window_end]
+        window = text[window_start:window_end]
         callout = CALLOUT_RE.search(window)
         if callout is None:
             unconfirmed_urls.append(url)
