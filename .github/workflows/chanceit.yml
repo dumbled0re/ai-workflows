@@ -11,14 +11,13 @@ name: chanceit
 # cookie のみで動く。
 
 on:
-  # 2026-05-27: chanceit cron 一時停止。理由: 49件「応募確認済」と通知して
-  # いたが、jump.srv が飛ぶ外部 partner サイトでは X 投稿/フォロー RT/
-  # アンケート等の追加条件があり、実 entry できていない false positive
-  # 通知だった (feedback_no_false_positive_notifications 違反)。
-  # B案 (応募条件 keyword filter) 実装後に cron 再開する。
-  # それまでは手動 dispatch のみ可能。
-  # schedule:
-  #   - cron: "0 23 * * *"  # JST 8:00 (他 site cron と被らない時刻)
+  # 2026-05-27: 49件「応募確認済」 false positive 問題で一時停止していたが、
+  # dynamic_wizard_list_urls を easy-entry のみに巻き戻して再有効化。
+  # 4 カテゴリ拡張時に賞品カテゴリ list (cash-giftcard 等) から X 投稿系
+  # prize が混入していた。easy-entry は「応募形式 = 応募が簡単」で構造的に
+  # 1-click cookie auto-fill のみ含むので安全。
+  schedule:
+    - cron: "0 23 * * *"  # JST 8:00 (他 site cron と被らない時刻)
   workflow_dispatch:
     inputs:
       dry_run:

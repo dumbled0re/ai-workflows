@@ -20,11 +20,11 @@
 | **sugutama** | Gmail + 2 visit-only | **2** (game_hub + events、SPA anti-bot で visit-only) | — | `GmailSource`、`balance_uses_browser` |
 | **warau** | Gmail + 1 visit-only | **1** (play_hub、SPA anti-bot で visit-only) | — | `GmailSource` |
 | **gendama** | scaffolded (非 active) | 0 | — | 180-day inactivity rule で user 判断で disable |
-| **chanceit** (2026-05-24 初実装 / 2026-05-25 target-strip + verify 確立 + 4 カテゴリ拡張 + 9 daily missions) | wizards-only (source=None) + 9 static + dynamic 4-list discovery | **9 static + dynamic 30-40 件/日** | — | 4 list URL (`easy-entry/` + `daily-weekly-entry/` + `instant-win/` + `cash-giftcard/`) を毎日 scrape → URL dedup → 各 prize page で `a[href*="/jump.srv?id="]` (`target="_blank"` を `pre_click_evaluate` で剥離) を click。`success_url_pattern=r"^(?!.*/present/detail/)(?!.*error)"` で server 受理確認。加えて `/mypage/tasklist.jsp` の article-view 系 9 件 (visit-only) を毎日訪問してスタンプ加算 |
+| **chanceit** (2026-05-24 初実装 / 2026-05-25 target-strip + verify + 9 daily missions / 2026-05-27 easy-entry のみに巻き戻し) | wizards-only (source=None) + 9 static + dynamic easy-entry only | **9 static + dynamic ~14 件/日** | — | `/present/list/easy-entry/` (応募形式=応募が簡単 のみ) を毎日 scrape → 各 prize page で `a[href*="/jump.srv?id="]` (`target="_blank"` を `pre_click_evaluate` で剥離) を click。`success_url_pattern=r"^(?!.*/present/detail/)(?!.*error)"` で server 受理確認。加えて `/mypage/tasklist.jsp` の article-view 系 9 件 (visit-only) を毎日訪問してスタンプ加算 |
 | **fruitmail_lottery** (NEW 2026-05-25、抽選専用) | wizards-only (source=None) + 5 daily_wizards | **5** verified (everyday / everyweek / everymonth / gorgeous / premium) | — | 既存 fruitmail cookie + ID/PW を流用、4-step click flow: `/prize/<cat>/` → step1 (登録情報確認) → step2 (送付先確認) → step3 (最終確認) → `/prize/end/?page=<cat>` (応募完了)。`success_url_pattern=r"/prize/end/"` で真の完了 verify、`title_selector='input[name="item_name"]'` で hidden 賞品名を Slack 表示 |
 | **dreammail** (NEW 2026-05-25、抽選専用 Phase 1 完了) | wizards-only (source=None) + 2 daily_wizards + dynamic precam discovery | **2 verified + dynamic ~7/日** (gacha + mmillion + /presents/precam/<id>) | — | password_login (ID/PW) で fresh login → cookie rotate。gacha: `#btn-submit` → `/game/gacha/lotteried`。precam: `pre_click_evaluate` で target=_blank 剥離 → 外部 ad-network 遷移。mmillion: 50 medals/口 必要 (medals 蓄積後に動く、現状「未確定」) |
 
-**合計**: **94 static wizards** (73 ポイ活 + 21 抽選) + **dynamic (chanceit 30-40 + dreammail precam ~7)/日** + 23 daily banners + 1 endpoint poll + 2 browser actions + 7 Gmail/OnsiteInbox click pipelines + 2 password_login fallback (fruitmail / dreammail、chanceit は IP block で不可)
+**合計**: **94 static wizards** (73 ポイ活 + 21 抽選) + **dynamic (chanceit ~14 + dreammail precam ~7)/日** + 23 daily banners + 1 endpoint poll + 2 browser actions + 7 Gmail/OnsiteInbox click pipelines + 2 password_login fallback (fruitmail / dreammail、chanceit は IP block で不可)
 
 ## 📋 wizard 詳細 (site 別)
 
@@ -77,15 +77,13 @@
 ### warau (1 wizard)
 - **play_hub** (`/play/` visit-only)
 
-### chanceit (2026-05-24 初実装 / 2026-05-25 target-strip + verify 確立 + 4 カテゴリ拡張 + tasklist 9 missions)
-- **status**: ✅ 動作確認済 (run 26387753635 で 12/12 が外部 partner サイト遷移)。2026-05-25 dyn discovery を 4 list URL に拡張、最大 40 件 cap。9 static daily missions (article visit) を追加 (要 cookie 再 export 後 verify)
-- **dynamic discovery**: 毎日 4 list URL を scrape (slug-based 形式に移行済 — legacy `?type=N` は redirect が変)
-  - `https://www.chance.com/present/list/easy-entry/` (応募が簡単、原実装)
-  - `https://www.chance.com/present/list/daily-weekly-entry/` (毎日・毎週応募可)
-  - `https://www.chance.com/present/list/instant-win/` (その場で当たる)
-  - `https://www.chance.com/present/list/cash-giftcard/` (現金・商品券)
-  - `a[href*="/present/detail/"]` で個別 prize URL 抽出 → URL dedup → 最大 40 件 cap
+### chanceit (2026-05-24 初実装 / 2026-05-25 target-strip + verify 確立 / 2026-05-27 easy-entry のみに巻き戻し + tasklist 9 missions)
+- **status**: ✅ 動作確認済 (run 26387753635 で 12/12 が外部 partner サイト遷移)。2026-05-27 巻き戻し: 賞品カテゴリ list (cash-giftcard 等) に X(Twitter)から応募 形式の prize が混入する user 観察 (49 件中の偽陽性源) を受け、easy-entry のみに戻し。9 static daily missions (article visit) は維持
+- **dynamic discovery**: 毎日 `/present/list/easy-entry/` のみを scrape (slug-based 形式に移行済 — legacy `?type=N` は redirect が変)
+  - 応募形式 = 「応募が簡単」 のみを含む list なので、X 投稿 / Facebook / Instagram / LINE 投稿系 prize は構造的に混入しない
+  - `a[href*="/present/detail/"]` で個別 prize URL 抽出 → 最大 20 件 cap (~14 件/日)
   - 各 prize page で `a[href*="/jump.srv?id="]` (「応募する」button) click
+- **NG 巻き戻し** (2026-05-27): 賞品カテゴリ拡張をやり直す場合は「応募形式 = 応募が簡単 ∩ 賞品カテゴリ」 の交差 list URL が必要、または detail page の「応募形式」 td を post-filter する設計が必要
 - **9 static daily missions** (`/mypage/tasklist.jsp` article visits, visit-only):
   - `/article/ranking/?g=6` 芸能人ランキング (10pt)
   - `/article/ranking/?g=5` エンタメランキング (10pt)

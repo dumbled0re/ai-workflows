@@ -4,14 +4,16 @@ ChanceIt is a Japanese lottery (懸賞) portal aggregating ~500 active
 prize campaigns. Unlike point_sites' other Gmail-driven adapters, the
 yield mechanism here is **dynamic-list-discovery + button-click**:
 
-  1. Visit multiple list pages (easy-entry / daily-weekly-entry /
-     instant-win / cash-giftcard) — each is a daily-rotating roster
-     of prizes filtered by 1-click suitability or prize-type
-  2. URL-dedup the union, cap to 40 total
+  1. Visit /present/list/easy-entry/ (応募形式 = 応募が簡単 ~14 件/日)
+  2. URL-dedup, cap to 20
   3. For each prize page (/present/detail/<id>/), click the 「応募する」
      anchor (href=/jump.srv?id=<id>) — fires the application
   4. Member cookie 由来で氏名 / 住所 / 電話 / メール は server 側で
      自動付与、bot 側に PII 不要 (cookie だけで動く)
+
+2026-05-27: 賞品カテゴリ拡張 (cash-giftcard / instant-win 等) は X 投稿系
+prize が混入する事が user 観察で判明し撤回 (feedback_lottery_entry_criteria)。
+easy-entry のみは構造的に「応募形式 = 応募が簡単」 で安全。
 
 Setup (user side, 1 回だけ):
   1. New Gmail (lottery 専用) 作成 — memory feedback_gmail_shared_hub_risk
@@ -31,8 +33,8 @@ Setup (user side, 1 回だけ):
   - **dynamic_wizard_* fields**: chanceit の prize 一覧は毎日入れ替わる
     ので static daily_wizards では追従できない。framework 拡張で
     list page を毎 cron scrape して動的に wizards を生成
-  - **dynamic_wizard_max_count=40**: 4 list × ~14 件 + dedup → 30-40 件
-    想定。selector misfire で 100 件超 click とかを防ぐ safety cap
+  - **dynamic_wizard_max_count=20**: easy-entry の 14 件 + バッファ。selector
+    misfire で 100 件超 click とかを防ぐ safety cap
 
 TOS 注意 (memory project_chanceit_tos 参照、本 adapter で明文化):
   - chanceit 利用規約 第 5 条: 「コンピュータウィルス等」「虚偽の
@@ -128,34 +130,20 @@ ADAPTER = Adapter(
     # dynamic_wizard とは別パスで並列実行される (main.py の wizards_to_run は
     # daily_wizards + 動的展開 wizards の concat)。
     daily_wizards=_TASKLIST_WIZARDS,
-    # Dynamic wizard discovery: daily で複数 list page を scrape →
-    # 個別 prize page link を URL でユニーク化 → 各 page で 応募 button
-    # を click。
-    # 2026-05-25 確認: chanceit は ``?type=N`` legacy 形式から
-    # slug-based 形式 (``/present/list/<slug>/``) に移行済。anonymous で
-    # ``?type=1`` は ``/new-today/`` に redirect されるなど挙動が変わる。
-    # slug ベースに直接書く方が安定。
-    # 対象 4 カテゴリ (1-click 適性で選定):
-    #   - easy-entry/: 応募が簡単 (原実装、~14 件/日)
-    #   - daily-weekly-entry/: 毎日・毎週応募可 (毎日 reset、yield 高)
-    #   - instant-win/: その場で当たる (即時抽選)
-    #   - cash-giftcard/: 現金・商品券 (額の高い prize、応募 form は
-    #     cookie auto-fill で 1-click 維持)
-    # 除外 (CLAUDE.md policy or 仕組み):
-    #   - quiz/, contest/, monitor/, x-twitter-entry/ ほか SNS 系
-    #   - all-present-or-first-come/: 先着 = 実購入伴うケース多い
-    # selector: 個別 prize page anchor (`/present/detail/<id>/`)。
-    # 検出済の全 4 list page は同一 `/present/detail/<id>/` 構造を共有
-    # するので selector は一律。 jump.srv apply mechanism も全 prize
-    # 共通の server-side route なので detail page も同 wizard で
-    # 処理可能。dedup は URL で行うため easy-entry にも出る prize は
-    # 1 度しか click されない。
-    dynamic_wizard_list_urls=(
-        "https://www.chance.com/present/list/easy-entry/",
-        "https://www.chance.com/present/list/daily-weekly-entry/",
-        "https://www.chance.com/present/list/instant-win/",
-        "https://www.chance.com/present/list/cash-giftcard/",
-    ),
+    # Dynamic wizard discovery: ``/present/list/easy-entry/`` のみを scrape する。
+    # 2026-05-27 巻き戻し (user 観察 + feedback_lottery_entry_criteria に従う):
+    # 2026-05-25 に 4 list (easy-entry + daily-weekly-entry + instant-win +
+    # cash-giftcard) に拡張したが、後者 3 つは「賞品カテゴリ」 (現金 / 即時 /
+    # 毎日) であって「応募形式」 ではないため、X(Twitter)から応募 / Facebookから応募
+    # 等の SNS 投稿必須 prize も内包する事が user 観察で判明 (49 件中の偽陽性源)。
+    # ``easy-entry/`` だけは「応募形式 = 応募が簡単」 (= 1-click cookie auto-fill
+    # のみ) で構造的に SNS 投稿系を含まないので、これだけに戻して安全運用。
+    # 期待件数: 14 件/日 (2026-05-24 計測値)。
+    #
+    # 賞品カテゴリ拡張をやり直す場合は「応募形式 = 応募が簡単 ∩ 賞品カテゴリ」 の
+    # 交差 list URL があれば使う、無ければ detail page で「応募形式」 td を確認して
+    # post-filter する設計が必要。現状は素直に easy-entry のみで運用。
+    dynamic_wizard_list_urls=("https://www.chance.com/present/list/easy-entry/",),
     dynamic_wizard_link_selector='a[href*="/present/detail/"]',
     dynamic_wizard_template=DailyWizard(
         name="chanceit_easy_apply",  # name suffixed with _<index> at runtime
@@ -187,10 +175,10 @@ ADAPTER = Adapter(
         # ``error`` 含むのは 失敗 URL なので除外。
         success_url_pattern=r"^(?!.*/present/detail/)(?!.*error)",
     ),
-    # 4 カテゴリで dedup 後の総数を absorb する cap (元 20 → 40)。
-    # easy-entry の 14 件 + 他カテゴリの uniques で 30-40 件想定。
-    # over cap は最初に出てきた順 (≒ list 順 ≒ 新着) で truncate。
-    dynamic_wizard_max_count=40,
+    # 2026-05-27 巻き戻し: easy-entry のみに戻ったので cap も 20 に戻す
+    # (元実装値、~14 件/日 + バッファ)。selector misfire で 100 件超 click
+    # とかを防ぐ safety cap。
+    dynamic_wizard_max_count=20,
     # Lottery-style Slack: 「応募した賞品一覧」format。賞品名 + URL を
     # 列挙、user が当選時に内容を識別できるよう。
     lottery_mode=True,
