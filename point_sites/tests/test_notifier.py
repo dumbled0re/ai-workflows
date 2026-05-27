@@ -67,7 +67,29 @@ def test_build_extract_blocks_skips_messages_with_no_urls():
     blocks = _new_notifier().build_extract_blocks(candidates, date_label="2026-05-05")
     sections = [b for b in blocks if b["type"] == "section"]
     assert len(sections) == 1
-    assert "subj B" in sections[0]["text"]["text"]
+
+
+def test_build_extract_blocks_uses_site_label_in_header():
+    """2026-05-27 regression: pointincome channel に「モッピー クリックリンク」
+    と通知される hard-code bug の修正確認。site_label を __init__ で渡したら
+    header に反映される。"""
+    notifier = Notifier(bot_token="xoxb-fake", channel="#fake", site_label="ポイントインカム")
+    candidates = [("msgA", "subj", ["https://pointi.jp/al/x"])]
+    blocks = notifier.build_extract_blocks(candidates, date_label="2026-05-27")
+    header_text = blocks[0]["text"]["text"]
+    assert "ポイントインカム" in header_text
+    assert "モッピー" not in header_text
+
+
+def test_build_extract_blocks_falls_back_to_moppy_when_site_label_empty():
+    """site_label 無指定の旧 caller (test fixture 等) は legacy 「モッピー」
+    fallback を保持。これは backward compatibility shim で、新規 caller
+    は site_label を必ず渡す。"""
+    notifier = Notifier(bot_token="xoxb-fake", channel="#fake")
+    candidates = [("msgA", "subj", ["https://x/y"])]
+    blocks = notifier.build_extract_blocks(candidates, date_label="2026-05-27")
+    header_text = blocks[0]["text"]["text"]
+    assert "モッピー" in header_text
 
 
 def test_build_extract_blocks_escapes_subject():

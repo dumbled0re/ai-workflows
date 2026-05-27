@@ -469,7 +469,7 @@ def cmd_run(
         logger.error("--dry-run and --extract-links are mutually exclusive")
         return 2
     started_at = datetime.now(UTC)
-    notifier = Notifier(cfg.slack_bot_token, cfg.slack_channel) if notify else None
+    notifier = Notifier(cfg.slack_bot_token, cfg.slack_channel, site_label=cfg.adapter.site_label) if notify else None
 
     source = cfg.adapter.source
     has_wizards_only = source is None and (

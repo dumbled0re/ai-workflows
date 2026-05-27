@@ -83,9 +83,13 @@ def _format_verification(
 
 
 class Notifier:
-    def __init__(self, bot_token: str, channel: str) -> None:
+    def __init__(self, bot_token: str, channel: str, site_label: str = "") -> None:
         self._token = bot_token
         self._channel = channel
+        # 各 site 固有の Slack 通知 header (例「ポイントインカム クリックリンク」)
+        # に使う。空文字 = 旧挙動 (header に「モッピー」 hard-code されてた)
+        # 互換用。新規 caller は site_label を必ず指定する。
+        self._site_label = site_label
 
     def _post(self, payload: dict[str, object]) -> bool:
         """POST to Slack chat.postMessage. Returns True on `ok: true`.
@@ -245,7 +249,10 @@ class Notifier:
         URLs are NOT redacted — the user clicks them manually in their browser.
         """
         total_urls = sum(len(urls) for _, _, urls in candidates_by_message)
-        header_text = f"📬 モッピー クリックリンク ({total_urls}件)"
+        # site_label が __init__ で渡されていればそれを使う、無ければ
+        # legacy「モッピー」 (test fixture / 旧 caller 互換)
+        site_label = self._site_label or "モッピー"
+        header_text = f"📬 {site_label} クリックリンク ({total_urls}件)"
         blocks: list[dict[str, object]] = [
             {
                 "type": "header",
