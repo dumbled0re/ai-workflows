@@ -24,6 +24,7 @@ def send_analysis_to_slack(
     timing: str,
     data_quality: dict | None = None,
     portfolio_risk_text: str | None = None,
+    holdings_meta: dict[str, dict] | None = None,
 ) -> bool:
     """Format and send the analysis report to Slack.
 
@@ -39,6 +40,13 @@ def send_analysis_to_slack(
             violations against the live recommendations). When non-empty
             it is appended as its own section so the operator sees it
             adjacent to the picks.
+        holdings_meta: Optional ``ticker -> {current_price, prev_close,
+            shares, avg_cost, ...}`` map (from data/holdings_meta.json).
+            When provided, each holding row in the Slack output gets a
+            前日比 P&L line (円 + %) computed from
+            (current_price - prev_close) * shares plus the existing
+            含み損益 (vs avg_cost). Missing → falls back to AI-summary-only
+            display (legacy behaviour).
 
     Returns:
         True if sent successfully
@@ -46,7 +54,7 @@ def send_analysis_to_slack(
     if holdings_analysis.get("error"):
         return _send_error(bot_token, channel, holdings_analysis.get("message", "不明なエラー"))
 
-    blocks = _build_blocks(holdings_analysis, discovery_results, timing, data_quality)
+    blocks = _build_blocks(holdings_analysis, discovery_results, timing, data_quality, holdings_meta)
     if portfolio_risk_text:
         blocks.append(
             {
@@ -104,6 +112,7 @@ def _build_blocks(
     discovery_results: dict,
     timing: str,
     data_quality: dict | None,
+    holdings_meta: dict[str, dict] | None = None,
 ) -> list[dict]:
     """Build Slack Block Kit blocks for the full report."""
     from datetime import datetime, timedelta, timezone
@@ -165,8 +174,20 @@ def _build_blocks(
                 "text": {"type": "plain_text", "text": "保有銘柄分析"},
             }
         )
+        # Compute and prepend portfolio-level P&L summary (sum across all
+        # holdings) so the operator sees aggregate movement at a glance.
+        if holdings_meta:
+            agg = _aggregate_pnl(holdings, holdings_meta)
+            if agg is not None:
+                blocks.append(
+                    {
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": agg},
+                    }
+                )
         for h in holdings:
-            blocks.append(_format_holding_block(h))
+            meta = (holdings_meta or {}).get(h.get("ticker") or "", None)
+            blocks.append(_format_holding_block(h, meta))
 
     blocks.append({"type": "divider"})
 
@@ -233,8 +254,14 @@ def _build_blocks(
     return blocks
 
 
-def _format_holding_block(h: dict) -> dict:
-    """Format a single holding analysis into a Slack block."""
+def _format_holding_block(h: dict, meta: dict | None = None) -> dict:
+    """Format a single holding analysis into a Slack block.
+
+    ``meta`` (when provided from data/holdings_meta.json) carries the raw
+    price + share data so we can render an exact 前日比 P&L line in 円
+    plus the existing 含み損益 (vs avg_cost). When ``meta`` is None we
+    fall back to the AI-summary-only display (legacy behaviour).
+    """
     pred = h.get("prediction", "?")
     conf = h.get("confidence", "?")
     pred_emoji = _PREDICTION_EMOJI.get(pred, ":question:")
@@ -251,6 +278,9 @@ def _format_holding_block(h: dict) -> dict:
         f"{pred_emoji} *{pred}* | {conf_emoji} 信頼度: *{conf}*\n"
         f"{summary}\n"
     )
+    pnl_line = _format_holding_pnl_line(meta)
+    if pnl_line:
+        text += f"{pnl_line}\n"
     if action:
         text += f"  :arrow_right: アクション: *{action}*\n"
     text += f"{reasons}\n"
@@ -258,6 +288,94 @@ def _format_holding_block(h: dict) -> dict:
         text += f"  :octagonal_sign: 損切りライン: {stop_loss}\n"
     text += f"  :warning: リスク: {risk}"
     return {"type": "section", "text": {"type": "mrkdwn", "text": text}}
+
+
+def _format_holding_pnl_line(meta: dict | None) -> str:
+    """Render the 前日比 + 含み損益 line for one holding.
+
+    Returns an empty string if ``meta`` is missing the fields needed for
+    a meaningful P&L (current_price + shares minimum).
+    """
+    if not meta:
+        return ""
+    current = meta.get("current_price")
+    shares = meta.get("shares") or 0
+    if current is None or shares <= 0:
+        return ""
+    prev = meta.get("prev_close")
+    market_value = current * shares
+    parts = [f":moneybag: 評価額: ¥{market_value:,.0f}"]
+    if prev is not None:
+        day_change_yen = (current - prev) * shares
+        day_change_pct = ((current - prev) / prev * 100) if prev else 0.0
+        arrow = ":chart_with_upwards_trend:" if day_change_yen >= 0 else ":chart_with_downwards_trend:"
+        parts.append(f"前日比 {arrow} {_signed_yen(day_change_yen)} ({_signed_pct(day_change_pct)})")
+    avg_cost = meta.get("avg_cost")
+    pnl_pct = meta.get("unrealized_pnl_pct")
+    if avg_cost is not None and pnl_pct is not None:
+        unrealized_yen = (current - avg_cost) * shares
+        parts.append(f"含み損益 {_signed_yen(unrealized_yen)} ({_signed_pct(pnl_pct)})")
+    return "  " + " | ".join(parts)
+
+
+def _signed_yen(value: float) -> str:
+    """Format yen with sign **before** the ¥ glyph so losses read as "-¥1,000"
+    rather than "¥-1,000" (better Japanese reading order)."""
+    sign = "+" if value >= 0 else "-"
+    return f"{sign}¥{abs(value):,.0f}"
+
+
+def _signed_pct(value: float) -> str:
+    sign = "+" if value >= 0 else "-"
+    return f"{sign}{abs(value):.2f}%"
+
+
+def _aggregate_pnl(holdings_analysis: list[dict], holdings_meta: dict[str, dict]) -> str | None:
+    """Aggregate 前日比 + 含み損益 across all holdings into one summary line.
+
+    Only includes holdings that appear in both ``holdings_analysis`` (= AI
+    output) and ``holdings_meta`` (= raw price data) with usable numbers.
+    Returns None when nothing aggregates cleanly (e.g. no holdings, or all
+    rows are missing prev_close → P&L can't be computed).
+    """
+    total_value = 0.0
+    total_day_change = 0.0
+    total_unrealized = 0.0
+    has_day = False
+    has_unrealized = False
+    n = 0
+    for h in holdings_analysis:
+        meta = holdings_meta.get(h.get("ticker") or "")
+        if not meta:
+            continue
+        current = meta.get("current_price")
+        shares = meta.get("shares") or 0
+        if current is None or shares <= 0:
+            continue
+        n += 1
+        value = current * shares
+        total_value += value
+        prev = meta.get("prev_close")
+        if prev is not None:
+            has_day = True
+            total_day_change += (current - prev) * shares
+        avg_cost = meta.get("avg_cost")
+        if avg_cost is not None:
+            has_unrealized = True
+            total_unrealized += (current - avg_cost) * shares
+    if n == 0:
+        return None
+    parts = [f"*:bar_chart: ポートフォリオ合計 ({n} 銘柄)*", f"評価額 ¥{total_value:,.0f}"]
+    if has_day:
+        prev_value = total_value - total_day_change
+        day_pct = (total_day_change / prev_value * 100) if prev_value else 0.0
+        arrow = ":chart_with_upwards_trend:" if total_day_change >= 0 else ":chart_with_downwards_trend:"
+        parts.append(f"前日比 {arrow} {_signed_yen(total_day_change)} ({_signed_pct(day_pct)})")
+    if has_unrealized:
+        cost_basis = total_value - total_unrealized
+        unrealized_pct = (total_unrealized / cost_basis * 100) if cost_basis else 0.0
+        parts.append(f"含み損益 {_signed_yen(total_unrealized)} ({_signed_pct(unrealized_pct)})")
+    return " | ".join(parts)
 
 
 def _format_discovery_block(r: dict) -> dict:

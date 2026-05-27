@@ -556,6 +556,27 @@ def phase_prepare() -> None:
     with open(meta_dir / "meta.json", "w", encoding="utf-8") as f:
         json.dump({"timing": timing, "data_quality": data_quality}, f)
 
+    # Save holdings price + share metadata so Phase 3 (notify) can compute
+    # and display 前日比 P&L (円 / %) in the Slack message. The AI analysis
+    # output (holdings_result.json) doesn't carry raw price data because the
+    # prompt summarises everything; keeping the numbers in a separate file
+    # keeps the AI step pure and lets the Slack formatter do exact arithmetic.
+    holdings_meta = {
+        s["ticker"]: {
+            "name": s.get("name", ""),
+            "shares": int(s.get("shares") or 0),
+            "avg_cost": s.get("avg_cost"),
+            "current_price": s.get("current_price"),
+            "prev_close": s.get("prev_close"),
+            "price_change_1d": s.get("price_change_1d"),
+            "unrealized_pnl_pct": s.get("unrealized_pnl_pct"),
+        }
+        for s in holdings_summaries
+        if s.get("ticker")
+    }
+    with open(meta_dir / "holdings_meta.json", "w", encoding="utf-8") as f:
+        json.dump(holdings_meta, f, ensure_ascii=False)
+
     # Save portfolio-risk auxiliary data so Phase 3 can run sector +
     # correlation checks against Claude's recommendations without
     # re-fetching anything. Keep it compact: sector per ticker, plus
@@ -879,6 +900,19 @@ def phase_notify() -> None:
     # Load Claude's analysis results
     holdings_result, discovery_result = load_analysis_results()
 
+    # Load holdings price/share metadata (current_price, prev_close, shares,
+    # avg_cost) saved during phase_prepare so the Slack formatter can show
+    # 前日比 P&L in 円 + %. Missing file → notifier falls back to plain
+    # display (AI summary only).
+    holdings_meta: dict[str, dict] = {}
+    holdings_meta_path = _DATA_DIR / "holdings_meta.json"
+    if holdings_meta_path.exists():
+        try:
+            with open(holdings_meta_path, encoding="utf-8") as f:
+                holdings_meta = json.load(f)
+        except Exception:
+            logger.warning("Failed to load holdings_meta.json; P&L display disabled", exc_info=True)
+
     # Save new predictions for tracking
     perf_history = load_history()
     # Load current prices from the analysis input (saved during prepare phase)
@@ -1066,6 +1100,7 @@ def phase_notify() -> None:
         timing=meta["timing"],
         data_quality=meta.get("data_quality"),
         portfolio_risk_text=portfolio_findings_text or None,
+        holdings_meta=holdings_meta or None,
     )
 
     if success:

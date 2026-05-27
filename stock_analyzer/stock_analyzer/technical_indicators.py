@@ -37,6 +37,9 @@ def compute_indicators(
     volume = df["Volume"].astype(float)
 
     current_price = float(close.iloc[-1])
+    # 前日終値 (P&L 円換算で前日比評価額を出すために必要)。データ点が
+    # 1 行しか無い場合は当日 = 前日とみなして day_change = 0 になる。
+    prev_close = float(close.iloc[-2]) if len(close) >= 2 else current_price
 
     # Moving averages
     sma_5 = _safe_sma(close, 5)
@@ -74,6 +77,7 @@ def compute_indicators(
         "ticker": ticker,
         "name": name,
         "current_price": round(current_price, 1),
+        "prev_close": round(prev_close, 1),
         "shares": shares,
         "price_change_1d": round(price_change_1d, 2),
         "price_change_5d": round(price_change_5d, 2),
