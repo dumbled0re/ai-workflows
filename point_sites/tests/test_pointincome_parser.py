@@ -77,3 +77,36 @@ def test_excluded_paths_dropped() -> None:
     body = "クリックで3ptゲット\nhttps://pointi.jp/login?redir=/al/x\n"
     candidates, _ = parse(body, is_html=False)
     assert candidates == []
+
+
+def test_sns_campaign_mail_with_only_footer_pointi_urls_is_clean() -> None:
+    """2026-05-28 user fixture (X 引用ポスト & リプライキャンペーン): click-mail
+    ではなく Google Forms 経由の SNS 投稿必須キャンペーン。``forms.gle`` URL
+    が本文の核で、pointi.jp の URL は footer (``/my/my_page.php`` 等) のみ。
+
+    旧 parser (``/(al|click|cc|access|c)/``) は footer の ``/my/`` を URL
+    match して callout が無いので anomaly を発火していた。narrow regex
+    (``/al/click_mail_magazine.php`` のみ) + EXCLUSION 強化 (``/my`` 追加)
+    で、anomaly 0 / candidate 0 のクリーンな出力になる事を保証する。
+    """
+    body = (
+        "◆━━━━━━━━━━━━◆\n"
+        "  X引用ポスト&リプライキャンペーン\n"
+        "◆━━━━━━━━━━━━◆\n"
+        "参加者の中から先着1,500名様に1,000pt(100円分）プレゼント！\n"
+        "▼キャンペーンへの参加はこちら\n"
+        "https://forms.gle/rU8QgdXE6pVLH8M8A\n"
+        "※こちらのキャンペーンはSNS(X/TwitterやFacebook、Instagram、ブログ等)\n"
+        "　での拡散は禁止となります。\n"
+        "※クリックポイントの付与はございません。\n"
+        "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "┃■ポイントインカム TOP　https://pointi.jp/\n"
+        "┃■マイページ　　　　　　https://pointi.jp/my/my_page.php\n"
+        "┃■よくある質問　　　　　https://pointi.jp/help/\n"
+        "┃■お問い合わせ　　　　　https://pointi.jp/contactus/form.php\n"
+        "┃■メルマガ設定の変更　　https://pointi.jp/my/my_profile.php\n"
+        "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    )
+    candidates, anomalies = parse(body, is_html=False)
+    assert candidates == [], "SNS-only campaign mails must not yield click candidates"
+    assert anomalies == [], "footer URLs must not trigger url_without_callout anomalies"

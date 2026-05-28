@@ -29,12 +29,16 @@ from ...common.models import ClickCandidate
 
 logger = logging.getLogger(__name__)
 
-# Click-coin URL pattern. 2026-05-27 user fixture (sample mail body):
-#   https://pointi.jp/al/click_mail_magazine.php?no=...&hash=...&html=1&a=...
-# 既存の ``(?:click|cc|access|c)`` に ``al`` パスを追加。実 mail で確認した
-# pointincome のメルマガクリック URL は ``/al/click_mail_magazine.php``。
+# Click-coin URL pattern. 2026-05-27 / 2026-05-28 user fixtures で確定:
+#   - メルマガクリック URL は **必ず** ``/al/click_mail_magazine.php?...`` 形式
+#   - 当初は ``click|cc|access|c`` も推測で含めていたが、実 mail では出現せず
+#   - 推測 path を残すと footer の ``/my/...`` / ``/contents/...`` 等を巻き
+#     込んで anomaly noise の原因になる (2026-05-28 X 投稿キャンペーン mail で
+#     発覚: footer の ``/my/my_page.php`` が URL match → callout 無で anomaly)
+# → 実証済 path ひとつだけに narrow して noise を断つ。新 path が将来出たら
+#   実 mail で確認してから追加する方針。
 CLICK_COIN_URL_RE: Final[re.Pattern[str]] = re.compile(
-    r"https://(?:www\.)?pointi\.jp/(?:al|click|cc|access|c)/[A-Za-z0-9+/=_\-?&%.]+"
+    r"https://(?:www\.)?pointi\.jp/al/click_mail_magazine\.php\?[A-Za-z0-9+/=_\-?&%.]+"
 )
 
 # Callout pattern. 2026-05-27 user fixture:
@@ -49,9 +53,12 @@ CALLOUT_RE: Final[re.Pattern[str]] = re.compile(
 # 走査するため window は URL の前後それぞれ CALLOUT_WINDOW_CHARS で取る。
 CALLOUT_WINDOW_CHARS: Final[int] = 200
 
-# URLs to exclude even if they match (login, FAQ, etc).
+# URLs to exclude even if they pass CLICK_COIN_URL_RE. CLICK_COIN_URL_RE
+# is now narrow enough that footer URLs (/my/, /help/ etc) don't match,
+# but keep this as defense-in-depth for any path that *coincidentally*
+# fits the al/click_mail_magazine.php pattern.
 EXCLUSION_URL_RE: Final[re.Pattern[str]] = re.compile(
-    r"https://(?:www\.)?pointi\.jp/(?:login|logout|entrance|faq|help|contact|opt|unsubscribe)",
+    r"https://(?:www\.)?pointi\.jp/(?:login|logout|entrance|faq|help|contact|opt|unsubscribe|my)",
     re.IGNORECASE,
 )
 
