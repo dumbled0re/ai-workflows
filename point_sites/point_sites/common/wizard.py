@@ -129,3 +129,21 @@ class DailyWizard:
     # (e.g. SPA-style success modal in place). When both pattern and
     # text marker are set, BOTH must match for completion. None=skip.
     success_text_marker: str | None = None
+
+    # Optional regex evaluated against the landing-page body **before**
+    # the click sequence fires. When it matches, the wizard is treated
+    # as a no-op skip (not a failure) — the click loop is bypassed, the
+    # wizard is recorded with ``skipped=True``, and the lottery notifier
+    # surfaces it in a separate "応募上限/対象外" section so the operator
+    # isn't alerted to a benign condition every day.
+    #
+    # Use this for sites where the daily/weekly entry cap is an explicit
+    # widget on the page (fruitmail_lottery 「残り応募可能口数: 0」 means
+    # the user already applied the maximum for this week) or where a
+    # rank gate hides the form (fruitmail premium: 「ランク」 message
+    # instead of an applyForm). Without this hook, those rows ride into
+    # Slack as 「未確定」 every day and bury real failures.
+    #
+    # Example (HTML proximity match across whitespace):
+    #   r"残り応募可能口数[\s\S]*?<dd[^>]*>\s*0\s*</dd>"
+    skip_if_body_regex: str | None = None

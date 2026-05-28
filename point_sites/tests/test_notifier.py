@@ -259,3 +259,104 @@ def test_format_verification_inter_run_alongside_estimated():
     assert msg is not None
     assert "100→105" in msg
     assert "前回比 +2pt (98→100)" in msg
+
+
+def test_send_lottery_summary_splits_skipped_from_unconfirmed() -> None:
+    """2026-05-28 regression: skip_if_body_regex match の wizard は
+    「未確定」 ではなく「応募上限/対象外」 section に分離されるべき。
+    daily noise 抑制が目的。"""
+    from datetime import UTC, datetime
+    from unittest.mock import patch
+
+    notifier = Notifier(bot_token="xoxb-fake", channel="#fake")
+    started = datetime(2026, 5, 28, 1, 0, tzinfo=UTC)
+    finished = datetime(2026, 5, 28, 1, 10, tzinfo=UTC)
+    results = [
+        # verified: 真の成功
+        {
+            "name": "wiz_ok",
+            "url": "https://x/prize/everyday/",
+            "title": "毎日懸賞",
+            "success": True,
+            "skipped": False,
+        },
+        # skipped: 応募上限到達 (benign)
+        {
+            "name": "wiz_capped",
+            "url": "https://x/prize/everyweek/",
+            "title": "毎週懸賞",
+            "success": False,
+            "skipped": True,
+        },
+        # unconfirmed: 真の failure (verify 失敗)
+        {
+            "name": "wiz_fail",
+            "url": "https://x/prize/premium/",
+            "title": "プレミアム懸賞",
+            "success": False,
+            "skipped": False,
+        },
+    ]
+    captured: list[dict[str, object]] = []
+
+    def _capture(self: object, payload: dict[str, object]) -> bool:
+        captured.append(payload)
+        return True
+
+    with patch.object(Notifier, "_post", _capture):
+        notifier.send_lottery_summary(
+            site_label="フルーツメール 懸賞",
+            started_at=started,
+            finished_at=finished,
+            wizard_results=results,
+        )
+    assert captured, "send_lottery_summary should post to slack"
+    text = str(captured[0]["text"])
+    # Counts in the header
+    assert "応募確認済: 1 件" in text
+    assert "未確定: 1 件" in text
+    assert "応募上限/対象外: 1 件" in text
+    # 3 separate sections
+    assert "--- 応募確認済" in text
+    assert "--- 未確定" in text
+    assert "--- 応募上限/対象外" in text
+    # Entries land in their respective section
+    assert "毎日懸賞" in text
+    assert "毎週懸賞" in text
+    assert "プレミアム懸賞" in text
+    # The skipped entry must NOT be classified as 未確定
+    unconfirmed_section = text.split("--- 未確定")[1].split("--- 応募上限")[0]
+    assert "毎週懸賞" not in unconfirmed_section
+    assert "プレミアム懸賞" in unconfirmed_section
+
+
+def test_send_lottery_summary_backward_compat_without_skipped_field() -> None:
+    """Older callers (test fixtures) without 'skipped' key should still
+    work — entries without 'skipped' fall back to legacy 'unconfirmed' bucket."""
+    from datetime import UTC, datetime
+    from unittest.mock import patch
+
+    notifier = Notifier(bot_token="xoxb-fake", channel="#fake")
+    started = datetime(2026, 5, 28, 1, 0, tzinfo=UTC)
+    finished = datetime(2026, 5, 28, 1, 1, tzinfo=UTC)
+    results = [
+        {"name": "old_ok", "url": "https://x/a/", "title": "A", "success": True},
+        {"name": "old_fail", "url": "https://x/b/", "title": "B", "success": False},
+    ]
+    captured: list[dict[str, object]] = []
+
+    def _capture(self: object, payload: dict[str, object]) -> bool:
+        captured.append(payload)
+        return True
+
+    with patch.object(Notifier, "_post", _capture):
+        notifier.send_lottery_summary(
+            site_label="X",
+            started_at=started,
+            finished_at=finished,
+            wizard_results=results,
+        )
+    text = str(captured[0]["text"])
+    assert "応募確認済: 1 件" in text
+    assert "未確定: 1 件" in text
+    assert "応募上限/対象外: 0 件" in text

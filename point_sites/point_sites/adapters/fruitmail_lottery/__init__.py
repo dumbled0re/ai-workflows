@@ -108,6 +108,23 @@ _SET_APPLY_NUMBER_JS = (
     "if (sel) { sel.value = '1'; sel.dispatchEvent(new Event('change', { bubbles: true })); }"
 )
 
+# 2026-05-28 user 観察で判明: everyweek / everymonth / premium が連日 「未確定」
+# 通知を生成していた。原因は仕様内の benign no-op だった:
+#  - everyweek: 「応募済み口数: 8 / 残り応募可能口数: 0」 で週上限到達
+#    (memory project_fruitmail_lottery_2026_05_25 でも「複数口可能」と記録)
+#  - everymonth: 同 仕組み、月上限到達
+#  - premium: Diamond/Platinum/Black ランク限定で form 非表示 (memory に既知)
+#
+# どれも「click loop に入っても submit が無効」 で URL 不変 → verified=False
+# 経由「未確定」 と通知される。framework に skip_if_body_regex を追加して、
+# 「残り応募可能口数: 0」 を pre-click で検出 → skip 扱いに振り分ける。
+#
+# HTML 構造 (run 26549663735 inspect で確認):
+#   <dt class="prizeComponent_prizeItems__applyNumberLabel">残り応募可能口数</dt>
+#   <dd class="prizeComponent_prizeItems__applyNumberValue">0</dd>
+# 空白 / インデント多めなので [\s\S]*? で非貪欲に挟む。
+_REMAINING_ZERO_REGEX = r"残り応募可能口数[\s\S]*?<dd[^>]*>\s*0\s*</dd>"
+
 
 def _prize_wizard(name: str, slug: str) -> DailyWizard:
     """Build a prize-category wizard. ``slug`` matches the URL path segment."""
@@ -137,6 +154,12 @@ def _prize_wizard(name: str, slug: str) -> DailyWizard:
         # click 後にここに redirect される (run 26378313632 で確認、page 内
         # は header しか無く forward submit ボタン無 = 確実な終端)。
         success_url_pattern=r"/prize/end/",
+        # 応募上限到達 (everyweek 8 口 / everymonth N 口) の場合、page 上の
+        # 「残り応募可能口数: 0」 widget を検出して click を skip。premium も
+        # ランク条件を満たしてないアカウントは form 非表示で 「残り口数」 dd
+        # 自体が無いケースがある — その場合は match せず通常の verify path
+        # に流れて「未確定」 と通知される (これは別途 user 判断)。
+        skip_if_body_regex=_REMAINING_ZERO_REGEX,
     )
 
 

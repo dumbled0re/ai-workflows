@@ -143,7 +143,12 @@ class Notifier:
         して fallback 表示。
         """
         verified = [r for r in wizard_results if r.get("success")]
-        unconfirmed = [r for r in wizard_results if not r.get("success")]
+        # skipped: 応募上限 / ランク未到達 等の **benign no-op** (= DailyWizard.
+        # skip_if_body_regex が match して click loop に入る前に bail out した
+        # もの)。「未確定」 とは性質が違うので別 section に分離して daily noise
+        # を抑える。
+        skipped = [r for r in wizard_results if r.get("skipped") and not r.get("success")]
+        unconfirmed = [r for r in wizard_results if not r.get("success") and not r.get("skipped")]
         lines: list[str] = []
         # datetime formatting — guarded for type narrowing
         from datetime import datetime as _dt
@@ -152,11 +157,15 @@ class Notifier:
             lines.append(f"【{site_label} 抽選応募 run】 {started_at:%Y-%m-%d %H:%M}")
             lines.append(
                 f"✅ 応募確認済: {len(verified)} 件 / ⚠️ 未確定: {len(unconfirmed)} 件 "
+                f"/ ⏭ 応募上限/対象外: {len(skipped)} 件 "
                 f"/ 処理時間 {(finished_at - started_at).total_seconds():.0f}秒"
             )
         else:
             lines.append(f"【{site_label} 抽選応募 run】")
-            lines.append(f"✅ 応募確認済: {len(verified)} 件 / ⚠️ 未確定: {len(unconfirmed)} 件")
+            lines.append(
+                f"✅ 応募確認済: {len(verified)} 件 / ⚠️ 未確定: {len(unconfirmed)} 件 "
+                f"/ ⏭ 応募上限/対象外: {len(skipped)} 件"
+            )
         if verified:
             lines.append("")
             lines.append("--- 応募確認済 (server-side verify pass) ---")
@@ -182,6 +191,18 @@ class Notifier:
                 url = str(entry.get("url") or "")
                 title = str(entry.get("title") or "") or "(タイトル不明)"
                 lines.append(f"⚠️ {title}")
+                if url:
+                    lines.append(f"   {url}")
+        if skipped:
+            lines.append("")
+            lines.append(
+                "--- 応募上限/対象外 (skip_if_body_regex match — 応募口数上限到達 "
+                "or ランク未到達で form 非表示。click は走らず benign no-op) ---"
+            )
+            for entry in skipped[:10]:
+                url = str(entry.get("url") or "")
+                title = str(entry.get("title") or "") or "(タイトル不明)"
+                lines.append(f"⏭ {title}")
                 if url:
                     lines.append(f"   {url}")
         self._post({"text": "\n".join(lines)})

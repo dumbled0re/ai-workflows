@@ -900,6 +900,11 @@ def cmd_run(
                     else:
                         page = bc.goto(wizard.url, wait_until=wizard.wait_until)
                     completed = False
+                    # ``skipped``: marks the wizard as a benign no-op
+                    # (entry cap reached / rank-gated form absent) so the
+                    # lottery notifier can split it out from real
+                    # 「未確定」 failures and avoid daily noise.
+                    skipped = False
                     try:
                         # Let JS finish wiring up the wizard click handlers
                         # before we start firing clicks; jQuery $()
@@ -908,6 +913,30 @@ def cmd_run(
                         # need 5-8s instead of the default 2s — bump
                         # ``initial_wait_ms`` per-wizard.
                         page.wait_for_timeout(wizard.initial_wait_ms)
+                        # Pre-click skip: bail out of the click loop when
+                        # the landing page itself signals a benign no-op
+                        # (e.g. 「残り応募可能口数: 0」). When this matches
+                        # the clicks are never fired against a fully-applied
+                        # form and the wizard records as 'skipped' — the
+                        # lottery notifier splits these out so daily noise
+                        # doesn't bury real failures.
+                        if wizard.skip_if_body_regex:
+                            import re as _skip_re
+
+                            try:
+                                body_for_skip = _content_with_retry(page)
+                                if _skip_re.search(wizard.skip_if_body_regex, body_for_skip):
+                                    logger.info(
+                                        "%s wizard skipped (skip_if_body_regex matched)",
+                                        wizard.name,
+                                    )
+                                    skipped = True
+                            except Exception as exc:
+                                logger.warning(
+                                    "%s wizard skip_if_body_regex check failed: %s",
+                                    wizard.name,
+                                    exc,
+                                )
                         # Static-wizard prize title extraction (lottery_mode
                         # only). Mirrors the dynamic_wizard prize_titles
                         # logic, but reads from a per-wizard selector
@@ -938,7 +967,7 @@ def cmd_run(
                         # Pre-click form setup (e.g. set <select> value
                         # before submit). Fail-soft: a JS exception
                         # warns and continues into the click sequence.
-                        if wizard.pre_click_evaluate:
+                        if not skipped and wizard.pre_click_evaluate:
                             try:
                                 page.evaluate(wizard.pre_click_evaluate)
                             except Exception as exc:
@@ -947,7 +976,7 @@ def cmd_run(
                                     wizard.name,
                                     exc,
                                 )
-                        for step_idx, (selector, repeat) in enumerate(wizard.clicks):
+                        for step_idx, (selector, repeat) in enumerate(wizard.clicks if not skipped else ()):
                             for _ in range(repeat):
                                 # Click semantics:
                                 # - dispatch_event: fires JS click handler
@@ -993,7 +1022,8 @@ def cmd_run(
                         # Final settle for the credit XHR + success pane.
                         # Bump per-wizard for video-watching wizards
                         # (動画 CM 視聴 / 動画広告 30s 視聴 等).
-                        page.wait_for_timeout(wizard.final_wait_ms)
+                        if not skipped:
+                            page.wait_for_timeout(wizard.final_wait_ms)
                         # Log the final page URL so we can verify form-
                         # submit wizards actually navigated past the
                         # original landing (e.g. /prize/everyday/ →
@@ -1044,13 +1074,14 @@ def cmd_run(
                             except Exception:
                                 title_hint = "<title-error>"
                         logger.info(
-                            "%s wizard ended at url=%s verified=%s title=%r",
+                            "%s wizard ended at url=%s verified=%s skipped=%s title=%r",
                             wizard.name,
                             final_wizard_url,
                             verified,
+                            skipped,
                             title_hint[:100],
                         )
-                        completed = verified
+                        completed = verified and not skipped
                     except Exception:
                         pass
                     finally:
@@ -1059,7 +1090,7 @@ def cmd_run(
                 logger.info(
                     "%s wizard %s",
                     wizard.name,
-                    "succeeded" if completed else "failed",
+                    "skipped" if skipped else ("succeeded" if completed else "failed"),
                 )
                 wizard_results.append(
                     {
@@ -1067,6 +1098,7 @@ def cmd_run(
                         "url": wizard.url,
                         "title": prize_titles.get(wizard.url, ""),
                         "success": completed,
+                        "skipped": skipped,
                     }
                 )
             except Exception as exc:
@@ -1077,6 +1109,7 @@ def cmd_run(
                         "url": wizard.url,
                         "title": prize_titles.get(wizard.url, ""),
                         "success": False,
+                        "skipped": False,
                     }
                 )
 
