@@ -120,10 +120,16 @@ _SET_APPLY_NUMBER_JS = (
 # 「残り応募可能口数: 0」 を pre-click で検出 → skip 扱いに振り分ける。
 #
 # HTML 構造 (run 26549663735 inspect で確認):
-#   <dt class="prizeComponent_prizeItems__applyNumberLabel">残り応募可能口数</dt>
-#   <dd class="prizeComponent_prizeItems__applyNumberValue">0</dd>
-# 空白 / インデント多めなので [\s\S]*? で非貪欲に挟む。
-_REMAINING_ZERO_REGEX = r"残り応募可能口数[\s\S]*?<dd[^>]*>\s*0\s*</dd>"
+#   <dt class="...applyNumberLabel">残り応募可能口数</dt>
+#   <dd class="...applyNumberValue">0</dd>
+#   <dt class="...applyNumberLabel">応募済み口数</dt>
+#   <dd class="...applyNumberValue">N</dd>
+#
+# 2026-05-28 v1 bug (run 26554232054 で発覚): non-greedy `[\s\S]*?` で
+# 後続 dd を貪欲化 → everyday (残り 1 / 応募済み 0) でも「応募済み = 0」
+# の dd まで backtrack して match → 全 wizard が誤 skip。
+# 「残り応募可能口数</dt>」 を明示的に区切って、その直後の dd だけを対象に。
+_REMAINING_ZERO_REGEX = r"残り応募可能口数\s*</dt>\s*<dd[^>]*>\s*0\s*</dd>"
 
 
 def _prize_wizard(name: str, slug: str) -> DailyWizard:
