@@ -25,7 +25,7 @@ from typing import Final
 
 from bs4 import BeautifulSoup
 
-from ...common.models import ClickCandidate
+from ...common.models import ClickCandidate, ExtractionReason
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,6 @@ def parse(body: str, is_html: bool = False) -> tuple[list[ClickCandidate], list[
 
     candidates: list[ClickCandidate] = []
     seen_urls: set[str] = set()
-    unconfirmed_urls: list[str] = []
 
     for match in CLICK_COIN_URL_RE.finditer(text):
         url = match.group(0)
@@ -121,21 +120,33 @@ def parse(body: str, is_html: bool = False) -> tuple[list[ClickCandidate], list[
         window_end = min(len(text), match.end() + CALLOUT_WINDOW_CHARS)
         window = text[window_start:window_end]
         callout = CALLOUT_RE.search(window)
-        if callout is None:
-            unconfirmed_urls.append(url)
-            continue
 
-        try:
-            estimated_points = int(callout.group(1))
-        except ValueError:
+        # 2026-05-28 fix: CLICK_COIN_URL_RE が narrow になり
+        # ``al/click_mail_magazine.php`` 専用 endpoint だけを拾うので、
+        # callout 文言が無い template でも「これは pointincome の
+        # click-coin URL である」 と URL path 自体で確定できる。callout
+        # が無いだけで anomaly 化していた `19e63900f0...` mail の取りこぼし
+        # 解消のため、callout 不在は anomaly ではなく
+        # ``estimated_points=None`` の candidate として登録する。
+        reason: ExtractionReason
+        if callout is not None:
+            try:
+                estimated_points = int(callout.group(1))
+            except ValueError:
+                estimated_points = None
+            anchor_text = callout.group(0)
+            reason = "whitelist_url_pattern_and_anchor"
+        else:
             estimated_points = None
+            anchor_text = "(callout なし、URL path で確定)"
+            reason = "whitelist_url_pattern"
 
         try:
             candidate = ClickCandidate(
                 url=url,  # type: ignore[arg-type]
-                anchor_text=callout.group(0),
+                anchor_text=anchor_text,
                 estimated_points=estimated_points,
-                extraction_reason="whitelist_url_pattern_and_anchor",
+                extraction_reason=reason,
             )
         except ValueError as exc:
             logger.debug("invalid candidate url %r: %s", url, exc)
@@ -144,14 +155,9 @@ def parse(body: str, is_html: bool = False) -> tuple[list[ClickCandidate], list[
         seen_urls.add(url)
         candidates.append(candidate)
 
+    # 2026-05-28 cleanup: callout 不在を anomaly にせず candidate に流すよう
+    # 変更したので ``url_without_callout`` anomaly は今や発火しない。空
+    # list を返して shape の互換を保つ。将来別 anomaly が必要になったら
+    # ここに追記する。
     anomalies: list[str] = []
-    if unconfirmed_urls:
-        anomalies.append(
-            str(
-                ParseAnomaly(
-                    kind="url_without_callout",
-                    detail=f"{len(unconfirmed_urls)} click URL(s) without a matching callout",
-                )
-            )
-        )
     return candidates, anomalies

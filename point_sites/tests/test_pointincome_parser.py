@@ -54,21 +54,25 @@ def test_callout_after_url_legacy_position() -> None:
     assert candidates[0].estimated_points == 5
 
 
-def test_url_without_callout_is_anomaly_not_candidate() -> None:
-    """A bare pointi.jp tracking URL with no nearby callout must not be
-    promoted to a candidate (would credit phantom clicks)."""
+def test_al_path_url_without_callout_is_candidate_with_no_estimate() -> None:
+    """2026-05-28 update: ``al/click_mail_magazine.php`` URL は narrow regex
+    で click-coin endpoint と確定するので、callout 不在でも anomaly では
+    なく candidate に振る。``estimated_points=None`` で extract-only mode
+    が user の手動 click 判断に流す。
+
+    旧挙動 (callout 必須 → anomaly) は extract モードで「URL は本物の
+    click-coin だが Slack に届かない」 ロスを生んでいた (`19e63900f0...`
+    mail が 3 日連続 anomaly 化した事象)。"""
     body = (
-        "ポイントインカム TOP https://pointi.jp/\n"
-        "■マイページ https://pointi.jp/my/my_page.php\n"
-        # The /al/ URL appears with no callout in either direction within 200 chars.
-        + ("...filler... " * 30)
-        + "\nhttps://pointi.jp/al/click_mail_magazine.php?no=1&hash=x&html=1&a=y\n"
-        + ("...filler... " * 30)
+        "メルマガをお読みいただきありがとうございます。\n"
+        "https://pointi.jp/al/click_mail_magazine.php?no=1&hash=x&html=1&a=y\n"
+        "今後ともよろしくお願いします。\n"
     )
     candidates, anomalies = parse(body, is_html=False)
-    assert candidates == []
-    # The unconfirmed URL should be reported as an anomaly so main.py logs it.
-    assert any("url_without_callout" in a for a in anomalies)
+    assert len(candidates) == 1
+    assert candidates[0].estimated_points is None
+    assert candidates[0].extraction_reason == "whitelist_url_pattern"
+    assert anomalies == [], "callout 不在は anomaly 化させない (extract path を妨げない)"
 
 
 def test_excluded_paths_dropped() -> None:
