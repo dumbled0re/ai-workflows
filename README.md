@@ -1,127 +1,127 @@
 # AI Workflows
 
-GitHub Actions と Claude を活用した個人用自動化ワークフロー集。各プロジェクトは uv による独立仮想環境を持ち、それぞれ独立した cron で動く。
+A personal automation monorepo built on GitHub Actions and Claude. Each project has its own `uv` virtual environment and runs on its own independent cron schedule.
 
-## プロジェクト一覧
+## Projects
 
-| プロジェクト | 概要 | 実行頻度 | 通知先 |
+| Project | Description | Schedule | Slack channel |
 |---|---|---|---|
-| [`stock_analyzer/`](./stock_analyzer/) | 日本株の短期投資分析 (テクニカル + ファンダ + ニュース + 信用残)。自律改善ループ (予測記録 → 検証 → 戦略更新) 付き | 平日 8:00 / 16:00 JST、土曜 10:00 JST に週次レビュー | `SLACK_CHANNEL_STOCK` |
-| [`tech_catchup/`](./tech_catchup/) | AI 業界のニュース・新リリースを Hacker News / GitHub Trending / arXiv / AI 企業公式ブログ / Reddit から収集して要約 | 毎朝 7:30 JST | `SLACK_CHANNEL_TECH` |
-| [`point_sites/`](./point_sites/) | 日本のポイ活サイト + 抽選サイト自動化 (adapter 構造)。本番稼働中: moppy / hapitas / amefuri / pointtown / getmoney / fruitmail / warau / sugutama (Gmail / on-site inbox / endpoint poll の 3 系統) + 抽選 chanceit / fruitmail_lottery / dreammail。pointincome は JP geofence で extract-only (Gmail 抽出 → Slack に click URL 投稿 → user 手動 click)。Cookie rotation 永続化 + ID/PW login fallback + 加算検証 3 層 + Playwright DailyWizard | サイト別 (7:30〜21:45 JST に分散) | `SLACK_CHANNEL_<SITE>` |
-| [`verify/`](./verify/) + [`scripts/pending_verify.py`](./scripts/pending_verify.py) | 後日の機械検証 (cron run の log grep / workflow trigger 等) を YAML + GitHub Issue で予約、毎朝自動実行。失敗時は Claude Code Action で auto-fix も試行 | 毎朝 7:30 JST | `SLACK_CHANNEL_VERIFY` |
+| [`stock_analyzer/`](./stock_analyzer/) | Short-term Japanese equity analysis (technical + fundamental + news + margin-trading data). Self-improving loop: log predictions → verify against outcomes → update strategy weights | Weekdays 8:00 / 16:00 JST, Saturday 10:00 JST for the weekly strategy review | `SLACK_CHANNEL_STOCK` |
+| [`tech_catchup/`](./tech_catchup/) | Daily AI-industry digest sourced from Hacker News, GitHub Trending, arXiv, AI-company blogs, and Reddit | Daily 7:30 JST | `SLACK_CHANNEL_TECH` |
+| [`point_sites/`](./point_sites/) | Japanese reward-site (ポイ活) and lottery automation, adapter-based. Production-active: moppy / hapitas / amefuri / pointtown / getmoney / fruitmail / warau / sugutama (Gmail / on-site inbox / endpoint-poll sources) + lottery: chanceit / fruitmail_lottery / dreammail. pointincome runs in extract-only mode because the site geofences non-JP IPs (the bot extracts click URLs from Gmail and posts them to Slack so the user can click manually). Includes persistent cookie rotation, ID/PW login fallback via Playwright, three-layer credit verification, and Playwright `DailyWizard` flows | Per-site, staggered 7:30–21:45 JST | `SLACK_CHANNEL_<SITE>` |
+| [`verify/`](./verify/) + [`scripts/pending_verify.py`](./scripts/pending_verify.py) | Deferred mechanical-verification system: YAML files + GitHub Issues schedule checks (cron-run log greps, workflow triggers, etc.) that fire on a future date. The daily runner reports results to Slack and the related issue; failures optionally attempt auto-fix via Claude Code Action | Daily 7:30 JST | `SLACK_CHANNEL_VERIFY` |
 
-> 設計・運用方針の詳細は [`CLAUDE.md`](./CLAUDE.md) と [`point_sites/CLAUDE.md`](./point_sites/CLAUDE.md) を参照。
+> See [`CLAUDE.md`](./CLAUDE.md) and [`point_sites/CLAUDE.md`](./point_sites/CLAUDE.md) for design rationale and operational policies.
 
-## 共通の前提
+## Prerequisites
 
-- **Claude 認証**: API キーではなく `claude setup-token` で取得した OAuth トークン (`CLAUDE_CODE_OAUTH_TOKEN`) を GitHub Secrets に登録。Claude Pro/Max のサブスクリプション枠で動作
-- **Claude GitHub App**: <https://github.com/apps/claude> をリポジトリにインストール済みであること
-- **Slack 通知**: 全プロジェクト共通の Bot User OAuth Token (`SLACK_BOT_TOKEN` = `xoxb-...`) と、プロジェクト別 channel (`SLACK_CHANNEL_<PROJECT>`) を Secrets に登録。channel に bot を招待しておくこと。新プロジェクト追加時 Webhook は不要、`SLACK_CHANNEL_<NAME>` を 1 つ足すだけ
-- **言語/環境**: Python 3.12+。**全プロジェクト `uv` + `pyproject.toml` + `uv.lock` で 1 仮想環境**。システム Python への直接 `pip install` は禁止
-- **Gmail 認証**: 2026-05-17 に IMAP から **Gmail API + OAuth2 (readonly scope)** へ移行済。`GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REFRESH_TOKEN` の 3 つを全 Gmail 依存ジョブで共有
+- **Claude authentication**: Register a `CLAUDE_CODE_OAUTH_TOKEN` issued by `claude setup-token` (not an API key). The action runs against your Claude Pro/Max subscription, no per-call API billing.
+- **Claude GitHub App**: Install <https://github.com/apps/claude> on the repo.
+- **Slack notifications**: One shared Bot User OAuth Token (`SLACK_BOT_TOKEN` = `xoxb-...`) plus a per-project channel secret (`SLACK_CHANNEL_<PROJECT>`). Invite the bot into each channel. No incoming webhook required — adding a new project means adding a single `SLACK_CHANNEL_<NAME>` secret.
+- **Language / runtime**: Python 3.12+. **Every project uses `uv` + `pyproject.toml` + `uv.lock` for an isolated venv.** Direct `pip install` into the system Python is forbidden.
+- **Gmail authentication**: Migrated from IMAP to **Gmail API + OAuth2 (read-only scope)** on 2026-05-17. All Gmail-dependent jobs share `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REFRESH_TOKEN`.
 
-## 必要な Secrets
+## Required secrets
 
-| Secret 名 | 用途 |
+| Secret | Purpose |
 |---|---|
-| `CLAUDE_CODE_OAUTH_TOKEN` | 全 Claude Code Action 共通の認証 (Pro/Max sub) |
-| `SLACK_BOT_TOKEN` | Slack Bot User OAuth Token。全プロジェクト共有 |
-| `SLACK_CHANNEL_<PROJECT>` | プロジェクト別 channel ID または `#name` (`_TECH` / `_STOCK` / `_VERIFY` / `_MOPPY` / `_HAPITAS` / `_POINTINCOME` / `_AMEFURI` / `_POINTTOWN` / `_GETMONEY` / `_FRUITMAIL` / `_WARAU` / `_SUGUTAMA` / `_CHANCEIT` / `_FRUITMAIL_LOTTERY` / `_DREAMMAIL`) |
-| `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REFRESH_TOKEN` | Gmail API OAuth2 (readonly)。`scripts/get_refresh_token.py` で取得 |
-| `<SITE>_COOKIES` | point_sites 各サイト用 Cookie JSON (Cookie-Editor export) |
-| `<SITE>_USER` / `<SITE>_PASS` | (任意) ID/PW login 自動化用。設定すると Cookie 失効時に Playwright で fresh login し cookie を merge back |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Shared authentication for Claude Code Action runs (Pro/Max subscription) |
+| `SLACK_BOT_TOKEN` | Slack Bot User OAuth Token, shared across all projects |
+| `SLACK_CHANNEL_<PROJECT>` | Per-project channel ID or `#name` (`_TECH` / `_STOCK` / `_VERIFY` / `_MOPPY` / `_HAPITAS` / `_POINTINCOME` / `_AMEFURI` / `_POINTTOWN` / `_GETMONEY` / `_FRUITMAIL` / `_WARAU` / `_SUGUTAMA` / `_CHANCEIT` / `_FRUITMAIL_LOTTERY` / `_DREAMMAIL`) |
+| `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REFRESH_TOKEN` | Gmail API OAuth2 (read-only). Obtain via `scripts/get_refresh_token.py` |
+| `<SITE>_COOKIES` | Cookie JSON for each point_sites adapter (exported via Cookie-Editor) |
+| `<SITE>_USER` / `<SITE>_PASS` | (Optional) Credentials for the ID/PW login fallback. When set, a stale cookie triggers a fresh Playwright login and the rotated cookies are merged back |
 
-## ローカル実行
+## Local execution
 
-各プロジェクトディレクトリで `uv sync` → `uv run`:
+From inside each project directory: `uv sync` then `uv run`.
 
 ```bash
-# 株分析
+# Stock analysis
 cd stock_analyzer && uv sync
-uv run python -m stock_analyzer.main prepare    # データ収集・指標計算
-uv run python -m stock_analyzer.main notify     # Slack 通知
+uv run python -m stock_analyzer.main prepare    # fetch data + compute indicators
+uv run python -m stock_analyzer.main notify     # Slack notification
 
-# AI ニュースキャッチアップ
+# AI tech catch-up
 cd tech_catchup && uv sync
-uv run python -m tech_catchup.main gather       # 収集
-uv run python -m tech_catchup.main notify       # 通知
+uv run python -m tech_catchup.main gather       # collect
+uv run python -m tech_catchup.main notify       # notify
 
-# ポイ活サイト
+# Point sites
 cd point_sites && uv sync
 uv run python -m point_sites.main run --site moppy
-uv run python -m point_sites.main gmail_dump --site moppy --query 'from:moppy.jp newer_than:7d'  # debug
+uv run python -m point_sites.main gmail_dump --site moppy --query 'from:moppy.jp newer_than:7d'  # debug helper
 ```
 
 ## GitHub Actions
 
-`.github/workflows/` 配下の主要ファイル:
+The key files under `.github/workflows/`:
 
-### 株 / ニュース / 検証
+### Equity / news / verification
 
-| ファイル | 用途 | スケジュール (JST) |
+| File | Purpose | Schedule (JST) |
 |---|---|---|
-| `stock-analysis.yml` | 株分析 (保有銘柄予測 + 有望株発掘) | 平日 8:00 / 16:00 |
-| `weekly-review.yml` | 株戦略の週次レビュー | 土 10:00 |
-| `tech-catchup.yml` | AI ニュースキャッチアップ | 毎朝 7:30 |
-| `pending-verify.yml` | `verify/**/*.yml` の機械検証を順次実行、結果を Slack + issue に投稿 | 毎朝 7:30 |
-| `ci.yml` / `point_sites-ci.yml` | 全体 / point_sites の ruff + mypy + pytest | PR 時 |
+| `stock-analysis.yml` | Predict held tickers + screen for new candidates | Weekdays 8:00 / 16:00 |
+| `weekly-review.yml` | Weekly review of the equity strategy | Saturday 10:00 |
+| `tech-catchup.yml` | AI news digest | Daily 7:30 |
+| `pending-verify.yml` | Iterate over `verify/**/*.yml` checks, post results to Slack and the linked issue | Daily 7:30 |
+| `ci.yml` / `point_sites-ci.yml` | ruff + mypy + pytest (repo-wide / point_sites-specific) | On pull request |
 
-### point_sites (ポイ活 / 抽選)
+### point_sites (reward-site / lottery)
 
-`_site-runner.yml` (reusable workflow) を各サイトの薄いラッパーが呼ぶ構造。`workflow_dispatch` で `extract_links` / `inspect_url` / `discover` / `force_fresh_cookies` / `force_password_login_test` / `gmail_dump_query` 等の debug input を持つ。
+Each per-site YAML is a thin wrapper around `_site-runner.yml` (a reusable workflow). The wrapper exposes `workflow_dispatch` inputs such as `extract_links`, `inspect_url`, `discover`, `force_fresh_cookies`, `force_password_login_test`, and `gmail_dump_query` for debugging.
 
-| ファイル | 種別 | スケジュール (JST) | 備考 |
+| File | Type | Schedule (JST) | Notes |
 |---|---|---|---|
-| `moppy.yml` | ポイ活 (Gmail) | 7:30 | |
-| `pointincome.yml` | ポイ活 (Gmail extract-only) | 8:15 | JP geofence で auto-click 不可、URL 抽出 → Slack → 手動 click 運用 |
-| `chanceit.yml` | 抽選 (Gmail + onsite) | 8:00 | easy-entry 系の自動応募 |
-| `dreammail.yml` | ポイ活 + 抽選 | 8:45 | gacha / precam wizard |
-| `amefuri.yml` | ポイ活 (endpoint poll) | 9:15 | SPA login bonus は Playwright wizard |
-| `pointtown.yml` | ポイ活 (onsite inbox) | 9:30 + 21:30 (keepalive) | |
-| `getmoney.yml` | ポイ活 (onsite inbox) | 9:45 + 21:45 (keepalive) | game1000 line=1 のみ |
-| `fruitmail_lottery.yml` | 抽選 | 9:30 | 5 prize categories 自動応募 |
-| `hapitas.yml` | ポイ活 (Gmail) | 11:30 | 宝くじ交換券 daily wizard |
-| `fruitmail.yml` | ポイ活 (Gmail) | 15:00 | スロット / ビンゴ / login bonus / CM 視聴 wizard |
-| `warau.yml` | ポイ活 (Gmail) | 18:30 | |
-| `sugutama.yml` | ポイ活 (Gmail) | 21:30 | |
-| `gendama.yml` | (休止) | — | 180 日休眠条件 + scaffold のみ。cron disabled |
+| `moppy.yml` | reward (Gmail) | 7:30 | |
+| `pointincome.yml` | reward (Gmail, extract-only) | 8:15 | Geofences non-JP IPs → auto-click impossible; extracts URLs and posts to Slack for manual clicking |
+| `chanceit.yml` | lottery (Gmail + on-site) | 8:00 | Auto-entry for easy-entry style prizes |
+| `dreammail.yml` | reward + lottery | 8:45 | Includes a gacha / precam wizard |
+| `amefuri.yml` | reward (endpoint poll) | 9:15 | SPA login bonus driven via a Playwright wizard |
+| `pointtown.yml` | reward (on-site inbox) | 9:30 + 21:30 (keepalive) | |
+| `getmoney.yml` | reward (on-site inbox) | 9:45 + 21:45 (keepalive) | game1000 line=1 only |
+| `fruitmail_lottery.yml` | lottery | 9:30 | Auto-entry across 5 prize categories |
+| `hapitas.yml` | reward (Gmail) | 11:30 | Daily wizard for the 宝くじ交換券 exchange |
+| `fruitmail.yml` | reward (Gmail) | 15:00 | Slot / bingo / login bonus / CM viewing wizards |
+| `warau.yml` | reward (Gmail) | 18:30 | |
+| `sugutama.yml` | reward (Gmail) | 21:30 | |
+| `gendama.yml` | (paused) | — | Scaffold only; the site enforces a 180-day inactivity rule, so the cron is disabled |
 
-`_site-runner.yml` の `timeout-minutes` は 15 分共通。SPA 待機 / 大量 wizard で超過した場合は wizard 削減か個別 timeout 上げで対応。
+`_site-runner.yml` uses a 15-minute `timeout-minutes`. If a site exceeds it (heavy SPA waits or too many wizards), trim wizards or raise the per-site timeout.
 
-## アーキテクチャ共通パターン
+## Shared architecture patterns
 
-### Claude 分析型 (stock_analyzer / tech_catchup)
+### Claude-driven analysis (stock_analyzer / tech_catchup)
 
 ```
-[Phase 1: Python]   データ収集 → JSON 出力
+[Phase 1: Python]   collect data → write JSON
        ↓
-[Phase 2: Claude]   JSON 読み込み → AI 分析 → 結果 JSON 出力
-                    (GitHub Actions では claude-code-action が実行)
+[Phase 2: Claude]   read JSON → AI analysis → write JSON
+                    (claude-code-action invokes this on GitHub Actions)
        ↓
-[Phase 3: Python]   結果を Slack 通知
+[Phase 3: Python]   read result → post to Slack
 ```
 
-### 純 Python 自動化型 (point_sites / pending-verify)
+### Pure Python automation (point_sites / pending-verify)
 
-Claude を経由せず、Python のみで完結 (クリックメール処理 / Playwright DailyWizard / 検証 cron 等)。
+No Claude involvement — straight Python: click-mail processing, Playwright `DailyWizard` execution, scheduled verifications, and so on.
 
-### 自律ワークフローの 3 層 (point_sites の必須前提)
+### The mandatory three-layer autonomy contract (point_sites)
 
-| 層 | 役割 | 実装 |
+| Layer | Role | Implementation |
 |---|---|---|
-| 検知 (verification) | 副作用が本当に起きたかを観測 | balance scrape / click HTTP status |
-| 記録 (telemetry) | 結果を JSONL で時系列に永続化 | `OutcomeTracker` |
-| 判断 + 通知 (escalation) | 連続 N 回の閾値割れで具体的アクション付きの Slack 警告 | credit-ratio / HTTP-failure / balance-stagnation の degradation alert |
+| Detection (verification) | Confirm whether the side effect actually occurred | Balance scrape / click HTTP status |
+| Telemetry (recording) | Persist outcomes as a time series (JSONL) | `OutcomeTracker` |
+| Decision + notification (escalation) | Fire a Slack alert with a concrete user action when N consecutive runs breach a threshold | Degradation alerts: credit-ratio / HTTP-failure / balance-stagnation |
 
-詳細は [`CLAUDE.md`](./CLAUDE.md) と [`point_sites/CLAUDE.md`](./point_sites/CLAUDE.md)。
+Full design in [`CLAUDE.md`](./CLAUDE.md) and [`point_sites/CLAUDE.md`](./point_sites/CLAUDE.md).
 
-## コスト
+## Cost
 
-- **Claude**: Pro/Max サブスクリプション枠内 (API 課金なし)
-- **GitHub Actions**: public repo 化済で Linux runner は完全無料 (private 時代の 2,000 min/月 制限解消)
-- **API**: yfinance (株) / Gmail API / 各種 RSS / 公式ブログ feed はすべて無料層
+- **Claude**: Covered by the Pro/Max subscription (no per-call API billing)
+- **GitHub Actions**: Repo is public, so Linux runners are free with no cap (the 2,000 min/month private-repo quota does not apply)
+- **External APIs**: yfinance (equity prices), Gmail API, public RSS / blog feeds — all free-tier only
 
-## ライセンス・免責
+## License and disclaimer
 
-各プロジェクトの実装内容は個人用の参考。投資判断や金銭取引に関わる動作はすべて自己責任。`point_sites` は対象サイト各社の規約により自動アクセスがリスクを伴うため、各サイトの TOS を確認の上で利用してください。
+The implementations are for personal reference. Any action involving investment decisions or financial transactions is your own responsibility. `point_sites` automates access to third-party reward sites whose terms of service may prohibit such automation — review each site's TOS before running.
