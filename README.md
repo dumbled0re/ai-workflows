@@ -9,7 +9,6 @@ GitHub Actions と Claude を活用した個人用自動化ワークフロー集
 | [`stock_analyzer/`](./stock_analyzer/) | 日本株の短期投資分析 (テクニカル + ファンダ + ニュース + 信用残)。自律改善ループ (予測記録 → 検証 → 戦略更新) 付き | 平日 8:00 / 16:00 JST、土曜 10:00 JST に週次レビュー | `SLACK_CHANNEL_STOCK` |
 | [`tech_catchup/`](./tech_catchup/) | AI 業界のニュース・新リリースを Hacker News / GitHub Trending / arXiv / AI 企業公式ブログ / Reddit から収集して要約 | 毎朝 7:30 JST | `SLACK_CHANNEL_TECH` |
 | [`point_sites/`](./point_sites/) | 日本のポイ活サイト + 抽選サイト自動化 (adapter 構造)。本番稼働中: moppy / hapitas / amefuri / pointtown / getmoney / fruitmail / warau / sugutama (Gmail / on-site inbox / endpoint poll の 3 系統) + 抽選 chanceit / fruitmail_lottery / dreammail。pointincome は JP geofence で extract-only (Gmail 抽出 → Slack に click URL 投稿 → user 手動 click)。Cookie rotation 永続化 + ID/PW login fallback + 加算検証 3 層 + Playwright DailyWizard | サイト別 (7:30〜21:45 JST に分散) | `SLACK_CHANNEL_<SITE>` |
-| [`todo/`](./todo/) | 個人 TODO リスト。Claude Code の `todo` skill で `todos.md` を編集し、未完了タスクを Slack 通知 | 手動 dispatch (cron 一時停止中) | `SLACK_CHANNEL_TODO` |
 | [`verify/`](./verify/) + [`scripts/pending_verify.py`](./scripts/pending_verify.py) | 後日の機械検証 (cron run の log grep / workflow trigger 等) を YAML + GitHub Issue で予約、毎朝自動実行。失敗時は Claude Code Action で auto-fix も試行 | 毎朝 7:30 JST | `SLACK_CHANNEL_VERIFY` |
 
 > 設計・運用方針の詳細は [`CLAUDE.md`](./CLAUDE.md) と [`point_sites/CLAUDE.md`](./point_sites/CLAUDE.md) を参照。
@@ -28,7 +27,7 @@ GitHub Actions と Claude を活用した個人用自動化ワークフロー集
 |---|---|
 | `CLAUDE_CODE_OAUTH_TOKEN` | 全 Claude Code Action 共通の認証 (Pro/Max sub) |
 | `SLACK_BOT_TOKEN` | Slack Bot User OAuth Token。全プロジェクト共有 |
-| `SLACK_CHANNEL_<PROJECT>` | プロジェクト別 channel ID または `#name` (`_TODO` / `_TECH` / `_STOCK` / `_VERIFY` / `_MOPPY` / `_HAPITAS` / `_POINTINCOME` / `_AMEFURI` / `_POINTTOWN` / `_GETMONEY` / `_FRUITMAIL` / `_WARAU` / `_SUGUTAMA` / `_CHANCEIT` / `_FRUITMAIL_LOTTERY` / `_DREAMMAIL`) |
+| `SLACK_CHANNEL_<PROJECT>` | プロジェクト別 channel ID または `#name` (`_TECH` / `_STOCK` / `_VERIFY` / `_MOPPY` / `_HAPITAS` / `_POINTINCOME` / `_AMEFURI` / `_POINTTOWN` / `_GETMONEY` / `_FRUITMAIL` / `_WARAU` / `_SUGUTAMA` / `_CHANCEIT` / `_FRUITMAIL_LOTTERY` / `_DREAMMAIL`) |
 | `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REFRESH_TOKEN` | Gmail API OAuth2 (readonly)。`scripts/get_refresh_token.py` で取得 |
 | `<SITE>_COOKIES` | point_sites 各サイト用 Cookie JSON (Cookie-Editor export) |
 | `<SITE>_USER` / `<SITE>_PASS` | (任意) ID/PW login 自動化用。設定すると Cookie 失効時に Playwright で fresh login し cookie を merge back |
@@ -52,25 +51,19 @@ uv run python -m tech_catchup.main notify       # 通知
 cd point_sites && uv sync
 uv run python -m point_sites.main run --site moppy
 uv run python -m point_sites.main gmail_dump --site moppy --query 'from:moppy.jp newer_than:7d'  # debug
-
-# TODO リマインダー
-cd todo && uv sync
-uv run python -m todo.main notify --dry-run     # ローカル確認
-uv run python -m todo.main notify               # Slack 通知
 ```
 
 ## GitHub Actions
 
 `.github/workflows/` 配下の主要ファイル:
 
-### 株 / ニュース / TODO / 検証
+### 株 / ニュース / 検証
 
 | ファイル | 用途 | スケジュール (JST) |
 |---|---|---|
 | `stock-analysis.yml` | 株分析 (保有銘柄予測 + 有望株発掘) | 平日 8:00 / 16:00 |
 | `weekly-review.yml` | 株戦略の週次レビュー | 土 10:00 |
 | `tech-catchup.yml` | AI ニュースキャッチアップ | 毎朝 7:30 |
-| `todo.yml` | TODO リマインダー Slack 通知 | 手動 dispatch (cron 一時停止中) |
 | `pending-verify.yml` | `verify/**/*.yml` の機械検証を順次実行、結果を Slack + issue に投稿 | 毎朝 7:30 |
 | `ci.yml` / `point_sites-ci.yml` | 全体 / point_sites の ruff + mypy + pytest | PR 時 |
 
@@ -109,7 +102,7 @@ uv run python -m todo.main notify               # Slack 通知
 [Phase 3: Python]   結果を Slack 通知
 ```
 
-### 純 Python 自動化型 (point_sites / todo / pending-verify)
+### 純 Python 自動化型 (point_sites / pending-verify)
 
 Claude を経由せず、Python のみで完結 (クリックメール処理 / Playwright DailyWizard / 検証 cron 等)。
 
