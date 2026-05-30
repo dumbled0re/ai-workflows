@@ -32,6 +32,22 @@ DEFAULT_WEIGHTS = {
     "revenue_growth": 5,
 }
 
+# Bayesian shrinkage weight-retune constants (Phase 3 #46, codex C 推奨)
+# β-binomial empirical Bayes:
+#   posterior_rate = (k * overall_rate + wins) / (k + n)
+# k = prior strength (= 仮想的な「全体勝率に基づく事前観測サンプル数」)。
+# 小さい k は per-signal データを信用、大きい k は overall_rate へ強く縮約。
+# 20 は ~20 signals × ~5-30 obs each の状況で安全な中庸値。
+_BAYESIAN_PRIOR_STRENGTH_K = 20.0
+# Scaling 上下限 (codex 推奨 ±10-20%、20% で run)。週次 retune で 1.20^N が
+# 暴走しないよう 1 段階で大きく動かさない。
+_WEIGHT_SCALE_CAP_UP = 1.20
+_WEIGHT_SCALE_CAP_DOWN = 0.80
+# 提案 weight の保存先 (active screening_weights.json とは別 file)。
+# 自動反映なし、user / strategy_learner.apply_review_results 経由で
+# 明示的に有効化する設計。
+_PROPOSED_WEIGHTS_FILE = str(_DATA_DIR / "proposed_screening_weights.json")
+
 
 def load_strategy_notes(path: str = _STRATEGY_NOTES_FILE) -> dict:
     """Load accumulated strategy notes."""
@@ -79,6 +95,147 @@ def save_screening_weights(weights: dict, path: str = _SCREENING_WEIGHTS_FILE) -
     with open(p, "w", encoding="utf-8") as f:
         json.dump(weights, f, ensure_ascii=False, indent=2)
     logger.info("Saved screening weights")
+
+
+def compute_bayesian_weight_proposal(
+    predictions_history: dict,
+    current_weights: dict | None = None,
+    prior_strength_k: float = _BAYESIAN_PRIOR_STRENGTH_K,
+) -> dict:
+    """β-binomial empirical Bayes で signal weight の提案を計算。
+
+    codex 設計 (Phase 3 #46):
+      shrunk_rate = (k * overall_rate + wins) / (k + n)
+      scaling = shrunk_rate / overall_rate
+      new_weight = current_weight * clip(scaling, [0.80, 1.20])
+
+    勝率 だけだと「signal=False のときの勝率」 を無視するので、本来は
+    lift (with_signal_rate - without_signal_rate) を見たい。ここでは
+    signal_efficacy が両方の数字を返してくれるので、shrunk version の
+    両者を比べて、with > without が安定してる signal だけ weight up
+    する 2-stage 設計。
+
+    Returns:
+      {
+        "overall_win_rate": 0.58,
+        "prior_strength_k": 20,
+        "proposed": {
+            "volume_spike": {
+                "current_weight": 20,
+                "raw_with_rate": 0.65,
+                "shrunk_with_rate": 0.62,
+                "raw_without_rate": 0.55,
+                "shrunk_without_rate": 0.57,
+                "shrunk_lift_pp": 5.0,
+                "scaling_factor": 1.08,
+                "proposed_weight": 22,
+                "n_with": 18,
+                "n_without": 200,
+            },
+            ...
+        }
+      }
+    """
+    from stock_analyzer.performance_tracker import compute_signal_efficacy
+
+    efficacy = compute_signal_efficacy(predictions_history, min_samples=5)
+    if not efficacy:
+        return {"overall_win_rate": None, "proposed": {}}
+
+    resolved = [p for p in predictions_history.get("predictions", []) if p.get("status") in ("win", "loss")]
+    if not resolved:
+        return {"overall_win_rate": None, "proposed": {}}
+    overall_wins = sum(1 for p in resolved if p["status"] == "win")
+    overall_rate = overall_wins / len(resolved)
+
+    if current_weights is None:
+        current_weights = DEFAULT_WEIGHTS.copy()
+
+    proposed: dict[str, dict] = {}
+    for signal, data in efficacy.items():
+        n_with = data["with_signal"]["total"]
+        wins_with = data["with_signal"]["wins"]
+        n_without = data["without_signal"]["total"]
+        wins_without = data["without_signal"]["wins"]
+        # β-binomial shrinkage to overall_rate
+        shrunk_with = (prior_strength_k * overall_rate + wins_with) / (prior_strength_k + n_with)
+        shrunk_without = (prior_strength_k * overall_rate + wins_without) / (prior_strength_k + n_without)
+        shrunk_lift = shrunk_with - shrunk_without
+        # scaling は shrunk_with_rate / overall_rate を base、ただし
+        # without_rate も考慮: with > without でなければ scaling を 1 に
+        # 固定 (この signal は実勝率 boost してない)
+        raw_scaling = (shrunk_with / overall_rate if overall_rate > 0 else 1.0) if shrunk_with > shrunk_without else 1.0
+        scaling = min(_WEIGHT_SCALE_CAP_UP, max(_WEIGHT_SCALE_CAP_DOWN, raw_scaling))
+        current_w = current_weights.get(signal, DEFAULT_WEIGHTS.get(signal, 10))
+        new_w = round(current_w * scaling)
+        proposed[signal] = {
+            "current_weight": current_w,
+            "raw_with_rate": round(data["with_signal"]["accuracy_pct"] / 100, 3),
+            "shrunk_with_rate": round(shrunk_with, 3),
+            "raw_without_rate": round(data["without_signal"]["accuracy_pct"] / 100, 3),
+            "shrunk_without_rate": round(shrunk_without, 3),
+            "shrunk_lift_pp": round(shrunk_lift * 100, 1),
+            "scaling_factor": round(scaling, 2),
+            "proposed_weight": new_w,
+            "n_with": n_with,
+            "n_without": n_without,
+        }
+    return {
+        "overall_win_rate": round(overall_rate, 3),
+        "prior_strength_k": prior_strength_k,
+        "scale_cap_up": _WEIGHT_SCALE_CAP_UP,
+        "scale_cap_down": _WEIGHT_SCALE_CAP_DOWN,
+        "proposed": proposed,
+    }
+
+
+def save_proposed_weights(proposal: dict, path: str = _PROPOSED_WEIGHTS_FILE) -> None:
+    """提案 weights を別 file に書き出し (active screening_weights.json
+    は触らない)。dry-run のため、user が手動で active 化するまで反映なし。
+    """
+    p = Path(path)
+    p.parent.mkdir(exist_ok=True)
+    with open(p, "w", encoding="utf-8") as f:
+        json.dump(proposal, f, ensure_ascii=False, indent=2)
+    logger.info("Saved Bayesian weight proposal (dry-run) to %s", path)
+
+
+def format_weight_proposal_for_prompt(proposal: dict, top_n: int = 8) -> str:
+    """提案 weights の上位 / 下位 N 件を AI prompt 用に整形。
+
+    全 signal を出すと冗長なので、scaling が ≠1.0 のものを scale 大きい
+    順に並べて上位 N 件。「次回 retune したらこう変わる」見える化。
+    Phase 3 dry-run なので「現状は反映してない、参考表示」 と明示。
+    """
+    proposed = proposal.get("proposed", {})
+    if not proposed:
+        return ""
+    # scaling factor の |1 - x| 順 (= 変化幅 大きい順)
+    sorted_items = sorted(
+        proposed.items(),
+        key=lambda kv: abs(1.0 - kv[1]["scaling_factor"]),
+        reverse=True,
+    )
+    if not sorted_items:
+        return ""
+    overall = proposal.get("overall_win_rate")
+    lines = ["📐 Bayesian weight 提案 (dry-run、現状は反映されません):"]
+    if overall is not None:
+        lines.append(f"  全体勝率: {overall:.1%} / 事前強度 k={proposal.get('prior_strength_k')}")
+    lines.append("  signal | 現重み → 提案 | shrunk lift | n_with")
+    for signal, data in sorted_items[:top_n]:
+        delta_marker = (
+            "🔺"
+            if data["proposed_weight"] > data["current_weight"]
+            else ("🔻" if data["proposed_weight"] < data["current_weight"] else "—")
+        )
+        lines.append(
+            f"  {delta_marker} {signal}: {data['current_weight']} → {data['proposed_weight']}"
+            f" (scale {data['scaling_factor']:.2f}, lift {data['shrunk_lift_pp']:+.1f}pp,"
+            f" n={data['n_with']})"
+        )
+    lines.append("  → 反映するには `data/screening_weights.json` に proposed_weight を手動コピー")
+    return "\n".join(lines)
 
 
 def format_strategy_notes_for_prompt(notes_data: dict) -> str:

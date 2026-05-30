@@ -115,9 +115,12 @@ def phase_prepare() -> None:
         save_history,
     )
     from stock_analyzer.strategy_learner import (
+        compute_bayesian_weight_proposal,
         format_strategy_notes_for_prompt,
+        format_weight_proposal_for_prompt,
         load_screening_weights,
         load_strategy_notes,
+        save_proposed_weights,
     )
 
     perf_history = load_history()
@@ -134,6 +137,25 @@ def phase_prepare() -> None:
         "Loaded %d strategy notes, screening weights ready",
         len(strategy_notes.get("notes", [])),
     )
+
+    # Phase 3 #46: Bayesian shrinkage weight proposal (dry-run mode)。
+    # 毎 cron で計算 + 保存するが、screening_weights.json には反映しない。
+    # AI prompt の strategy_notes に「提案だけ」 表示し、user が確認して
+    # 手動で active 化する設計。codex の助言「drift 中の retune は危険」
+    # を反映、calibration zone が green に戻ったら自動反映を検討。
+    try:
+        proposal = compute_bayesian_weight_proposal(perf_history, current_weights=screening_weights)
+        if proposal.get("proposed"):
+            save_proposed_weights(proposal)
+            proposal_block = format_weight_proposal_for_prompt(proposal)
+            if proposal_block:
+                strategy_notes_text = (strategy_notes_text + "\n\n" + proposal_block).strip()
+                logger.info(
+                    "Bayesian weight proposal generated (%d signals, dry-run)",
+                    len(proposal.get("proposed", {})),
+                )
+    except Exception:
+        logger.exception("Bayesian weight proposal failed (continuing without it)")
 
     # Fetch market context (indices, forex, sentiment)
     logger.info("Fetching market context...")

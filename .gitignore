@@ -50,3 +50,4 @@ HANDOFF.md
 
 # Playwright MCP working directory (console logs, page snapshots)
 .playwright-mcp/
+stock_analyzer/data/proposed_screening_weights.json
