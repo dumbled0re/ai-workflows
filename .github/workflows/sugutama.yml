@@ -76,6 +76,10 @@ on:
         description: "DEBUG: skip cookie verify, exercise password_login fallback directly"
         type: boolean
         default: false
+      gmail_dump_query:
+        description: "DEBUG: list Gmail messages matching this query (bypasses adapter filter + local dedup)"
+        type: string
+        default: ""
 
 
 permissions:
@@ -100,6 +104,7 @@ jobs:
       inspect_clicks: ${{ inputs.inspect_clicks }}
       force_fresh_cookies: ${{ inputs.force_fresh_cookies == true }}
       force_password_login_test: ${{ inputs.force_password_login_test == true }}
+      gmail_dump_query: ${{ inputs.gmail_dump_query }}
     secrets:
       slack_bot_token: ${{ secrets.SLACK_BOT_TOKEN }}
       slack_channel: ${{ secrets.SLACK_CHANNEL_SUGUTAMA }}

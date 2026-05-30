@@ -354,6 +354,18 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p_balance = sub.add_parser("balance", help="fetch and print current point balance")
     add_site_arg(p_balance)
 
+    p_gmail_dump = sub.add_parser(
+        "gmail_dump",
+        help=(
+            "DEBUG: list Gmail messages matching --query and dump sender/subject/"
+            "body snippet. Bypasses local dedup. Useful for diagnosing missing "
+            "click-mails (sender domain shift, subscription off, etc.)."
+        ),
+    )
+    add_site_arg(p_gmail_dump)
+    p_gmail_dump.add_argument("--query", required=True, help="Gmail search query (web-UI syntax)")
+    p_gmail_dump.add_argument("--max-messages", type=int, default=30)
+
     p_discover = sub.add_parser(
         "discover",
         help="read-only crawl of the daily-earn section; prints a structural report (no clicks)",
@@ -1553,6 +1565,42 @@ def cmd_html(
     return 0
 
 
+def cmd_gmail_dump(cfg: Config, query: str, max_messages: int) -> int:
+    """List Gmail messages matching ``query`` and print sender/subject/snippet.
+
+    Debug helper for diagnosing missing click-mails: runs an arbitrary
+    Gmail search (broader than the adapter's `gmail_query`) and dumps
+    each message's sender, subject, date, and the first ~600 chars of
+    the body. Bypasses local dedup. No state mutations.
+    """
+    from .common.gmail_client import GmailAuthError, GmailClient, GmailParseError
+
+    try:
+        gmail = GmailClient(cfg.gmail_client_id, cfg.gmail_client_secret, cfg.gmail_refresh_token)
+    except GmailAuthError as exc:
+        print(f"gmail auth failed: {exc}", file=sys.stderr)
+        return 2
+    try:
+        ids = gmail.search_messages(query, max_results=max_messages)
+        print(f"gmail_dump: query={query!r} → {len(ids)} messages")
+        for idx, msg_id in enumerate(ids, 1):
+            try:
+                parsed = gmail.get_message(msg_id)
+            except GmailParseError as exc:
+                print(f"--- [{idx}/{len(ids)}] {msg_id}: get_message failed: {exc}")
+                continue
+            body = parsed.plaintext_body or parsed.html_body or ""
+            snippet = body[:600].replace("\n", " ⏎ ")
+            print(f"--- [{idx}/{len(ids)}] {msg_id}")
+            print(f"    from: {parsed.sender}")
+            print(f"    date: {parsed.received_at}")
+            print(f"    subject: {parsed.subject}")
+            print(f"    body[:600]: {snippet}")
+    finally:
+        gmail.close()
+    return 0
+
+
 def cmd_balance(cfg: Config) -> int:
     """Print current point balance to stdout — useful for ad-hoc checks."""
     cookies = _resolve_cookies(cfg)
@@ -1613,6 +1661,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_state(cfg, args.message_id)
     if args.cmd == "balance":
         return cmd_balance(cfg)
+    if args.cmd == "gmail_dump":
+        return cmd_gmail_dump(cfg, query=args.query, max_messages=args.max_messages)
     if args.cmd == "discover":
         return cmd_discover(cfg)
     if args.cmd == "html":

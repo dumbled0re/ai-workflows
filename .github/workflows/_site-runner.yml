@@ -68,6 +68,10 @@ on:
         description: "DEBUG: skip cookie verify and exercise password_login fallback directly (verify <SITE>_USER/PASS wiring)"
         type: boolean
         default: false
+      gmail_dump_query:
+        description: "DEBUG: if non-empty, run `gmail_dump` with this query (sender/subject/body snippet) instead of the click pipeline. Bypasses dedup. Web-UI Gmail syntax."
+        type: string
+        default: ""
     secrets:
       slack_bot_token:
         required: true
@@ -229,6 +233,7 @@ jobs:
           INSPECT_REFERER: ${{ inputs.inspect_referer }}
           INSPECT_CLICKS: ${{ inputs.inspect_clicks }}
           DISCOVER: ${{ inputs.discover && '1' || '0' }}
+          GMAIL_DUMP_QUERY: ${{ inputs.gmail_dump_query }}
           SLACK_BOT_TOKEN: ${{ secrets.slack_bot_token }}
           SITE_SLACK_CHANNEL: ${{ secrets.slack_channel }}
           SITE_COOKIES: ${{ secrets.cookies }}
@@ -288,6 +293,8 @@ jobs:
               done
             fi
             uv run python -m point_sites.main html --site "$SITE" "$INSPECT_URL" "${HTML_FLAGS[@]}"
+          elif [[ -n "$GMAIL_DUMP_QUERY" ]]; then
+            uv run python -m point_sites.main gmail_dump --site "$SITE" --query "$GMAIL_DUMP_QUERY"
           elif [[ "$DISCOVER" == "1" ]]; then
             uv run python -m point_sites.main discover --site "$SITE"
           else
