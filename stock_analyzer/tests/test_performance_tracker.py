@@ -813,6 +813,60 @@ def test_walkforward_cv_returns_fold_results_with_enough_data() -> None:
     assert "mean_top_quantile_acc_pct" in result
 
 
+def test_overpriced_bias_returns_none_without_pre_entry_metrics() -> None:
+    """pre_entry_metrics 無い予測のみだと overpriced_bias は None。"""
+    from stock_analyzer.performance_tracker import compute_performance_stats
+
+    rows = [_pred("win", "UP", 5.0, confidence="HIGH", reviewed_date=f"2026-04-{i + 1:02d}") for i in range(20)]
+    stats = compute_performance_stats({"predictions": rows})
+    assert stats.get("overpriced_bias") is None
+
+
+def test_overpriced_bias_records_mean_returns_per_bucket() -> None:
+    """pre_entry_metrics が十分にある場合、bucket 別 mean returns を出力。"""
+    from stock_analyzer.performance_tracker import compute_performance_stats
+
+    rows = []
+    # HIGH n=15、事前 21d +8% (overpriced 候補)
+    for i in range(15):
+        status = "win" if i < 8 else "loss"
+        ret = 5.0 if i < 8 else -5.0
+        p = _pred(status, "UP", ret, confidence="HIGH", reviewed_date=f"2026-04-{i + 1:02d}")
+        p["ticker"] = f"H{i}.T"
+        p["pre_entry_metrics"] = {"price_change_5d": 3.0, "price_change_1m": 8.0, "price_change_3m": 15.0}
+        rows.append(p)
+    # MEDIUM n=15、事前 21d +1% (well-priced)
+    for i in range(15):
+        status = "win" if i < 10 else "loss"
+        ret = 5.0 if i < 10 else -5.0
+        p = _pred(status, "UP", ret, confidence="MEDIUM", reviewed_date=f"2026-04-{i + 16:02d}")
+        p["ticker"] = f"M{i}.T"
+        p["pre_entry_metrics"] = {"price_change_5d": 1.0, "price_change_1m": 1.0, "price_change_3m": 3.0}
+        rows.append(p)
+    stats = compute_performance_stats({"predictions": rows})
+    bias = stats.get("overpriced_bias")
+    assert bias is not None
+    assert bias["HIGH"]["mean_1m_ret_pct"] == 8.0
+    assert bias["MEDIUM"]["mean_1m_ret_pct"] == 1.0
+
+
+def test_effective_vol_returns_max_of_atr_and_realized() -> None:
+    """compute_effective_vol_pct は max(ATR, realized vol) を返す。"""
+    from stock_analyzer.position_sizing import compute_atr_pct, compute_effective_vol_pct, compute_realized_vol_pct
+
+    # 直近 spike を仕込んだ価格列
+    closes = [100.0] * 14 + [98.0, 102.0, 95.0, 108.0, 100.0]
+    highs = [c * 1.02 for c in closes]
+    lows = [c * 0.98 for c in closes]
+    atr = compute_atr_pct(highs, lows, closes)
+    realized = compute_realized_vol_pct(closes)
+    effective = compute_effective_vol_pct(highs, lows, closes)
+    assert atr is not None
+    assert realized is not None
+    assert effective is not None
+    assert effective == max(atr, realized)
+
+
 def test_format_feedback_emits_red_zone_block() -> None:
     """Red zone は feedback に🟥 ブロック + 「HIGH 出力は禁止」 directive。"""
     preds: list[dict] = []

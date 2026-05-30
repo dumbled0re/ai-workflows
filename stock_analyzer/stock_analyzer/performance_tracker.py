@@ -179,6 +179,7 @@ def save_new_predictions(
     current_prices: dict[str, float],
     today: str | None = None,
     signal_components: dict[str, dict[str, bool]] | None = None,
+    pre_entry_metrics: dict[str, dict[str, float]] | None = None,
 ) -> dict:
     """Extract new predictions from Claude's analysis results and add to history.
 
@@ -188,6 +189,11 @@ def save_new_predictions(
         discovery_result: Claude's discovery result
         current_prices: Dict mapping ticker to current price
         today: Today's date string
+        signal_components: ticker → {signal_name: True/False} dict
+        pre_entry_metrics: ticker → {"price_change_5d", "price_change_1m",
+            "price_change_3m", "rsi_14", "trailing_pe", ...} 等の事前指標。
+            Phase 5 #46 で追加: HIGH bucket の overpriced bias 検証用 (D 仮説 4)。
+            None で従来通り (省略可)。
 
     Returns:
         Updated history dict
@@ -195,6 +201,7 @@ def save_new_predictions(
     if today is None:
         today = datetime.now().strftime("%Y-%m-%d")
     sig_lookup = signal_components or {}
+    pem_lookup = pre_entry_metrics or {}
 
     new_count = 0
 
@@ -240,6 +247,7 @@ def save_new_predictions(
                 "reviewed_date": None,
                 "days_held": None,
                 "signal_components": sig_lookup.get(ticker, {}),
+                "pre_entry_metrics": pem_lookup.get(ticker, {}),
             }
         )
         new_count += 1
@@ -286,6 +294,7 @@ def save_new_predictions(
                 "reviewed_date": None,
                 "days_held": None,
                 "signal_components": sig_lookup.get(ticker, {}),
+                "pre_entry_metrics": pem_lookup.get(ticker, {}),
             }
         )
         new_count += 1
@@ -328,6 +337,7 @@ def save_new_predictions(
                 "reviewed_date": None,
                 "days_held": None,
                 "signal_components": sig_lookup.get(ticker, {}),
+                "pre_entry_metrics": pem_lookup.get(ticker, {}),
             }
         )
         new_count += 1
@@ -584,6 +594,15 @@ def compute_performance_stats(history: dict) -> dict:
     if correlation_pairs:
         stats["signal_correlation_pairs"] = correlation_pairs
 
+    # Phase 5 #46: HIGH bucket overpriced bias 検証 (codex D 仮説 4):
+    # HIGH 予測の銘柄は事前 5/21/63 日 return が MEDIUM/LOW より高ければ
+    # 「既に上昇済み = overpriced で平均回帰の caught knife になりやすい」
+    # 確証となる。pre_entry_metrics は最近の予測のみに存在 (Phase 5 で
+    # 記録 enable)、十分な n に到達するまで None 返す。
+    overpriced_bias = _compute_overpriced_bias(resolved)
+    if overpriced_bias is not None:
+        stats["overpriced_bias"] = overpriced_bias
+
     # Phase 4 #46: walk-forward CV で現状 weight set の OOS パフォーマンス
     # を測定 (purged + embargo)。Lopez de Prado 手法。Bayesian proposal の
     # 効果検証 (current vs proposed) は次 phase で。
@@ -816,6 +835,51 @@ def evaluate_weights_walkforward_cv(
         "mean_top_quantile_acc_pct": round(mean_acc, 1),
         "stdev_acc_pp": round(stdev, 1),
     }
+
+
+def _compute_overpriced_bias(resolved: list[dict], min_n: int = 10) -> dict | None:
+    """HIGH bucket の事前 return が MEDIUM/LOW より高いか検証 (codex D 仮説 4)。
+
+    HIGH 予測の銘柄が「既に上昇済み」なら、HIGH bucket の平均 pre_entry
+    return (5d/21d/63d) が MEDIUM/LOW より高くなる。これは "buying high" =
+    平均回帰の犠牲になりやすいパターンの実証。
+
+    pre_entry_metrics が無い (= 過去予測 with 古い schema) は除外、各
+    bucket の n >= min_n を要求。
+    """
+    with_metrics = [p for p in resolved if isinstance(p.get("pre_entry_metrics"), dict) and p["pre_entry_metrics"]]
+    if not with_metrics:
+        return None
+    by_conf: dict[str, dict[str, list[float]]] = {}
+    for conf in ("HIGH", "MEDIUM", "LOW"):
+        by_conf[conf] = {"price_change_5d": [], "price_change_1m": [], "price_change_3m": []}
+    for p in with_metrics:
+        conf = p.get("confidence")
+        if conf not in by_conf:
+            continue
+        m = p["pre_entry_metrics"]
+        for key in ("price_change_5d", "price_change_1m", "price_change_3m"):
+            val = m.get(key)
+            if isinstance(val, (int, float)):
+                by_conf[conf][key].append(float(val))
+    result: dict[str, dict] = {}
+    for conf in ("HIGH", "MEDIUM", "LOW"):
+        bucket = by_conf[conf]
+        if len(bucket["price_change_5d"]) < min_n:
+            continue
+        result[conf] = {
+            "n": len(bucket["price_change_5d"]),
+            "mean_5d_ret_pct": round(sum(bucket["price_change_5d"]) / len(bucket["price_change_5d"]), 2),
+            "mean_1m_ret_pct": round(sum(bucket["price_change_1m"]) / len(bucket["price_change_1m"]), 2)
+            if bucket["price_change_1m"]
+            else None,
+            "mean_3m_ret_pct": round(sum(bucket["price_change_3m"]) / len(bucket["price_change_3m"]), 2)
+            if bucket["price_change_3m"]
+            else None,
+        }
+    if not result:
+        return None
+    return result
 
 
 def compute_signal_correlation_pairs(history: dict, min_samples: int = 10) -> list[dict]:
@@ -1593,6 +1657,27 @@ def format_performance_feedback(history: dict) -> str:
         lines.append(f"💰 net EV: 名目 {gross:+.2f}%/trade、手数料 {cost:.1f}% 控除後 {net:+.2f}%/trade {marker}")
         if net < 0:
             lines.append("  ⚠ net で実損です。エントリー数を絞るか、勝率自体を上げる必要があります")
+
+    # Overpriced bias 検証 (Phase 5 #46): HIGH bucket の事前 5/21/63d
+    # return が MEDIUM/LOW より大幅高なら "buying high" bias の証拠。
+    op_bias = stats.get("overpriced_bias")
+    if isinstance(op_bias, dict) and op_bias:
+        lines.append("📈 overpriced bias 検証 (HIGH が事前上昇済みか):")
+        for conf in ("HIGH", "MEDIUM", "LOW"):
+            entry = op_bias.get(conf)
+            if entry:
+                lines.append(
+                    f"  {conf}: 事前5d {entry['mean_5d_ret_pct']:+.2f}%, "
+                    f"21d {entry.get('mean_1m_ret_pct', '?')}%, "
+                    f"63d {entry.get('mean_3m_ret_pct', '?')}% (n={entry['n']})"
+                )
+        # HIGH と MEDIUM の比較で大幅差なら警告
+        high_e = op_bias.get("HIGH")
+        med_e = op_bias.get("MEDIUM")
+        if high_e and med_e:
+            diff_1m = high_e["mean_1m_ret_pct"] - med_e["mean_1m_ret_pct"]
+            if diff_1m > 5.0:
+                lines.append(f"  ⚠ HIGH の事前 21d return が MEDIUM より +{diff_1m:.1f}pp 高い (overpriced 疑い)")
 
     # Walk-forward CV (Phase 4 #46): purged CV で current weight set の
     # OOS パフォーマンス。fold 別 top quantile accuracy の mean ± stdev。

@@ -142,7 +142,11 @@ def phase_prepare() -> None:
     # 毎 cron で計算 + 保存するが、screening_weights.json には反映しない。
     # AI prompt の strategy_notes に「提案だけ」 表示し、user が確認して
     # 手動で active 化する設計。codex の助言「drift 中の retune は危険」
-    # を反映、calibration zone が green に戻ったら自動反映を検討。
+    # を反映。
+    #
+    # Phase 5 #46: Green zone 2 連続復帰 (= recovery_confirmed) で自動反映
+    # を enable。drift 脱出が確認された後だけ proposed → active weights
+    # に copy する。一気に反映しないよう、変化幅が大きい signal のみ移す。
     try:
         proposal = compute_bayesian_weight_proposal(perf_history, current_weights=screening_weights)
         if proposal.get("proposed"):
@@ -154,6 +158,26 @@ def phase_prepare() -> None:
                     "Bayesian weight proposal generated (%d signals, dry-run)",
                     len(proposal.get("proposed", {})),
                 )
+            # Phase 5 auto-apply: Green zone + recovery_confirmed のときだけ
+            # active weights に反映。それ以外は dry-run で留まる (止血優先)。
+            zone_info = perf_history.get("performance_stats", {}).get("calibration_zone", {})
+            if zone_info.get("zone") == "green" and zone_info.get("recovery_confirmed"):
+                from stock_analyzer.strategy_learner import save_screening_weights
+
+                new_weights = {**screening_weights}
+                applied = 0
+                for sig, data in proposal["proposed"].items():
+                    new_w = data["proposed_weight"]
+                    if new_w != new_weights.get(sig):
+                        new_weights[sig] = new_w
+                        applied += 1
+                if applied > 0:
+                    save_screening_weights(new_weights)
+                    logger.info(
+                        "Phase 5 auto-apply: Green zone confirmed, applied %d weight changes from Bayesian proposal",
+                        applied,
+                    )
+                    screening_weights = new_weights  # so downstream uses new values
     except Exception:
         logger.exception("Bayesian weight proposal failed (continuing without it)")
 
@@ -161,6 +185,35 @@ def phase_prepare() -> None:
     logger.info("Fetching market context...")
     market_context = fetch_market_context()
     market_context_text = format_market_context(market_context)
+
+    # Phase 5 #46: Regime-aware weight / strategy switching。
+    # market_context.detect_market_regime() の regime 名と strategy_notes.
+    # regime_strategies のキー名にズレあるので map で吸収。検出した regime
+    # の戦略テキストを explicit に prompt 上に持ち上げて、AI が「いま
+    # どのレジームでどう動くべきか」を明示判定できるようにする。
+    _REGIME_MAP = {
+        "強気トレンド": "上昇トレンド",
+        "弱気トレンド": "下降トレンド",
+        "高ボラティリティ": "高ボラティリティ",
+        "レンジ相場": "レンジ相場",
+        "回復局面": "上昇トレンド",  # 回復は上昇の初期、同戦略
+    }
+    regime_info = market_context.get("regime") if isinstance(market_context, dict) else None
+    current_regime_name = regime_info.get("regime") if isinstance(regime_info, dict) else None
+    regime_strategy_key = _REGIME_MAP.get(current_regime_name) if current_regime_name else None
+    regime_strategies = strategy_notes.get("regime_strategies") or {}
+    regime_strategy_text = regime_strategies.get(regime_strategy_key) if regime_strategy_key else None
+    if regime_strategy_text:
+        regime_block = (
+            f"📌 現在のレジーム: {current_regime_name} (戦略 key: {regime_strategy_key})\n"
+            f"  推奨戦略: {regime_strategy_text}"
+        )
+        market_context_text = market_context_text + "\n\n" + regime_block
+        logger.info(
+            "Regime-aware: detected '%s' → strategy from regime_strategies['%s']",
+            current_regime_name,
+            regime_strategy_key,
+        )
 
     # Calendar/seasonality context (earnings concentration windows,
     # dividend ex-date approach, year-end thinning, GW, summer doldrums).
@@ -697,12 +750,38 @@ def phase_prepare() -> None:
     # ``compute_signal_efficacy`` consumes for per-signal win-rate
     # reporting in the weekly review prompt.
     signal_components_by_ticker: dict[str, dict[str, bool]] = {}
+    pre_entry_metrics_by_ticker: dict[str, dict[str, float]] = {}
     for c in screened_candidates:
         comps = c.get("signal_components")
         if comps:
             signal_components_by_ticker[c["ticker"]] = dict(comps)
+        # Phase 5 #46: pre-entry returns + RSI / PER を保存 → overpriced
+        # bias 検証 (codex D 仮説 4)。技術的フィールドのみ抽出。
+        pem: dict[str, float] = {}
+        for key in (
+            "price_change_5d",
+            "price_change_1m",
+            "price_change_3m",
+            "rsi_14",
+            "distance_from_52w_high",
+            "daily_atr_pct",
+            "daily_effective_vol_pct",
+        ):
+            val = c.get(key)
+            if isinstance(val, (int, float)):
+                pem[key] = float(val)
+        # Fundamentals (PER 等) も含めて overpriced 検証で活用
+        fundamentals = c.get("fundamentals") or {}
+        for fkey in ("trailingPE", "priceToBook", "fiftyTwoWeekHigh"):
+            fval = fundamentals.get(fkey)
+            if isinstance(fval, (int, float)):
+                pem[fkey] = float(fval)
+        if pem:
+            pre_entry_metrics_by_ticker[c["ticker"]] = pem
     with open(meta_dir / "signal_components.json", "w", encoding="utf-8") as f:
         json.dump(signal_components_by_ticker, f, ensure_ascii=False)
+    with open(meta_dir / "pre_entry_metrics.json", "w", encoding="utf-8") as f:
+        json.dump(pre_entry_metrics_by_ticker, f, ensure_ascii=False)
 
     # Universe staleness check — runs at most once per day (weekly
     # would be fine, but the daily cost is negligible). Failures are
@@ -977,6 +1056,16 @@ def phase_notify() -> None:
         except Exception:
             logger.warning("Failed to load signal_components.json", exc_info=True)
 
+    # Phase 5 #46: load pre_entry_metrics (overpriced bias 検証用)
+    pre_entry_metrics: dict[str, dict[str, float]] = {}
+    pem_path = _DATA_DIR / "pre_entry_metrics.json"
+    if pem_path.exists():
+        try:
+            with open(pem_path, encoding="utf-8") as f:
+                pre_entry_metrics = json.load(f)
+        except Exception:
+            logger.warning("Failed to load pre_entry_metrics.json", exc_info=True)
+
     if current_prices:
         perf_history = save_new_predictions(
             perf_history,
@@ -984,6 +1073,7 @@ def phase_notify() -> None:
             discovery_result,
             current_prices,
             signal_components=signal_components,
+            pre_entry_metrics=pre_entry_metrics,
         )
         save_history(perf_history)
         logger.info("New predictions saved to tracking history")

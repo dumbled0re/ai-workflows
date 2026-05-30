@@ -169,15 +169,28 @@ def compute_indicators(
         # ATR-based daily volatility for position sizing. Computed
         # from the 14-day true range over the available OHLC series;
         # falls back to None when there's less than 15 bars.
+        #
+        # Phase 5 #46: ATR と realized vol (log returns stdev) の max を
+        # 取って保守的 vol estimate にする。codex E「実現 vol sizing」 反映。
+        # ATR は range-based smoothed measure、realized は recent spike に
+        # 敏感、両者の max で position sizing が急変に追従しやすくなる。
         try:
-            from stock_analyzer.position_sizing import compute_atr_pct
+            from stock_analyzer.position_sizing import (
+                compute_atr_pct,
+                compute_effective_vol_pct,
+            )
 
             highs = [float(v) for v in df["High"].tail(20).tolist()]
             lows = [float(v) for v in df["Low"].tail(20).tolist()]
             closes_list = [float(v) for v in close.tail(20).tolist()]
             atr_pct = compute_atr_pct(highs, lows, closes_list)
+            effective_vol = compute_effective_vol_pct(highs, lows, closes_list)
             if atr_pct is not None:
                 summary["daily_atr_pct"] = round(atr_pct, 2)
+            if effective_vol is not None:
+                # vol_targeted_size と annotate_summary はこちらを優先で
+                # 読むよう次の commit で接続予定。当面は ATR と並記。
+                summary["daily_effective_vol_pct"] = round(effective_vol, 2)
         except Exception:
             pass
 

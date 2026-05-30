@@ -136,6 +136,60 @@ def derive_kelly_bases(history: dict) -> dict[str, float] | None:
     return bases or None
 
 
+def compute_realized_vol_pct(closes: list[float], window: int = 14) -> float | None:
+    """Realized daily volatility (stdev of log returns) as percentage.
+
+    codex E 推奨「GARCH/HMM/Kalman より先に実現 vol sizing」 を反映。
+    ATR は smoothed measure (range-based) で recent regime change への
+    反応が遅い。realized vol は log return の stdev で、直近の volatility
+    spike をより敏感に捉える。両者の max を取って保守側に倒すと、
+    急激な変化に position size が追従しやすい。
+
+    Returns None when 履歴不足 (window+1 bars needed for returns)。
+    """
+    if len(closes) < window + 1:
+        return None
+    import math
+
+    log_returns = []
+    for i in range(len(closes) - window, len(closes)):
+        prev = closes[i - 1]
+        cur = closes[i]
+        if prev <= 0 or cur <= 0:
+            continue
+        log_returns.append(math.log(cur / prev))
+    if len(log_returns) < 3:
+        return None
+    mean_r = sum(log_returns) / len(log_returns)
+    variance = sum((r - mean_r) ** 2 for r in log_returns) / (len(log_returns) - 1)
+    stdev = variance**0.5
+    return stdev * 100  # percent
+
+
+def compute_effective_vol_pct(
+    highs: list[float], lows: list[float], closes: list[float], window: int = 14
+) -> float | None:
+    """ATR と realized vol の max を取って position sizing 用の保守的
+    vol estimate を返す。codex E の「実現 vol sizing」反映。
+
+    realized > ATR のときは「recent な spike が ATR の smoothing で
+    かき消されてる」 → realized 採用。
+    ATR > realized のときは「過去 range の方が広い (gap up/down 等)」
+    → ATR 採用。
+
+    両方とも None なら None。
+    """
+    atr = compute_atr_pct(highs, lows, closes, window=window)
+    realized = compute_realized_vol_pct(closes, window=window)
+    if atr is None and realized is None:
+        return None
+    if atr is None:
+        return realized
+    if realized is None:
+        return atr
+    return max(atr, realized)
+
+
 def compute_atr_pct(highs: list[float], lows: list[float], closes: list[float], window: int = 14) -> float | None:
     """Average True Range as a percentage of the latest close.
 
@@ -250,7 +304,10 @@ def annotate_summary(
     derived once per cron via ``derive_kelly_bases(history)``.
     """
     confidence = (summary.get("confidence") or default_confidence).upper()
-    atr_pct = summary.get("daily_atr_pct")
+    # Phase 5 #46: effective_vol (= max(ATR, realized_vol)) があれば優先。
+    # ない場合 (新しい computation path 通ってない既存 cache 等) は ATR
+    # にフォールバック。max を取るので size は保守的 (smaller 寄り)。
+    atr_pct = summary.get("daily_effective_vol_pct") or summary.get("daily_atr_pct")
     vol_size = vol_targeted_size(confidence, atr_pct if isinstance(atr_pct, (int, float)) else None)
 
     # Kelly path: use the empirical base when available, otherwise the
