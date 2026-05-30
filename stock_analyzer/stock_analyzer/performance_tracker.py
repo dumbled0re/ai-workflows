@@ -501,6 +501,19 @@ def compute_performance_stats(history: dict) -> dict:
     if drift is not None:
         stats["drift_indicator"] = drift
 
+    # Calibration zone: codex 設計相談 (issue #46) に基づく階層化 circuit
+    # breaker。HIGH/MEDIUM accuracy ratio + rolling Sharpe + drift を
+    # 統合して Red/Yellow/Green を判定。AI prompt に zone を注入し、Red
+    # 時は HIGH 出力を禁止、Yellow 時は boldness 控えめ、を強制する。
+    # 復帰は「2 連続 window 改善」 (latest + prev の両方 green) が条件。
+    zone = _compute_calibration_zone(
+        resolved=resolved,
+        confidence_stats=stats.get("by_confidence", {}),
+        drift=drift,
+    )
+    if zone is not None:
+        stats["calibration_zone"] = zone
+
     # Best and worst predictions — keep using raw return for the
     # ticker-level highlight so the date+name pair is interpretable
     # without explaining direction adjustment.
@@ -819,6 +832,166 @@ def _compute_drift_indicator(
     }
 
 
+# Calibration zone thresholds (codex 設計相談、issue #46)。
+#
+# Red trigger:
+#   - HIGH/MEDIUM accuracy ratio < 0.9 (HIGH の方が MEDIUM より精度低い
+#     = 信頼度逆転、Claude の自信判定が予測精度と無相関化してる兆候)
+#   - OR is_drift=True かつ recent_expectancy<0 (drift で実損中)
+#   - HIGH と MEDIUM のそれぞれ min サンプル数を要求 (小サンプル断定回避)
+#
+# Yellow trigger:
+#   - rolling Sharpe (recent window) < 0 (= 直近期待値マイナス)
+#   - OR is_drift=True (recent_expectancy 非考慮、p_value 駆動)
+#   - OR HIGH サンプル不足 (uncertainty 高)
+#
+# Recovery:
+#   - latest window + prev window 両方 Green = 2 連続改善で復帰
+#   - 部分改善 (latest だけ Green) では Yellow に留まる
+#
+# Threshold は codex 推奨値そのまま。後の Phase 2-3 で Brier score
+# 比較に置き換える可能性あり (ratio 0.9 は accuracy 比、Brier は確率比較
+# でより厳密)。
+_CALIBRATION_RATIO_RED_THRESHOLD = 0.9
+_CALIBRATION_MIN_BUCKET_N = 15
+_ROLLING_SHARPE_WINDOW = 14
+_CALIBRATION_RECOVERY_WINDOWS = 2
+
+
+def _compute_calibration_zone(
+    resolved: list[dict],
+    confidence_stats: dict,
+    drift: dict | None,
+) -> dict | None:
+    """Determine Red/Yellow/Green calibration zone for circuit-breaker control.
+
+    Red = HIGH 出力を強制 downgrade すべき重度劣化。Claude prompt に
+    「HIGH 禁止、MEDIUM までに抑える」を注入する。
+    Yellow = 直近不調 / 信頼度判定が怪しい中度劣化。 prompt に
+    「HIGH は厳格基準のみ、boldness 控えめ」を注入。
+    Green = 通常運用。
+
+    Returns ``{"zone": "red"|"yellow"|"green", "reasons": [...]}``。サン
+    プル不足で確定判定できないときは None。
+    """
+    if not resolved:
+        return None
+    reasons_red: list[str] = []
+    reasons_yellow: list[str] = []
+
+    # HIGH/MEDIUM calibration ratio
+    high = confidence_stats.get("HIGH", {})
+    medium = confidence_stats.get("MEDIUM", {})
+    high_n = high.get("total", 0)
+    medium_n = medium.get("total", 0)
+    high_acc = high.get("accuracy_pct")
+    medium_acc = medium.get("accuracy_pct")
+    if (
+        high_n >= _CALIBRATION_MIN_BUCKET_N
+        and medium_n >= _CALIBRATION_MIN_BUCKET_N
+        and high_acc is not None
+        and medium_acc is not None
+        and medium_acc > 0
+    ):
+        ratio = high_acc / medium_acc
+        if ratio < _CALIBRATION_RATIO_RED_THRESHOLD:
+            reasons_red.append(
+                f"calibration 逆転 (HIGH {high_acc:.1f}% / MEDIUM {medium_acc:.1f}% = ratio {ratio:.2f} < 0.90)"
+            )
+    elif high_n < _CALIBRATION_MIN_BUCKET_N and high_n > 0:
+        # 小サンプルで断定できないが、観測されてる場合は yellow に
+        reasons_yellow.append(f"HIGH サンプル不足 (n={high_n} < {_CALIBRATION_MIN_BUCKET_N})")
+
+    # Drift signal
+    if drift is not None:
+        is_drift = drift.get("is_drift", False)
+        recent_exp = drift.get("recent_expectancy_pct", 0.0)
+        if is_drift and recent_exp < 0:
+            reasons_red.append(f"drift + 実損 (recent EV {recent_exp:.2f}%/trade、p={drift.get('p_value')})")
+        elif is_drift:
+            reasons_yellow.append(f"drift 検知 (recent EV {recent_exp:.2f}%、p={drift.get('p_value')})")
+
+    # Rolling Sharpe (recent window) — Yellow trigger
+    rolling = _rolling_sharpe(resolved, window=_ROLLING_SHARPE_WINDOW)
+    if rolling is not None and rolling < 0:
+        reasons_yellow.append(f"rolling Sharpe {rolling:.2f} < 0 (recent {_ROLLING_SHARPE_WINDOW} trades)")
+
+    # Zone 決定
+    if reasons_red:
+        zone = "red"
+    elif reasons_yellow:
+        zone = "yellow"
+    else:
+        zone = "green"
+
+    # Recovery: latest + prev window が両方 green でないと「2 連続改善」
+    # 達成にならない。現状 zone=green でも一過性なら警告だけ残す。
+    recovery_ok = zone == "green" and _prev_window_was_green(resolved)
+
+    return {
+        "zone": zone,
+        "reasons": reasons_red + reasons_yellow,
+        "recovery_confirmed": recovery_ok,
+        "high_n": high_n,
+        "medium_n": medium_n,
+        "high_acc_pct": high_acc,
+        "medium_acc_pct": medium_acc,
+        "rolling_sharpe": round(rolling, 2) if rolling is not None else None,
+    }
+
+
+def _rolling_sharpe(resolved: list[dict], window: int) -> float | None:
+    """Sharpe-like ratio (mean / stdev) over the last ``window`` resolved
+    trades. Returns None when sample is too small for a meaningful stdev.
+    """
+    chrono = sorted(
+        (p for p in resolved if p.get("reviewed_date") and _directional_return(p) is not None),
+        key=lambda p: p["reviewed_date"],
+    )
+    if len(chrono) < window:
+        return None
+    recent = chrono[-window:]
+    returns = [_directional_return(p) for p in recent if _directional_return(p) is not None]
+    if len(returns) < 3:
+        return None
+    mean_r = sum(returns) / len(returns)
+    variance = sum((r - mean_r) ** 2 for r in returns) / (len(returns) - 1)
+    if variance <= 0:
+        return None
+    stdev = variance**0.5
+    return mean_r / stdev
+
+
+def _prev_window_was_green(resolved: list[dict]) -> bool:
+    """True if the window of trades **just before the latest** is also Green.
+
+    Mirror logic of the main zone computation but on the prior window,
+    so 2-consecutive-improvement gate (codex recovery requirement) can
+    be evaluated without persistent state — just look one window back.
+    """
+    window = _ROLLING_SHARPE_WINDOW
+    chrono = sorted(
+        (p for p in resolved if p.get("reviewed_date") and _directional_return(p) is not None),
+        key=lambda p: p["reviewed_date"],
+    )
+    if len(chrono) < 2 * window:
+        return False  # not enough data to confirm "2 連続"
+    prev_window_trades = chrono[-2 * window : -window]
+    returns = [_directional_return(p) for p in prev_window_trades if _directional_return(p) is not None]
+    if len(returns) < 3:
+        return False
+    mean_r = sum(returns) / len(returns)
+    variance = sum((r - mean_r) ** 2 for r in returns) / (len(returns) - 1)
+    if variance <= 0:
+        return False
+    stdev = variance**0.5
+    sharpe = mean_r / stdev
+    # Green proxy: prev window の Sharpe > 0 + win率 > 50%
+    wins = sum(1 for r in returns if r > 0)
+    win_rate = wins / len(returns)
+    return sharpe > 0 and win_rate > 0.5
+
+
 def extract_few_shot_examples(
     history: dict,
     n_wins: int = 3,
@@ -1108,6 +1281,36 @@ def format_performance_feedback(history: dict) -> str:
                 "  ⚠ 統計的に有意な期待値低下を検出 (p<0.10)。最近の判断バイアスが効いている可能性。"
                 "今回は新規 HIGH の付与をさらに厳格にし、迷ったら MEDIUM に下げてください"
             )
+
+    # Calibration zone (Red/Yellow/Green) — issue #46 Phase 1 circuit
+    # breaker。Red zone は HIGH 出力禁止、Yellow zone は HIGH 厳格化を
+    # prompt に強制する。codex 設計相談 (2026-05-30) の階層化トリガに
+    # 基づき、HIGH/MEDIUM accuracy ratio や rolling Sharpe を統合判定。
+    zone_info = stats.get("calibration_zone")
+    if isinstance(zone_info, dict):
+        zone = zone_info.get("zone", "green")
+        reasons = zone_info.get("reasons") or []
+        if zone == "red":
+            lines.append("🟥 Calibration Red zone — HIGH 出力は禁止します。すべて MEDIUM 以下に降格してください。")
+            for r in reasons:
+                lines.append(f"  - {r}")
+            lines.append(
+                "  指示: 全 picks の confidence を MEDIUM/LOW に。"
+                "UP HIGH は特に出さない (HIGH_UP は history 最弱)。"
+                " short_term picks は通常の半分以下に絞ること"
+            )
+        elif zone == "yellow":
+            lines.append("🟨 Calibration Yellow zone — HIGH は厳格基準のみ。boldness を控えめに。")
+            for r in reasons:
+                lines.append(f"  - {r}")
+            lines.append(
+                "  指示: HIGH は『複数 signal が全部 conviction』 case 限定。迷ったら MEDIUM に格下げ。"
+                " short_term picks は控えめに"
+            )
+        else:
+            if zone_info.get("recovery_confirmed"):
+                lines.append("✅ Calibration Green zone (2 連続 window 改善で復帰) — 通常運用に戻して構いません")
+            # Green かつ recovery 未確認は静か (= 改善途上、特別指示なし)
 
     # Direction-aware few-shot examples with signal fingerprints. The
     # previous in-line "成功パターン" sorted on raw return descending,

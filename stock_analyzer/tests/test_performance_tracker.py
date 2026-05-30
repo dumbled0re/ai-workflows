@@ -601,6 +601,86 @@ def test_format_feedback_emits_drift_warning_block() -> None:
     assert "+3.00%/件" in feedback or "3.0" in feedback
 
 
+# ---------- calibration zone (issue #46 Phase 1) ---------------------------
+
+
+def _bucket_pred(conf: str, status: str, ret: float, idx: int) -> dict:
+    """Build a resolved prediction for a specific confidence bucket."""
+    prediction = "UP" if ret >= 0 else "DOWN"
+    raw = ret if prediction == "UP" else -ret
+    p = _pred(
+        status,
+        prediction,
+        raw,
+        confidence=conf,
+        date="2026-01-01",
+        reviewed_date=f"2026-04-{(idx % 28) + 1:02d}",
+    )
+    p["ticker"] = f"T{idx}.T"
+    return p
+
+
+def test_calibration_zone_red_when_high_accuracy_below_medium_ratio() -> None:
+    """HIGH 51% / MEDIUM 67% → ratio 0.76 < 0.9 → red zone."""
+    preds: list[dict] = []
+    # HIGH: 30 件、win 15 (50%)
+    for i in range(30):
+        preds.append(_bucket_pred("HIGH", "win" if i < 15 else "loss", 5.0 if i < 15 else -5.0, i))
+    # MEDIUM: 30 件、win 20 (66.7%)
+    for i in range(30):
+        preds.append(_bucket_pred("MEDIUM", "win" if i < 20 else "loss", 5.0 if i < 20 else -5.0, i + 100))
+    stats = compute_performance_stats({"predictions": preds})
+    zone = stats.get("calibration_zone")
+    assert zone is not None
+    assert zone["zone"] == "red"
+    assert any("calibration 逆転" in r for r in zone["reasons"])
+
+
+def test_calibration_zone_green_when_high_outperforms_medium() -> None:
+    """HIGH 70% / MEDIUM 60% → ratio > 0.9 → green zone (normal)."""
+    preds: list[dict] = []
+    for i in range(30):
+        preds.append(_bucket_pred("HIGH", "win" if i < 21 else "loss", 5.0 if i < 21 else -5.0, i))
+    for i in range(30):
+        preds.append(_bucket_pred("MEDIUM", "win" if i < 18 else "loss", 5.0 if i < 18 else -5.0, i + 100))
+    stats = compute_performance_stats({"predictions": preds})
+    zone = stats.get("calibration_zone")
+    assert zone is not None
+    assert zone["zone"] == "green"
+
+
+def test_calibration_zone_yellow_when_high_sample_insufficient() -> None:
+    """HIGH n=8 < min(15) → yellow downgrade (uncertainty 高い)。"""
+    preds: list[dict] = []
+    # HIGH: 8 件のみ (min 15 未満)
+    for i in range(8):
+        preds.append(_bucket_pred("HIGH", "win" if i < 4 else "loss", 5.0 if i < 4 else -5.0, i))
+    # MEDIUM: 25 件、healthy 65%
+    for i in range(25):
+        preds.append(_bucket_pred("MEDIUM", "win" if i < 16 else "loss", 5.0 if i < 16 else -5.0, i + 100))
+    stats = compute_performance_stats({"predictions": preds})
+    zone = stats.get("calibration_zone")
+    assert zone is not None
+    assert zone["zone"] in {"yellow", "red"}  # サンプル不足は最低 yellow
+    # high_n が低いことが理由として記録されてる
+    assert any("HIGH サンプル不足" in r or "calibration" in r for r in zone["reasons"])
+
+
+def test_format_feedback_emits_red_zone_block() -> None:
+    """Red zone は feedback に🟥 ブロック + 「HIGH 出力は禁止」 directive。"""
+    preds: list[dict] = []
+    for i in range(30):
+        preds.append(_bucket_pred("HIGH", "win" if i < 15 else "loss", 5.0 if i < 15 else -5.0, i))
+    for i in range(30):
+        preds.append(_bucket_pred("MEDIUM", "win" if i < 20 else "loss", 5.0 if i < 20 else -5.0, i + 100))
+    history = {"predictions": preds}
+    history["performance_stats"] = compute_performance_stats(history)
+    feedback = format_performance_feedback(history)
+    assert "🟥" in feedback
+    assert "Red zone" in feedback
+    assert "HIGH 出力は禁止" in feedback
+
+
 # ---------- NO_TRADE / UP gate ---------------------------------------------
 
 
