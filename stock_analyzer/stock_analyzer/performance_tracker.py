@@ -575,6 +575,28 @@ def compute_performance_stats(history: dict) -> dict:
     if zone is not None:
         stats["calibration_zone"] = zone
 
+    # Phase 4 #46: Net expectancy (手数料込み) と signal correlation 分析
+    net_ev = compute_net_expectancy(history)
+    if net_ev is not None:
+        stats["net_expectancy"] = net_ev
+
+    correlation_pairs = compute_signal_correlation_pairs(history)
+    if correlation_pairs:
+        stats["signal_correlation_pairs"] = correlation_pairs
+
+    # Phase 4 #46: walk-forward CV で現状 weight set の OOS パフォーマンス
+    # を測定 (purged + embargo)。Lopez de Prado 手法。Bayesian proposal の
+    # 効果検証 (current vs proposed) は次 phase で。
+    try:
+        from stock_analyzer.strategy_learner import load_screening_weights
+
+        current_weights = load_screening_weights()
+        cv_result = evaluate_weights_walkforward_cv(history, weights=current_weights)
+        if cv_result is not None:
+            stats["walkforward_cv"] = cv_result
+    except Exception:
+        logger.exception("Walk-forward CV evaluation failed (continuing without)")
+
     # Best and worst predictions — keep using raw return for the
     # ticker-level highlight so the date+name pair is interpretable
     # without explaining direction adjustment.
@@ -681,6 +703,208 @@ def build_up_gate_directive(stats: dict) -> str:
         "このゲートは UP 予測勝率が回復するまで継続します。守れない場合の理由を critic / "
         "performance_feedback に残してください。"
     )
+
+
+def evaluate_weights_walkforward_cv(
+    history: dict,
+    weights: dict,
+    n_folds: int = 4,
+    embargo_days: int = 7,
+    min_test_n: int = 10,
+) -> dict | None:
+    """Purged walk-forward CV で weight set の OOS パフォーマンスを評価する。
+
+    Lopez de Prado "Advances in Financial Machine Learning" 章 7 で提唱の
+    purged k-fold CV を時系列向け walk-forward 版で実装。
+
+    手順:
+      1. resolved 予測を reviewed_date 順に並べる
+      2. n_folds に分割
+      3. 各 fold k について:
+         a. test = fold k
+         b. embargo_days で test の前後を train から除外 (leakage 防止)
+         c. train = test 前のみ (walk-forward: 未来データ使わない)
+         d. score = sum(weight × signal_components) を train で計算
+         e. test の上位 N (= top quantile) の predicted vs actual accuracy
+      4. fold 別 accuracy の平均と stdev を返す
+
+    Returns:
+      {
+        "n_folds": 4,
+        "embargo_days": 7,
+        "fold_results": [
+          {"fold": 0, "n_train": 40, "n_test": 15, "top_quantile_acc_pct": 65.0},
+          ...
+        ],
+        "mean_top_quantile_acc_pct": 60.5,
+        "stdev_acc_pp": 4.2,
+        "interpretation": "OOS で上位 quantile の accuracy が ~60%、過去全体
+                          accuracy ~58% より高い → weight set は OOS で機能"
+      }
+
+    None 返す = データ不足。Phase 5 で hyperparameter search に組込予定。
+    """
+    # 評価対象は signal_components が **空でない** 予測のみ (空 dict だと
+    # 全 score=0 で fold が degenerate)。reviewed_date より prediction date
+    # の方が時系列スパン長い (signal_components の記録機能が最近のため
+    # reviewed_date は narrow window)、こちらで chrono 並びにする。
+    resolved = [
+        p
+        for p in history.get("predictions", [])
+        if p.get("status") in ("win", "loss")
+        and isinstance(p.get("signal_components"), dict)
+        and p["signal_components"]  # non-empty required
+        and p.get("date")
+    ]
+    if len(resolved) < n_folds * min_test_n * 2:
+        return None
+    chrono = sorted(resolved, key=lambda p: p["date"])
+    fold_size = len(chrono) // n_folds
+    fold_results = []
+    accuracies: list[float] = []
+    for k in range(n_folds):
+        test_start = k * fold_size
+        test_end = (k + 1) * fold_size if k < n_folds - 1 else len(chrono)
+        test = chrono[test_start:test_end]
+        if len(test) < min_test_n:
+            continue
+        # walk-forward: train は test より過去のみ
+        # embargo: train の末尾 embargo_days 分を除外
+        if test_start == 0:
+            train = []  # no past data for first fold
+        else:
+            embargo_cutoff_date = test[0]["date"]
+            from datetime import datetime, timedelta
+
+            cutoff_dt = datetime.strptime(embargo_cutoff_date, "%Y-%m-%d") - timedelta(days=embargo_days)
+            cutoff_str = cutoff_dt.strftime("%Y-%m-%d")
+            train = [p for p in chrono[:test_start] if p["date"] < cutoff_str]
+        if len(train) < min_test_n:
+            continue
+        # test の各予測に score 付与 (= sum of weights for fired signals)
+        # 上位 quantile (top 30%) を選んで accuracy
+        scored = [(sum(weights.get(sig, 0) for sig, fired in p["signal_components"].items() if fired), p) for p in test]
+        scored.sort(key=lambda x: x[0], reverse=True)
+        top_n = max(3, int(len(scored) * 0.30))
+        top = scored[:top_n]
+        if not top:
+            continue
+        top_wins = sum(1 for _, p in top if p["status"] == "win")
+        acc = top_wins / len(top) * 100
+        fold_results.append(
+            {
+                "fold": k,
+                "n_train": len(train),
+                "n_test": len(test),
+                "top_n": len(top),
+                "top_quantile_acc_pct": round(acc, 1),
+            }
+        )
+        accuracies.append(acc)
+    if not accuracies:
+        return None
+    mean_acc = sum(accuracies) / len(accuracies)
+    if len(accuracies) >= 2:
+        variance = sum((a - mean_acc) ** 2 for a in accuracies) / (len(accuracies) - 1)
+        stdev = variance**0.5
+    else:
+        stdev = 0.0
+    return {
+        "n_folds_used": len(fold_results),
+        "embargo_days": embargo_days,
+        "fold_results": fold_results,
+        "mean_top_quantile_acc_pct": round(mean_acc, 1),
+        "stdev_acc_pp": round(stdev, 1),
+    }
+
+
+def compute_signal_correlation_pairs(history: dict, min_samples: int = 10) -> list[dict]:
+    """signal_components の binary co-occurrence から signal 間相関を計算。
+
+    codex E 推奨「signal decorrelation で重複投票防止」 を実装。VIF や PCA
+    は連続値が必要だが、signal_components は binary (fired or not) なので
+    Pearson correlation を直接計算 (= phi coefficient with binary data)。
+
+    |r| > 0.7 は強相関、0.5-0.7 は中相関。highly correlated signal pair は
+    「同じ情報で二重カウント」してる可能性大 → どちらか drop or 統合候補。
+
+    Returns: list of {"pair": ["a", "b"], "correlation": 0.78, "n_both": 50,
+    "n_a_only": 10, "n_b_only": 8, "n_neither": 100}
+    correlation の絶対値降順でソート。
+    """
+    resolved = [
+        p
+        for p in history.get("predictions", [])
+        if isinstance(p.get("signal_components"), dict) and p["signal_components"]
+    ]
+    if len(resolved) < min_samples:
+        return []
+
+    all_signals: set[str] = set()
+    for p in resolved:
+        for name, fired in p["signal_components"].items():
+            if fired:
+                all_signals.add(name)
+    signals_sorted = sorted(all_signals)
+    n = len(resolved)
+
+    pairs: list[dict] = []
+    for i, a in enumerate(signals_sorted):
+        for b in signals_sorted[i + 1 :]:
+            n_both = sum(1 for p in resolved if p["signal_components"].get(a) and p["signal_components"].get(b))
+            n_a = sum(1 for p in resolved if p["signal_components"].get(a))
+            n_b = sum(1 for p in resolved if p["signal_components"].get(b))
+            n_a_only = n_a - n_both
+            n_b_only = n_b - n_both
+            n_neither = n - n_a_only - n_b_only - n_both
+            # phi coefficient (= Pearson for binary)
+            denom_sq = n_a * (n - n_a) * n_b * (n - n_b)
+            if denom_sq <= 0:
+                continue
+            phi = (n_both * n_neither - n_a_only * n_b_only) / math.sqrt(denom_sq)
+            # 弱相関は noise として除外 (|r| < 0.3)
+            if abs(phi) < 0.3:
+                continue
+            pairs.append(
+                {
+                    "pair": [a, b],
+                    "correlation": round(phi, 2),
+                    "n_both": n_both,
+                    "n_a_only": n_a_only,
+                    "n_b_only": n_b_only,
+                    "n_neither": n_neither,
+                }
+            )
+    pairs.sort(key=lambda x: abs(x["correlation"]), reverse=True)
+    return pairs
+
+
+def compute_net_expectancy(history: dict, transaction_cost_pct: float = 0.2) -> dict | None:
+    """手数料込み net EV を計算 (codex E 推奨「コスト込み EV」)。
+
+    現状の expectancy_per_trade_pct は gross (手数料前)。日本株の retail
+    手数料は 0.1-0.3% (片道、SBI 等)、往復で 0.2-0.6%。default 0.2% を
+    片道 cost として、両side 0.4% を expectancy から引く。
+
+    手数料込み EV が正であれば actual に儲かる、負なら名目勝率があっても
+    実利益はマイナス。
+    """
+    resolved = [p for p in history.get("predictions", []) if p.get("status") in ("win", "loss")]
+    if not resolved:
+        return None
+    returns = [r for r in (_directional_return(p) for p in resolved) if r is not None]
+    if not returns:
+        return None
+    gross_ev = sum(returns) / len(returns)
+    round_trip_cost = transaction_cost_pct * 2  # 往復
+    net_ev = gross_ev - round_trip_cost
+    return {
+        "gross_expectancy_pct": round(gross_ev, 2),
+        "transaction_cost_pct": transaction_cost_pct,
+        "round_trip_cost_pct": round_trip_cost,
+        "net_expectancy_pct": round(net_ev, 2),
+        "n": len(returns),
+    }
 
 
 def compute_signal_efficacy(history: dict, min_samples: int = 5) -> dict[str, dict]:
@@ -1357,6 +1581,42 @@ def format_performance_feedback(history: dict) -> str:
                 "  ⚠ 統計的に有意な期待値低下を検出 (p<0.10)。最近の判断バイアスが効いている可能性。"
                 "今回は新規 HIGH の付与をさらに厳格にし、迷ったら MEDIUM に下げてください"
             )
+
+    # Net expectancy (Phase 4 #46): 手数料込み EV。gross が正でも net が
+    # 負なら実損 → 慎重判断を促す signal。
+    net_ev = stats.get("net_expectancy")
+    if isinstance(net_ev, dict):
+        gross = net_ev["gross_expectancy_pct"]
+        net = net_ev["net_expectancy_pct"]
+        cost = net_ev["round_trip_cost_pct"]
+        marker = "⚠" if net < 0 else "✓"
+        lines.append(f"💰 net EV: 名目 {gross:+.2f}%/trade、手数料 {cost:.1f}% 控除後 {net:+.2f}%/trade {marker}")
+        if net < 0:
+            lines.append("  ⚠ net で実損です。エントリー数を絞るか、勝率自体を上げる必要があります")
+
+    # Walk-forward CV (Phase 4 #46): purged CV で current weight set の
+    # OOS パフォーマンス。fold 別 top quantile accuracy の mean ± stdev。
+    cv = stats.get("walkforward_cv")
+    if isinstance(cv, dict):
+        mean_acc = cv["mean_top_quantile_acc_pct"]
+        stdev_pp = cv["stdev_acc_pp"]
+        n_folds = cv["n_folds_used"]
+        lines.append(
+            f"🔬 walk-forward CV ({n_folds} folds, embargo {cv['embargo_days']}日): "
+            f"上位 30% picks の OOS accuracy {mean_acc:.1f}% ± {stdev_pp:.1f}pp"
+        )
+
+    # Signal correlation pairs (Phase 4 #46): 重複投票疑いの signal ペアを
+    # 表示。|r| > 0.7 は強相関 = 同情報重複、削除 or 統合候補。
+    corr_pairs = stats.get("signal_correlation_pairs")
+    if isinstance(corr_pairs, list) and corr_pairs:
+        strong = [p for p in corr_pairs if abs(p["correlation"]) >= 0.7]
+        if strong:
+            lines.append("🔗 高相関 signal ペア (|r|≥0.7、重複投票疑い):")
+            for p in strong[:5]:
+                a, b = p["pair"]
+                r = p["correlation"]
+                lines.append(f"  {a} ↔ {b}: r={r:+.2f} (共起 {p['n_both']})")
 
     # Reliability diagram の可視化 (Phase 2 #46): predicted_prob と
     # observed_acc の gap を表示。HIGH gap が大きく負なら overconfident。

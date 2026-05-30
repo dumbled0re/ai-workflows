@@ -735,6 +735,84 @@ def test_calibration_zone_red_on_brier_inversion() -> None:
     assert any("Brier 逆転" in r for r in zone["reasons"])
 
 
+def test_net_expectancy_subtracts_round_trip_cost() -> None:
+    """gross 1.0%/trade、cost 0.2% (片道) → 往復 0.4% → net 0.6%。"""
+    from stock_analyzer.performance_tracker import compute_net_expectancy
+
+    history = {
+        "predictions": [
+            _pred("win", "UP", 6.0, reviewed_date="2026-01-01"),
+            _pred("win", "UP", 4.0, reviewed_date="2026-01-02"),
+            _pred("loss", "UP", -8.0, reviewed_date="2026-01-03"),
+        ],
+    }
+    net = compute_net_expectancy(history, transaction_cost_pct=0.2)
+    assert net is not None
+    # gross = (6+4-8)/3 = 0.67
+    assert abs(net["gross_expectancy_pct"] - 0.67) < 0.01
+    # net = gross - 0.4 = 0.27
+    assert abs(net["net_expectancy_pct"] - 0.27) < 0.01
+
+
+def test_signal_correlation_pairs_detects_co_firing() -> None:
+    """volume_spike と volume_surge は階層化で常に co-fire → 強相関 r≈1.0。"""
+    from stock_analyzer.performance_tracker import compute_signal_correlation_pairs
+
+    # Build 20 predictions where 10 fire both vol_a and vol_b, 5 only vol_a, 5 neither
+    rows = []
+    for i in range(10):
+        p = _pred("win", "UP", 5.0, reviewed_date=f"2026-04-{i + 1:02d}")
+        p["ticker"] = f"T{i}.T"
+        p["signal_components"] = {"vol_a": True, "vol_b": True}
+        rows.append(p)
+    for i in range(5):
+        p = _pred("loss", "UP", -5.0, reviewed_date=f"2026-04-{i + 15:02d}")
+        p["ticker"] = f"T{i + 10}.T"
+        p["signal_components"] = {"vol_a": True}
+        rows.append(p)
+    for i in range(5):
+        p = _pred("loss", "UP", -5.0, reviewed_date=f"2026-04-{i + 20:02d}")
+        p["ticker"] = f"T{i + 15}.T"
+        p["signal_components"] = {"other": True}
+        rows.append(p)
+    pairs = compute_signal_correlation_pairs({"predictions": rows})
+    # vol_a/vol_b の組は強正相関であるべき
+    vol_pair = next((p for p in pairs if set(p["pair"]) == {"vol_a", "vol_b"}), None)
+    assert vol_pair is not None
+    assert vol_pair["correlation"] > 0.5
+
+
+def test_walkforward_cv_returns_none_when_data_insufficient() -> None:
+    """少量データ (< n_folds * min_test_n * 2) は None で suppression。"""
+    from stock_analyzer.performance_tracker import evaluate_weights_walkforward_cv
+
+    history = {"predictions": []}
+    result = evaluate_weights_walkforward_cv(history, weights={"a": 10})
+    assert result is None
+
+
+def test_walkforward_cv_returns_fold_results_with_enough_data() -> None:
+    """十分なデータで複数 fold の accuracy を返す。signal を持つ予測必須。"""
+    from stock_analyzer.performance_tracker import evaluate_weights_walkforward_cv
+
+    # 100 件、signal "good" が true なら win 偏重、false ならランダム
+    rows = []
+    for i in range(100):
+        good_sig = i % 3 == 0
+        is_win = good_sig if i % 7 != 0 else not good_sig  # noise
+        ret = 5.0 if is_win else -5.0
+        status = "win" if is_win else "loss"
+        date_str = f"2026-{(i // 30) + 1:02d}-{(i % 28) + 1:02d}"
+        p = _pred(status, "UP", ret, date=date_str, reviewed_date=date_str)
+        p["ticker"] = f"T{i}.T"
+        p["signal_components"] = {"good": good_sig, "other": True}
+        rows.append(p)
+    result = evaluate_weights_walkforward_cv({"predictions": rows}, weights={"good": 20, "other": 5}, n_folds=4)
+    assert result is not None
+    assert result["n_folds_used"] >= 2
+    assert "mean_top_quantile_acc_pct" in result
+
+
 def test_format_feedback_emits_red_zone_block() -> None:
     """Red zone は feedback に🟥 ブロック + 「HIGH 出力は禁止」 directive。"""
     preds: list[dict] = []
