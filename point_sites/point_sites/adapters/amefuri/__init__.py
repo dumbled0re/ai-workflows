@@ -34,7 +34,6 @@ from ...common.adapter import Adapter
 from ...common.balance import DEFAULT_BALANCE_PATTERNS
 from ...common.browser_action import BrowserAction
 from ...common.sources import EndpointPollSource
-from ...common.wizard import DailyWizard
 
 # Daily-login GET target. アメフリ has no discrete "claim bonus" button
 # (verified via inspect_url 2026-05-09: /account shows the bonus as a
@@ -92,324 +91,32 @@ ADAPTER = Adapter(
         BrowserAction(name="login_visit_home", url="https://www.amefri.net/"),
         BrowserAction(name="login_visit_account", url="https://www.amefri.net/account"),
     ),
-    # 2026-05-23 ad-fraud policy 解禁 + user 提供 screenshot で
-    # ``/special/freepoint`` (毎日貯める hub) に多数の wizard 候補が
-    # あることが判明 (issue #28)。inspect runs:
-    #   - 26335036974: hub の href 一覧で /video/* 7 entry + /game/gacha
-    #   - 26335110777: /video/estlier/index/83 = PANBONスロット (host:
-    #                  i2ipoint.nail-monster.work) を確定
-    #   - 26335073242: /video/estlier/index/1 = コラムとアンケート list
+    # /special/freepoint visit-only POC 27 wizard は 2026-05-30 に全削除。
+    # 経緯:
+    #   - 2026-05-23/24 の ad-fraud policy 解禁時に GMO/estlier/ibridge
+    #     stamp 系 27 wizard を一括追加 (commit batch 4769ab1〜6812782)
+    #   - 期待値は user screenshot 上「月 ~1500-15000 円相当」
+    #   - 実測は 2026-05-09 開始から 5/30 までの 21 日間 **+0 pt**
+    #   - balance_stagnation detector が「直近 30 回中央値 0%」 で発火
     #
-    # mapping (user screenshot tile vs URL):
-    #   - 無料ガチャ            → /game/gacha (server 302 で blocked、別 issue)
-    #   - アメフリゲームボックス → /video/gmomedia/easygame
-    #   - 脳トレクイズ           → /video/gmomedia/quiz
-    #   - 間違い探しボックス     → /video/gmomedia/spotdiff
-    #   - PANBONスロット         → /video/estlier/index/83
-    #   - コラムとアンケート     → /video/estlier/index/1 (list page 訪問のみ
-    #                             → アンケート 自動回答はしない、policy 遵守)
-    #   - アメフリ頭の体操広場   → /video/ibridge/index/stamp
-    #   - みんなのフルーツ農場   → /video/ibridge/index/farm
+    # 仮説検証の結論: 「visit-only で credit する」 という前提が外れた。
+    # 27 wizards 全部が「実 game プレイ必須」(ナンプレ / 計算 etc.) or
+    # 「外部 ad-network impression credit が bot 検出に依存」(estlier) or
+    # 「multi-day farming sim」(ibridge farm) で、Playwright で開くだけ
+    # では credit しない構造と確定。
     #
-    # 全 wizard は visit-only (clicks=())、entry URL を開いて 4.5s 留まる
-    # だけ。gmomedia easygame の inspect は 30s networkidle で timeout した
-    # が wizard runner は domcontentloaded で goto するので問題なし想定。
+    # 27 wizards を維持しても (a) yield 0 確定 (b) 毎日 27 hosts に visit
+    # で bot 検出 risk + dietnavi/i2i の不審 session 認定 risk が残るので、
+    # 純損 → 全削除。残った EndpointPollSource (/account) は 30 日 milestone
+    # (1-100円) が credit する可能性があるので維持。
     #
-    # 1 週間 balance 観察で credit 確認、無 yield なら個別 multi-step に
-    # escalate (別 follow-up issue)。期待値は user screenshot の最大値で
-    # 合計 ~5000-50000 pt 範囲 (10pt=1円換算なので月 ~1500-15000 円相当)。
-    daily_wizards=(
-        # GMO platform 共通の「挑戦する」class ``c-n-btn-gameplay--start`` を
-        # click_force JS evaluate で確実発火 → amefri.kantangame.com/<game>
-        # へ navigate。2026-05-24 inspect で kantangame hub に
-        # ``a.c-n-btn-requid--medium`` の「プレイする」link 多数発見、
-        # 2nd click で /easygame/game/<id> 等の game detail page へ進む。
-        # ``inter_step_ms=10000`` で kantangame hub load 完了待ち。
-        DailyWizard(
-            name="amefuri_gmomedia_easygame",
-            url="https://www.amefri.net/video/gmomedia/easygame",
-            clicks=(
-                ("a.c-n-btn-gameplay--start", 1),
-                ("a.c-n-btn-requid--medium", 1),
-            ),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=5000,
-            inter_step_ms=10000,
-            final_wait_ms=20000,
-        ),
-        DailyWizard(
-            name="amefuri_gmomedia_quiz",
-            url="https://www.amefri.net/video/gmomedia/quiz",
-            clicks=(
-                ("a.c-n-btn-gameplay--start", 1),
-                ("a.c-n-btn-requid--medium", 1),
-            ),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=5000,
-            inter_step_ms=10000,
-            final_wait_ms=20000,
-        ),
-        DailyWizard(
-            name="amefuri_gmomedia_spotdiff",
-            url="https://www.amefri.net/video/gmomedia/spotdiff",
-            clicks=(
-                ("a.c-n-btn-gameplay--start", 1),
-                ("a.c-n-btn-requid--medium", 1),
-            ),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=5000,
-            inter_step_ms=10000,
-            final_wait_ms=20000,
-        ),
-        # PANBONスロット (i2ipoint.nail-monster.work redirect)。inspect
-        # で rule.php に <a href="game_start.php" class="link-button">
-        # の「次へ進む」button を発見 (network capture で確認)。
-        # wait_until="networkidle" にして redirect chain が settle するの
-        # を待つ。click_force=True で JS evaluate 経由 click 発火。
-        DailyWizard(
-            name="amefuri_estlier_panbon_slot",
-            url="https://www.amefri.net/video/estlier/index/83",
-            clicks=(('a[href="game_start.php"]', 1),),
-            wait_until="networkidle",
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        # コラムとアンケート list page。visit-only だけど final_wait_ms を
-        # 長めにして「list を眺めて立ち去る」simulation。アンケート自動回答は
-        # しない (CLAUDE.md policy)。
-        # 2026-05-24 inspect (run 26356690710) で hub に
-        # ``<a class="ui-btn ui-btn-a" href="rule.php?muid=...&endate=...">``
-        # の daily-content link 多数発見。1st link (今日分) に navigate して
-        # impression 取る。click_force=True なので fail 時 silent no-op、
-        # 中身が survey の場合も form submit は禁止 (clicks に submit selector
-        # 入れない)。inter_step_ms 不要 (single click)。
-        DailyWizard(
-            name="amefuri_estlier_column",
-            url="https://www.amefri.net/video/estlier/index/1",
-            clicks=(("a.ui-btn.ui-btn-a", 1),),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=4000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_ibridge_stamp",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(),
-        ),
-        # stamp sub-games re-activated with click_force=True (framework
-        # 改修 後述 commit)。Playwright actionability check を bypass し、
-        # ad-iframe / sidebar collapse で hidden な link でも click 発火。
-        # selector は href-based で安定 (data-layout-nav-id は server-render
-        # 由来で確実、第三者 host も同形式)。各 sub-game の top.php
-        # navigation → 15s 滞留で「entry 計上」impression yield 狙い。
-        DailyWizard(
-            name="amefuri_stamp_nanpre",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/nanpre/top.php"]', 1),),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_stamp_keisan",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/keisan/top.php"]', 1),),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_stamp_eitango",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/eitango/top.php"]', 1),),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_stamp_shape_memory",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/shape_memory/top.php"]', 1),),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_stamp_sakana",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/sakana/top.php"]', 1),),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        # 追加 sub-game 5 種。脳トレ系で popular な crossword / jhistory /
-        # prefectures / shisokuenzan / dkanji を選定。残り (sanji / kokki /
-        # tsume_shogi / proverb / library / elavator / tenshoot / balance /
-        # movie) は次回 batch。adenq は広告アンケート系で out of scope。
-        DailyWizard(
-            name="amefuri_stamp_crossword",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/crossword/top.php"]', 1),),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_stamp_jhistory",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/jhistory/top.php"]', 1),),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_stamp_prefectures",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/prefectures/top.php"]', 1),),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_stamp_shisokuenzan",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/shisokuenzan/top.php"]', 1),),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_stamp_dkanji",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/dkanji/top.php"]', 1),),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        # 残り 9 sub-game (sanji/kokki/tsume_shogi/proverb/library/elavator/
-        # tenshoot/balance/movie)。adenq は広告アンケート系で out of scope。
-        DailyWizard(
-            name="amefuri_stamp_sanji",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/sanji/top.php"]', 1),),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_stamp_kokki",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/kokki/top.php"]', 1),),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_stamp_tsume_shogi",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/tsume_shogi/top.php"]', 1),),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_stamp_proverb",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/proverb/top.php"]', 1),),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_stamp_library",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/library/top.php"]', 1),),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_stamp_elavator",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/elavator/top.php"]', 1),),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_stamp_tenshoot",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/tenshoot/top.php"]', 1),),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_stamp_balance",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/balance/top.php"]', 1),),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_stamp_movie",
-            url="https://www.amefri.net/video/ibridge/index/stamp",
-            clicks=(('a[href*="/movie/top.php"]', 1),),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=6000,
-            final_wait_ms=15000,
-        ),
-        DailyWizard(
-            name="amefuri_ibridge_farm",
-            url="https://www.amefri.net/video/ibridge/index/farm",
-            clicks=(
-                # farm landing で「ゲームスタート」<a href> click。
-                # navigation_click で /game/landing.php?_method=confirm に遷移。
-                # その後 30s 滞留で農場本編 (種まき/水やり/収穫) を simulate。
-                # 「1日8回プレイ可能」なので 1 wizard 1 回相当。
-                (".btn_set.cont_m a.btn_positive", 1),
-            ),
-            use_navigation_click=True,
-            final_wait_ms=30000,
-        ),
-        # /game/gacha は server-side 302 で / にリダイレクトされる (確認:
-        # run 26334911695、26335071376)。referer 不足 or feature gate と推定。
-        # framework 拡張 (commit 8e9ae18) で referer 指定が可能になったので、
-        # /special/freepoint からの navigation を装う。これで 302 が解除
-        # されたら gacha ページに着地して entry tracking が記録される想定。
-        DailyWizard(
-            name="amefuri_gacha",
-            url="https://www.amefri.net/game/gacha",
-            clicks=(),
-            referer="https://www.amefri.net/special/freepoint",
-        ),
-    ),
+    # 将来 再開する場合の出発点:
+    #   - 実 game プレイ wizard を 1 種実装 (例: 計算ゲーム = math solver
+    #     で正答送信 → スタンプ累積で credit を verify)
+    #   - 1 game で credit 確認できたら同型に拡張
+    #   - ただし ROI 低い (たぬきランクは 0.1円/日 が天井、ランクアップは
+    #     実 conversion 必須) ので最終的に site 自体を切る判断もあり
+    daily_wizards=(),
     # 1pt/day yield rounds out credit-ratio's MIN_EXPECTED_FOR_RATIO
     # threshold (=2), so the strong detector skips amefri entirely.
     # 30 runs ≈ one full milestone cycle (10〜100pt jump every 30
