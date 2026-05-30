@@ -666,6 +666,75 @@ def test_calibration_zone_yellow_when_high_sample_insufficient() -> None:
     assert any("HIGH サンプル不足" in r or "calibration" in r for r in zone["reasons"])
 
 
+def test_brier_score_computed_per_confidence_bucket() -> None:
+    """Brier = avg((predicted_prob - outcome)^2)。
+    HIGH (predicted 0.75): wins → low Brier、losses → high Brier。
+    """
+    preds: list[dict] = []
+    # HIGH: 15 wins (Brier=(0.75-1)^2=0.0625), 5 losses (0.5625) → avg=(15*0.0625+5*0.5625)/20=0.1875
+    for i in range(15):
+        preds.append(_bucket_pred("HIGH", "win", 5.0, i))
+    for i in range(5):
+        preds.append(_bucket_pred("HIGH", "loss", -5.0, i + 100))
+    # MEDIUM: 20 wins (Brier=(0.65-1)^2=0.1225) → avg=0.1225
+    for i in range(20):
+        preds.append(_bucket_pred("MEDIUM", "win", 5.0, i + 200))
+    stats = compute_performance_stats({"predictions": preds})
+    high = stats["by_confidence"]["HIGH"]
+    medium = stats["by_confidence"]["MEDIUM"]
+    assert high["predicted_prob"] == 0.75
+    assert medium["predicted_prob"] == 0.65
+    # HIGH 75% accuracy (15/20) closer to predicted 75% → moderate Brier
+    assert abs(high["brier_score"] - 0.1875) < 0.01
+    # MEDIUM 100% accuracy >>> predicted 65% → low Brier (severe underconfidence)
+    assert abs(medium["brier_score"] - 0.1225) < 0.01
+
+
+def test_reliability_diagram_records_gap_per_bucket() -> None:
+    """reliability_diagram は predicted vs observed の gap を bucket 別に出力。"""
+    preds: list[dict] = []
+    # HIGH overconfident: predicted 75% / observed 50%
+    for i in range(15):
+        preds.append(_bucket_pred("HIGH", "win", 5.0, i))
+    for i in range(15):
+        preds.append(_bucket_pred("HIGH", "loss", -5.0, i + 100))
+    # MEDIUM well-calibrated: predicted 65% / observed ~65%
+    for i in range(13):
+        preds.append(_bucket_pred("MEDIUM", "win", 5.0, i + 200))
+    for i in range(7):
+        preds.append(_bucket_pred("MEDIUM", "loss", -5.0, i + 300))
+    stats = compute_performance_stats({"predictions": preds})
+    rel = stats["reliability_diagram"]
+    high_bin = next(b for b in rel if b["confidence"] == "HIGH")
+    medium_bin = next(b for b in rel if b["confidence"] == "MEDIUM")
+    # HIGH: 0.50 - 0.75 = -25pp (severely overconfident)
+    assert high_bin["gap_pp"] == -25.0
+    # MEDIUM: 0.65 - 0.65 = 0pp (ish, depending on rounding)
+    assert abs(medium_bin["gap_pp"]) < 1.0
+
+
+def test_calibration_zone_red_on_brier_inversion() -> None:
+    """HIGH Brier > MEDIUM Brier だけでも Red (accuracy ratio が境界でも独立 fire)。"""
+    preds: list[dict] = []
+    # HIGH: 15 wins, 12 losses → 55.6% accuracy → ratio vs MEDIUM 61.5% = 0.90 ぎりぎり
+    # でも Brier は HIGH=(0.75-outcomes mean)^2 で MEDIUM より悪い
+    for i in range(15):
+        preds.append(_bucket_pred("HIGH", "win", 5.0, i))
+    for i in range(12):
+        preds.append(_bucket_pred("HIGH", "loss", -5.0, i + 100))
+    # MEDIUM: 16 wins, 10 losses → 61.5%
+    for i in range(16):
+        preds.append(_bucket_pred("MEDIUM", "win", 5.0, i + 200))
+    for i in range(10):
+        preds.append(_bucket_pred("MEDIUM", "loss", -5.0, i + 300))
+    stats = compute_performance_stats({"predictions": preds})
+    zone = stats["calibration_zone"]
+    # accuracy ratio 55.6/61.5 = 0.903 → ratio 単独では Red 未満 (boundary)
+    # でも Brier 0.305 vs 0.255 で HIGH > MEDIUM → Red
+    assert zone["zone"] == "red"
+    assert any("Brier 逆転" in r for r in zone["reasons"])
+
+
 def test_format_feedback_emits_red_zone_block() -> None:
     """Red zone は feedback に🟥 ブロック + 「HIGH 出力は禁止」 directive。"""
     preds: list[dict] = []

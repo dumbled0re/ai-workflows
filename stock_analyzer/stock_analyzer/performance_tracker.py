@@ -436,18 +436,79 @@ def compute_performance_stats(history: dict) -> dict:
     # HIGH < MEDIUM, the AI is over-using HIGH and needs to tighten its
     # bar). ``format_performance_feedback`` reads this back and emits an
     # explicit warning when inverted.
+    #
+    # Phase 2 (issue #46) で Brier score を追加: accuracy_pct より精密な
+    # 確率予測の正解度測定。confidence label → 確率 mapping は
+    # HIGH=0.75 / MEDIUM=0.65 / LOW=0.55 (codex 推奨の canonical mapping、
+    # Phase 3 で data 由来に置換可能)。outcome = 1 if win else 0。
+    # Brier = (predicted_prob - outcome)^2 を bucket 内 average。
+    # 0 が完璧、0.25 が coin flip 同等、>0.25 で「無関係」。
     confidence_stats: dict[str, dict] = {}
+    _CONF_PROB_MAP = {"HIGH": 0.75, "MEDIUM": 0.65, "LOW": 0.55}
     for conf in ("HIGH", "MEDIUM", "LOW"):
         conf_preds = [p for p in resolved if p.get("confidence") == conf]
         if conf_preds:
             conf_wins = [p for p in conf_preds if p["status"] == "win"]
+            prob = _CONF_PROB_MAP[conf]
+            brier_squares = []
+            for p in conf_preds:
+                outcome = 1.0 if p["status"] == "win" else 0.0
+                brier_squares.append((prob - outcome) ** 2)
+            brier = sum(brier_squares) / len(brier_squares)
             confidence_stats[conf] = {
                 "total": len(conf_preds),
                 "wins": len(conf_wins),
                 "accuracy_pct": round(len(conf_wins) / len(conf_preds) * 100, 1),
+                "brier_score": round(brier, 3),
+                "predicted_prob": prob,
             }
     if confidence_stats:
         stats["by_confidence"] = confidence_stats
+
+    # Reliability diagram data (Phase 2 #46): 信頼度別の予測確率 vs 実
+    # 正答率を可視化するためのバケット集計。bin は HIGH/MEDIUM/LOW の
+    # 3 段階で十分 (Claude が出す canonical 3 label と一致)。
+    # 完璧校正なら observed_acc ≒ predicted_prob、calibration 崩壊時は
+    # predicted_prob > observed_acc (HIGH の方が低精度) になる。
+    reliability_bins = []
+    for conf in ("HIGH", "MEDIUM", "LOW"):
+        bucket = confidence_stats.get(conf)
+        if bucket and bucket["total"] >= _MIN_BUCKET_N:
+            observed_acc = bucket["accuracy_pct"] / 100
+            predicted = bucket["predicted_prob"]
+            reliability_bins.append(
+                {
+                    "confidence": conf,
+                    "predicted_prob": predicted,
+                    "observed_acc": round(observed_acc, 3),
+                    "gap_pp": round((observed_acc - predicted) * 100, 1),  # 正で過小評価、負で過大評価
+                    "n": bucket["total"],
+                }
+            )
+    if reliability_bins:
+        stats["reliability_diagram"] = reliability_bins
+
+    # Confidence-vs-screening 分離分析 (Phase 2 #46, codex D 仮説 1 検証):
+    # 「screening weight が直接 confidence に効いてない」を実証するため、
+    # bucket 別の平均 signal_count を比較。HIGH ≈ MEDIUM ≈ LOW なら
+    # signal の多寡 ≠ Claude の confidence → 「材料の多さ」 という他の
+    # heuristic で confidence を付けてる蓋然性が高い。
+    # 期待される healthy パターン: HIGH > MEDIUM > LOW (signal 多い方が
+    # 自信あり、と素朴に整合)。
+    confidence_signal_breakdown = {}
+    for conf in ("HIGH", "MEDIUM", "LOW"):
+        conf_preds = [
+            p for p in resolved if p.get("confidence") == conf and isinstance(p.get("signal_components"), dict)
+        ]
+        sig_counts = [len(p["signal_components"]) for p in conf_preds if p["signal_components"]]
+        if len(sig_counts) >= _MIN_BUCKET_N:
+            mean_sig = sum(sig_counts) / len(sig_counts)
+            confidence_signal_breakdown[conf] = {
+                "n": len(sig_counts),
+                "mean_signal_count": round(mean_sig, 2),
+            }
+    if confidence_signal_breakdown:
+        stats["confidence_signal_breakdown"] = confidence_signal_breakdown
 
     # Confidence × direction cross-tab. Reveals asymmetric bias — e.g.
     # HIGH-UP could be reliable while HIGH-DOWN is the failure mode (or
@@ -879,13 +940,19 @@ def _compute_calibration_zone(
     reasons_red: list[str] = []
     reasons_yellow: list[str] = []
 
-    # HIGH/MEDIUM calibration ratio
+    # HIGH/MEDIUM calibration ratio + Brier score (codex 推奨の組合せ)
+    # accuracy_pct は離散 (win/loss) なので分布が粗い。Brier score は
+    # 確率予測の正解度なので「HIGH が "材料の多さ" で付与されてる」
+    # ような subtle な calibration 崩れも捉える。両方 fire で確信度
+    # 高め、Brier 単独でも Red に持っていける。
     high = confidence_stats.get("HIGH", {})
     medium = confidence_stats.get("MEDIUM", {})
     high_n = high.get("total", 0)
     medium_n = medium.get("total", 0)
     high_acc = high.get("accuracy_pct")
     medium_acc = medium.get("accuracy_pct")
+    high_brier = high.get("brier_score")
+    medium_brier = medium.get("brier_score")
     if (
         high_n >= _CALIBRATION_MIN_BUCKET_N
         and medium_n >= _CALIBRATION_MIN_BUCKET_N
@@ -898,6 +965,15 @@ def _compute_calibration_zone(
             reasons_red.append(
                 f"calibration 逆転 (HIGH {high_acc:.1f}% / MEDIUM {medium_acc:.1f}% = ratio {ratio:.2f} < 0.90)"
             )
+        # Brier 比較: HIGH Brier > MEDIUM Brier は「自信ありの予測の方が
+        # 確率精度が悪い」 = calibration 崩壊。これは accuracy ratio とは
+        # 独立に発火させる (overlap しても double-count しないので問題なし)。
+        if (
+            isinstance(high_brier, (int, float))
+            and isinstance(medium_brier, (int, float))
+            and high_brier > medium_brier
+        ):
+            reasons_red.append(f"Brier 逆転 (HIGH Brier {high_brier:.3f} > MEDIUM {medium_brier:.3f} — 確率精度逆転)")
     elif high_n < _CALIBRATION_MIN_BUCKET_N and high_n > 0:
         # 小サンプルで断定できないが、観測されてる場合は yellow に
         reasons_yellow.append(f"HIGH サンプル不足 (n={high_n} < {_CALIBRATION_MIN_BUCKET_N})")
@@ -1281,6 +1357,34 @@ def format_performance_feedback(history: dict) -> str:
                 "  ⚠ 統計的に有意な期待値低下を検出 (p<0.10)。最近の判断バイアスが効いている可能性。"
                 "今回は新規 HIGH の付与をさらに厳格にし、迷ったら MEDIUM に下げてください"
             )
+
+    # Reliability diagram の可視化 (Phase 2 #46): predicted_prob と
+    # observed_acc の gap を表示。HIGH gap が大きく負なら overconfident。
+    reliability = stats.get("reliability_diagram")
+    if isinstance(reliability, list) and reliability:
+        lines.append("📊 信頼度図 (predicted vs observed accuracy):")
+        for bin in reliability:
+            conf = bin["confidence"]
+            pred = bin["predicted_prob"]
+            obs = bin["observed_acc"]
+            gap = bin["gap_pp"]
+            n = bin["n"]
+            indicator = "⚠ overconfident" if gap < -10 else "⚠ underconfident" if gap > 10 else "✓ ok"
+            lines.append(f"  {conf}: 予測{pred:.0%} → 実観測{obs:.0%} (gap {gap:+.1f}pp, n={n}) {indicator}")
+
+    # Signal-confidence 分離分析 (Phase 2 #46, D 仮説 1 検証):
+    # signal_count が confidence に相関してれば「signal の多寡が confidence
+    # を駆動」、無相関なら Claude が signal 以外の何か (材料 narrative 等)
+    # で confidence を判定してる証拠。
+    sig_breakdown = stats.get("confidence_signal_breakdown")
+    if isinstance(sig_breakdown, dict) and sig_breakdown:
+        lines.append("🔍 confidence × signal_count (signal が confidence を駆動してるか):")
+        for conf in ("HIGH", "MEDIUM", "LOW"):
+            entry = sig_breakdown.get(conf)
+            if entry:
+                lines.append(f"  {conf}: 平均 {entry['mean_signal_count']} signals/予測 (n={entry['n']})")
+            else:
+                lines.append(f"  {conf}: (記録あるサンプル不足、min {_MIN_BUCKET_N})")
 
     # Calibration zone (Red/Yellow/Green) — issue #46 Phase 1 circuit
     # breaker。Red zone は HIGH 出力禁止、Yellow zone は HIGH 厳格化を
