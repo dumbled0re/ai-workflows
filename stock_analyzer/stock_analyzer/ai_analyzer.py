@@ -58,6 +58,10 @@ SYSTEM_PROMPT = """\
 - MACDのゼロライン突破・ヒストグラム転換
 - ボリンジャーバンドのスクイーズからのブレイクアウト
 - 出来高急増（機関投資家の参入示唆）
+  - volume_spike (1.5x↑): 浅いシグナル、補助材料
+  - volume_surge (3x↑): 機関のエントリー有力、reasons に「🔥出来高Nx急増」と明記
+  - volume_blowoff (5x↑): 異常出来高、本気買いの可能性、reasons の最上段に明記
+  - volume_breakout (出来高3x↑+SMA25抜け): Stan Weinstein Stage 2 buyable breakout、最強信号
 - 52週高値/安値からの距離
 
 【ファンダメンタル】

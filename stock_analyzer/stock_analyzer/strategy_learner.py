@@ -16,6 +16,12 @@ DEFAULT_WEIGHTS = {
     "rsi_oversold_recovery": 20,
     "rsi_healthy_momentum": 15,
     "volume_spike": 20,
+    # Tiered volume surge + volume-confirmed breakout (2026-05-30 追加、
+    # technical_indicators.compute_screening_score と同期)。3x / 5x の
+    # 階層化で「機関の本気買い候補」を screening 上位に押し上げる。
+    "volume_surge": 35,
+    "volume_blowoff": 50,
+    "volume_breakout": 30,
     "sma25_breakout": 20,
     "macd_crossover": 15,
     "bollinger_lower": 10,

@@ -58,6 +58,57 @@ def test_volume_spike_silent_on_flat_volume() -> None:
     assert "volume_spike" not in components
 
 
+def test_volume_surge_fires_at_3x_average() -> None:
+    """3x average volume → both volume_spike and volume_surge fire."""
+    closes = [100.0] * 30
+    volumes = [1_000_000.0] * 29 + [3_500_000.0]
+    df = _df(closes, volumes)
+    _, components = compute_screening_score(df)
+    assert components.get("volume_spike") is True
+    assert components.get("volume_surge") is True
+    assert "volume_blowoff" not in components
+
+
+def test_volume_blowoff_fires_at_5x_average() -> None:
+    """5x average volume → all three tiers fire (spike + surge + blowoff).
+
+    Note: ``_safe_volume_ratio`` uses 20-day mean which **includes** the
+    latest day, so to push ratio > 5.0 we need latest >= ~7x of the past-19
+    average (mean = (19 + N) / 20, ratio = N * 20 / (19 + N)).
+    """
+    closes = [100.0] * 30
+    volumes = [1_000_000.0] * 29 + [10_000_000.0]
+    df = _df(closes, volumes)
+    _, components = compute_screening_score(df)
+    assert components.get("volume_spike") is True
+    assert components.get("volume_surge") is True
+    assert components.get("volume_blowoff") is True
+
+
+def test_volume_breakout_composite_requires_surge_and_sma25_break() -> None:
+    """volume_surge (3x↑) AND sma25_breakout → volume_breakout composite fires."""
+    # 25日 SMA 抜けを作るため: 過去 25日 100、直近 4日で 99→99→105→110。
+    # 直近 1 日に出来高急増 (3.5x) も乗せる。
+    closes = [100.0] * 25 + [99.0, 99.0, 105.0, 110.0]
+    volumes = [1_000_000.0] * 28 + [3_500_000.0]
+    df = _df(closes, volumes)
+    _, components = compute_screening_score(df)
+    assert components.get("volume_surge") is True
+    assert components.get("sma25_breakout") is True
+    assert components.get("volume_breakout") is True
+
+
+def test_volume_breakout_silent_without_surge() -> None:
+    """SMA25 breakout alone (出来高 1.5x のみ) → volume_breakout fires しない。"""
+    closes = [100.0] * 25 + [99.0, 99.0, 105.0, 110.0]
+    volumes = [1_000_000.0] * 28 + [1_600_000.0]  # 1.6x — spike だけ
+    df = _df(closes, volumes)
+    _, components = compute_screening_score(df)
+    assert components.get("volume_spike") is True
+    assert "volume_surge" not in components
+    assert "volume_breakout" not in components
+
+
 def test_score_increases_when_a_signal_fires() -> None:
     """Volume spike on otherwise-flat data → score > 0."""
     closes = [100.0] * 30

@@ -225,6 +225,19 @@ def compute_screening_score(
         "rsi_oversold_recovery": 20,
         "rsi_healthy_momentum": 15,
         "volume_spike": 20,
+        # Tiered volume surge signals (2026-05-30 追加):
+        # Stan Weinstein Stage 2 / O'Neil CAN-SLIM 系の手法は
+        # 「出来高 3-5x 急増 + 株価ブレイクアウト」を「機関投資家
+        # の本気買い」のサインとしてランクインに使う。1.5x の
+        # volume_spike は浅いシグナル (= ほぼ常時鳴る) なので、
+        # 3x / 5x を separate tag で boost。
+        "volume_surge": 35,
+        "volume_blowoff": 50,
+        # 出来高急増 AND ブレイクアウトの AND 条件 (composite)。
+        # 単独 signal 重複しても加点 (volume_spike + sma25_breakout
+        # + volume_breakout で計 70 点)、これにより surge+breakout
+        # は screening 上位に bubble up する。
+        "volume_breakout": 30,
         "sma25_breakout": 20,
         "macd_crossover": 15,
         "bollinger_lower": 10,
@@ -259,11 +272,24 @@ def compute_screening_score(
             score += w["rsi_healthy_momentum"]  # Healthy momentum
             components["rsi_healthy_momentum"] = True
 
-    # Volume spike
+    # Volume spike — tiered detection (2026-05-30 拡張)
+    # vol_ratio = 当日 出来高 / 20 日平均出来高
+    #   > 1.5x → volume_spike   (浅い、ほぼ常時鳴る base layer)
+    #   > 3.0x → volume_surge   (機関のエントリー候補、目立つ)
+    #   > 5.0x → volume_blowoff (本気買い / 異常出来高、最上位)
+    # 3 tier は cumulative: 5x なら 3 tag 全部 true で点数累積、
+    # surge / blowoff は単独でも screening 上位に押し上げる。
     vol_ratio = _safe_volume_ratio(volume)
-    if vol_ratio is not None and vol_ratio > 1.5:
-        score += w["volume_spike"]
-        components["volume_spike"] = True
+    if vol_ratio is not None:
+        if vol_ratio > 1.5:
+            score += w["volume_spike"]
+            components["volume_spike"] = True
+        if vol_ratio > 3.0:
+            score += w["volume_surge"]
+            components["volume_surge"] = True
+        if vol_ratio > 5.0:
+            score += w["volume_blowoff"]
+            components["volume_blowoff"] = True
 
     # SMA25 breakout in last 3 days
     sma_25 = _safe_sma(close, 25)
@@ -423,6 +449,16 @@ def compute_screening_score(
     if sector_in_leading:
         score += w["sector_rotation"]
         components["sector_rotation"] = True
+
+    # Volume-confirmed breakout (composite, 2026-05-30 追加):
+    # 出来高急増 (≥3x) AND ブレイクアウト (SMA25 抜け) が同日成立 →
+    # Stan Weinstein Stage 2 / O'Neil CAN-SLIM の典型 "buyable
+    # breakout"。単独 signal の点数に加えて composite boost で
+    # screening 上位確定させる。volume_spike (1.5x) ではなく
+    # volume_surge (3x) を必須にして noise を切る。
+    if components.get("volume_surge") and components.get("sma25_breakout"):
+        score += w["volume_breakout"]
+        components["volume_breakout"] = True
 
     return score, components
 
