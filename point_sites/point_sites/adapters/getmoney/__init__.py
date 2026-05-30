@@ -116,25 +116,32 @@ ADAPTER = Adapter(
     # 「進む」x 2 で rule.php → 数字選択 page までは navigation する想定。
     # 数字選択 + submit は selector 不明で別 issue。
     #
-    # game1000 (毎日1,000円抽選) 2 wizard (2026-05-30 追加):
-    #   /pc/game/game1000/ に毎日 line=1 / line=2 の独立な 1000円 抽選
-    #   form が並ぶ (応募人数 ~3500-4000名)。submit は CSRF token 無しの
-    #   素の POST → entry.php、hidden input value で line を区別。期待値
-    #   は 1000円 / 応募者数 ≒ 0.26 円/日/line → 月 ~15 円。estlier の
+    # game1000 (毎日1,000円抽選) wizard (2026-05-30 追加):
+    #   /pc/game/game1000/ に毎日 1000円 抽選 form が line=1 (会員全員可)
+    #   と line=2 (初回ポイント交換完了者限定) の 2 つ並ぶ。期待値は
+    #   1000円 / 応募者数 ≒ 0.26 円/日 → 月 ~7.7 円相当。estlier の
     #   visit-only credit 不明と比べてこちらは「実 lottery 応募」なので
-    #   credit 機構が透明で副作用が読みやすい。
+    #   credit 機構が透明 (当選 → 5000Pt 加算が確定)。
     #
-    #   selector: line=N hidden input の直後にある submit を adjacency
+    #   line=2 は実装時 (run 26672034870) に検証した結果、wizard は
+    #   selector + click 通すが entry.php が 200 で notice page を返し
+    #   form 状態未変 → server-side reject 確定。原因は page 上の
+    #   「初回ポイント交換が前日までに完了している方」eligibility 条件
+    #   未達 (user balance < 5000Pt = 最低換金額)。換金実績を作るまで
+    #   line=2 wizard は実装しない、line=1 のみ。
+    #
+    #   selector: line=1 hidden input の直後にある submit を adjacency
     #   combinator で pin。過去日の「申請受付中」 form は hidden 不在で
     #   match しない (safe)。
     #
-    #   skip_if_body_regex: 同日 2 回目の cron (21:45) では既に submit
-    #   済 → line=N の hidden input が body から消える。negative lookahead
-    #   で「marker 不在」 を正の skip 信号に変換 (Python re は否定 match
+    #   skip_if_body_regex: 同日 2 回目の cron では既に submit 済 →
+    #   line=1 hidden input が body から消える。negative lookahead で
+    #   「marker 不在」 を正の skip 信号に変換 (Python re は否定 match
     #   そのものを書けないので lookahead + 全体 consume の form を使う)。
     #
-    #   success_url_pattern: submit 後 entry.php → /game/game1000/ に
-    #   redirect されると想定 (要 1st run 観察で確定)。
+    #   success_url_pattern: 成功時 entry.php → /game/game1000/ に
+    #   redirect される (line=1 POST で確認済 run 26672034870)。reject
+    #   時は /entry.php に留まる → pattern 不一致で正しく "失敗" 判定。
     daily_wizards=(
         DailyWizard(
             name="getmoney_estlier_38",
@@ -211,22 +218,6 @@ ADAPTER = Adapter(
             final_wait_ms=5000,
             success_url_pattern=r"/pc/game/game1000/?($|\?)",
             skip_if_body_regex=r'(?s)\A(?!.*name="line" value="1").+',
-        ),
-        DailyWizard(
-            name="getmoney_game1000_line2",
-            url="https://dietnavi.com/pc/game/game1000/",
-            clicks=(
-                (
-                    'input[type="hidden"][name="line"][value="2"] + input[type="submit"]',
-                    1,
-                ),
-            ),
-            use_navigation_click=True,
-            click_force=True,
-            initial_wait_ms=3000,
-            final_wait_ms=5000,
-            success_url_pattern=r"/pc/game/game1000/?($|\?)",
-            skip_if_body_regex=r'(?s)\A(?!.*name="line" value="2").+',
         ),
     ),
     # password_login は 2026-05-21 に試したが reCAPTCHA v2 (data-sitekey
