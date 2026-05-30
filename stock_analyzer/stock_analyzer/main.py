@@ -534,12 +534,28 @@ def phase_prepare() -> None:
         except Exception:
             logger.exception("Failed to inject prior portfolio-risk findings")
 
+    # Zone-aware top_n adjustment (issue #46 Phase 1 circuit breaker)。
+    # Red zone は format_performance_feedback の指示文だけでなく、prompt の
+    # 「最大 N 銘柄」 制約自体も縮める (= AI compliance に頼らず構造的に
+    # picks 数を減らす)。half rule: Red→2、Yellow→3、Green→original。
+    base_top_n = config.settings.discovery_top_n
+    zone_info = perf_history.get("performance_stats", {}).get("calibration_zone")
+    effective_top_n = base_top_n
+    if isinstance(zone_info, dict):
+        zone = zone_info.get("zone", "green")
+        if zone == "red":
+            effective_top_n = max(1, base_top_n // 2 - 1)  # 5 → 1 (or 2 if base=6)
+            logger.info("Calibration RED zone — reducing top_n: %d → %d", base_top_n, effective_top_n)
+        elif zone == "yellow":
+            effective_top_n = max(2, base_top_n - 2)  # 5 → 3
+            logger.info("Calibration YELLOW zone — reducing top_n: %d → %d", base_top_n, effective_top_n)
+
     # Save prompts for Claude Code Action
     prepare_prompts(
         holdings_summaries=holdings_summaries,
         candidates=screened_candidates,
         timing=timing,
-        top_n=config.settings.discovery_top_n,
+        top_n=effective_top_n,
         market_context=market_context_text,
         market_news=market_news_text,
         performance_feedback=performance_feedback,
