@@ -100,44 +100,6 @@ _GACHA_WIZARD = DailyWizard(
 )
 
 
-# /mmillion 現金 100 万円 (毎日応募、50 メダル/口)。
-# blind selector で 「応募する」ボタンを推測。fruitmail と同じ
-# ``#applyForm button[type="submit"]`` pattern なら通る可能性高い。
-# /mmillion 構造 (2026-05-25 inspect run 26380225558 で確定):
-#   <form action="/mmillion/apply" method="post" id="formMmillionDailyApply">
-#     <button type="button" id="btnMmillionDailyApply" class="btn-black">
-#       デイリー応募（50メダル）
-#     </button>
-#   </form>
-#   ↓ click → confirm modal:
-#   <button id="confirmYes" class="btn-black">はい</button>
-#   <button id="confirmNo" class="btn-default">いいえ</button>
-#   ↓ 「はい」 click → form JS submits → POST /mmillion/apply
-# 注意: 50 メダル必要。残高 0 で発火しても server エラー → success_url_pattern
-# 不一致で「未確定」になる (期待通り)。gacha 数日蓄積後に有効になる流れ。
-_MMILLION_WIZARD = DailyWizard(
-    name="dreammail_mmillion",
-    url="https://www.dreammail.jp/mmillion",
-    clicks=(
-        # Step 1: デイリー応募 button → confirm modal を開く (JS handler)
-        ("#btnMmillionDailyApply", 1),
-        # Step 2: 「はい」 → form JS submit → POST /mmillion/apply
-        ("#confirmYes", 1),
-    ),
-    # 2026-05-25 第二試行: click_force=True (evaluate-based el.click()) で
-    # 初回 run が click 不発 → URL 変化なし。jQuery handler は dispatch_event
-    # で確実に発火するので、click_force=False + use_navigation_click=False
-    # にして dispatch_event 方式に切替。
-    use_navigation_click=False,
-    click_force=False,
-    initial_wait_ms=4000,
-    inter_step_ms=3000,
-    final_wait_ms=5000,
-    title_selector="h1",
-    success_url_pattern=r"/mmillion/apply",
-)
-
-
 ADAPTER = Adapter(
     name="dreammail",
     site_label="ドリームメール",
@@ -177,11 +139,10 @@ ADAPTER = Adapter(
         "https://www.dreammail.jp/presents",
         "https://www.dreammail.jp/game",
     ),
-    # daily_wizards: 1) gacha (medal earning), 2) mmillion (100万 entry)
-    daily_wizards=(
-        _GACHA_WIZARD,
-        _MMILLION_WIZARD,
-    ),
+    # daily_wizards: 現状は /game/gacha のみ。mmillion (現金100万) は 50 メダル
+    # 消費のため、メダル蓄積優先方針 ([[2026-05-31 user 方針]]) で外した。
+    # gacha が安定してメダル稼げるようになったら mmillion 復活検討。
+    daily_wizards=(_GACHA_WIZARD,),
     # precam (/presents/precam/<id>) 動的 discovery は 2026-05-31 に削除。
     # 「参加」 anchor の click 後に外部 ad-network に飛ぶだけで verify pass
     # 扱いにしていたが、実際の応募成立には外部 site でメアド + 複数項目の
