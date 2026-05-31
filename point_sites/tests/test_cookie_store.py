@@ -139,12 +139,48 @@ def test_save_jar_filters_third_party_cookies_when_allowed_hosts_set(tmp_path) -
     assert names == {"session", "user_id"}
 
 
-def test_save_jar_keeps_everything_when_allowed_hosts_none(tmp_path) -> None:
-    """Legacy behavior preserved — passing ``None`` saves all cookies."""
+def test_save_jar_drops_trackers_even_with_no_domain_filter(tmp_path) -> None:
+    """Tracker name filter applies regardless of ``allowed_hosts``.
+
+    Even when callers opt out of domain filtering by passing ``None``,
+    known third-party tracker cookies (`_ga` etc.) are still dropped —
+    they never contribute to auth state and only bloat the jar.
+    """
     path = tmp_path / "cookies.json"
     jar = RequestsCookieJar()
     jar.set("session", "abc", domain=".pointtown.com", path="/")
     jar.set("_ga", "GA1.2.x", domain=".google-analytics.com", path="/")
 
     n = cookie_store.save_jar(jar, path, allowed_hosts=None)
-    assert n == 2
+    assert n == 1
+    loaded = cookie_store.load(path)
+    assert loaded is not None
+    assert {c["name"] for c in loaded} == {"session"}
+
+
+def test_is_tracker_cookie_recognises_common_patterns() -> None:
+    """Spot-check the name patterns the filter is supposed to catch."""
+    from point_sites.common.cookie_store import is_tracker_cookie
+
+    for name in (
+        "_ga",
+        "_ga_ABC123",
+        "_gid",
+        "_gat",
+        "__utma",
+        "_clck",
+        "_clsk",
+        "_hjSession",
+        "_hjid",
+        "_uetsid",
+        "_uetvid",
+        "_fbp",
+        "_fbc",
+        "AMCV_ABC",
+        "s_cc",
+        "_ttp",
+        "gcl_au",
+    ):
+        assert is_tracker_cookie(name), f"{name!r} should be a tracker"
+    for name in ("session_id", "csrf_token", "JSESSIONID", "auth_token", "user_id", "PHPSESSID"):
+        assert not is_tracker_cookie(name), f"{name!r} should NOT be a tracker"

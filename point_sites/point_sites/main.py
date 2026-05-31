@@ -30,7 +30,7 @@ from .adapters import REGISTRY, get_adapter
 from .common.adapter import Adapter
 from .common.balance import fetch_balance
 from .common.clicker import Clicker, is_manual_url_allowed
-from .common.cookie_store import domain_matches_hosts
+from .common.cookie_store import domain_matches_hosts, is_tracker_cookie
 from .common.cookie_store import load as load_persisted_cookies
 from .common.cookie_store import save_jar as save_cookie_jar
 from .common.discover import discover, render_report
@@ -243,12 +243,16 @@ def _merge_browser_cookies(
     site on subsequent requests bloats the cookie header and can
     trigger anti-bot session invalidation.
     """
+    dropped_trackers = 0
     for c in browser_cookies:
         name = str(c.get("name", ""))
         if not name:
             continue
         domain = str(c.get("domain", ""))
         if allowed_hosts is not None and not domain_matches_hosts(domain, allowed_hosts):
+            continue
+        if is_tracker_cookie(name):
+            dropped_trackers += 1
             continue
         clicker.session.cookies.set(
             name,
@@ -257,6 +261,8 @@ def _merge_browser_cookies(
             path=str(c.get("path", "/")),
             secure=bool(c.get("secure", True)),
         )
+    if dropped_trackers:
+        logger.info("dropped %d tracker cookie(s) before merge", dropped_trackers)
 
 
 def _content_with_retry(page: object, max_attempts: int = 5, wait_ms: int = 2000) -> str:

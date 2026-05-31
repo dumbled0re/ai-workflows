@@ -23,12 +23,52 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Iterable
 from pathlib import Path
 
 from requests.cookies import RequestsCookieJar
 
 logger = logging.getLogger(__name__)
+
+
+# Known third-party tracker cookie name patterns. These commonly slip
+# past ``domain_matches_hosts`` because trackers (Google Analytics,
+# Microsoft Clarity, Hotjar, etc.) set them with ``Domain=.<site>.com``
+# umbrella scope — so the cookie appears first-party from the filter's
+# perspective even though it carries no auth state.
+#
+# Observed 2026-05-30 on pointtown: 8 GMO wizards visiting ad-laden
+# subdomains ballooned the persisted jar from 16 → 49 cookies, all of
+# which passed the domain filter (Domain=.pointtown.com) but were
+# tracker-set. The resulting bloated Cookie header tripped GMO's anti-bot
+# detection and invalidated the session every day. This name-based
+# blacklist complements the domain filter to keep auth-relevant cookies
+# only.
+#
+# The list intentionally covers the most prolific umbrella-scope
+# offenders. Add a pattern here when a new failure run shows a tracker
+# slipping through.
+TRACKER_COOKIE_NAME_RE = re.compile(
+    r"^("
+    r"_ga(_|$)|_gid|_gat|__utm[a-z]?|_dc_gtm_|"  # Google Analytics / GTM
+    r"_clck|_clsk|"  # Microsoft Clarity
+    r"_hj[A-Za-z]+|"  # Hotjar
+    r"_uet(sid|vid)|"  # Microsoft UET (Bing Ads)
+    r"gcl_au|"  # Google Conversion Linker
+    r"_fbp|_fbc|"  # Meta Pixel
+    r"AMCVS?_|s_(cc|sq|ppv|vi)|"  # Adobe Analytics
+    r"_ttp|ttwid|"  # TikTok Pixel
+    r"_pin_unauth|"  # Pinterest
+    r"OptanonConsent|OptanonAlertBoxClosed|"  # OneTrust consent
+    r"yjad_|_yjuid|YJSC_"  # Yahoo! Japan ads (omit "B" legacy bcookie — too broad)
+    r")"
+)
+
+
+def is_tracker_cookie(name: str) -> bool:
+    """True iff ``name`` matches a known third-party tracker pattern."""
+    return TRACKER_COOKIE_NAME_RE.match(name) is not None
 
 
 def domain_matches_hosts(cookie_domain: str, allowed_hosts: Iterable[str]) -> bool:
@@ -72,9 +112,13 @@ def save_jar(
     everything" behavior.
     """
     cookies: list[dict[str, object]] = []
+    dropped_trackers = 0
     for c in jar:
         domain = c.domain or ".moppy.jp"
         if allowed_hosts is not None and not domain_matches_hosts(domain, allowed_hosts):
+            continue
+        if is_tracker_cookie(c.name):
+            dropped_trackers += 1
             continue
         cookies.append(
             {
@@ -85,6 +129,8 @@ def save_jar(
                 "secure": bool(c.secure),
             }
         )
+    if dropped_trackers:
+        logger.info("dropped %d tracker cookie(s) before persist", dropped_trackers)
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     # Atomic write: a crash mid-write must not poison the next run with
