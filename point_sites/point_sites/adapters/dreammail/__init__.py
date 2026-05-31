@@ -138,54 +138,6 @@ _MMILLION_WIZARD = DailyWizard(
 )
 
 
-# /presents/precam/<id> 0-medal promo の動的 discovery template。
-# user cookie 取得後の inspect で確実な selector に refine する。
-# anchor click で外部 ゆめキャン site にリダイレクト → impression credit。
-# precam (0-medal promo) 構造 (inspect run 26380251527 で確定):
-#   <a href="https://act.gro-fru.net/..." target="_blank"
-#      class="gotoLink btn-black gtm-imp">このキャンペーンに参加する（無料）</a>
-# 外部 ad-network (gro-fru.net) への redirect、参加 click 自体が credit。
-# target="_blank" のため URL が現 page で変わらず success_url_pattern で
-# verify 不可。click 自体は発火するが「成功確認」は別途別 path で必要。
-# 暫定で NEVER_MATCH のまま — 真の verify path を別 commit で検討。
-# Phase 2 案: framework に「target='' に書換えてから click」 option を
-# 追加して same-tab navigation 化、URL で verify。
-# precam の参加 anchor は ``target="_blank"`` で新 tab を開くため click
-# しても現 page URL が変わらず、URL-based verify が使えなかった。
-# 2026-05-25: pre_click_evaluate で全 anchor の target を空にすれば
-# same-tab navigation 化できる。click 後 page.url が外部 ad-network
-# (gro-fru.net, ms-imp.net 等) に遷移するので、dreammail.jp 以外の host
-# にいる = 参加 click が server-side で発火した、と verify できる。
-_PRECAM_STRIP_TARGET_JS = (
-    "document.querySelectorAll('a.gotoLink, a[target=\"_blank\"]')"
-    ".forEach(function(a) { a.target = '_self'; a.removeAttribute('target'); });"
-)
-_PRECAM_TEMPLATE = DailyWizard(
-    name="dreammail_precam",  # _<idx> suffix が runtime で付く
-    url="<placeholder>",
-    clicks=(
-        # 「このキャンペーンに参加する」 anchor (target を pre_click で剥離済)
-        ("a.gotoLink.btn-black, a.gotoLink", 1),
-    ),
-    use_navigation_click=True,
-    click_force=True,
-    initial_wait_ms=3500,
-    final_wait_ms=5000,
-    title_selector="h1, h2, .prize_title, .campaign_title",
-    pre_click_evaluate=_PRECAM_STRIP_TARGET_JS,
-    # target 剥離後の click で外部 ad-network host に遷移する → dreammail.jp
-    # 以外の host にいれば参加 click が server に伝わった = verify 成功。
-    # 外部 host の例: shopping.yahoo.co.jp, cp.manara.jp, fasttrack-2hr.com 等。
-    # 2026-05-25 dispatch (run 26381185075) で発覚: error page (例:
-    # ``tr.smaad.net/error?key=error_ip``) も外部 host なので素朴な
-    # negative lookahead で verify=True に届く。``error`` を含む URL を
-    # 除外して偽陽性を更に削減。
-    # 注意: アンケート系 precam (cp.manara.jp 等) は CLAUDE.md policy で
-    # 自動応募 NG。要 user 判断、discovery 段階で filter する別途検討。
-    success_url_pattern=r"^https://(?!.*dreammail\.jp)(?!.*error)",
-)
-
-
 ADAPTER = Adapter(
     name="dreammail",
     site_label="ドリームメール",
@@ -230,12 +182,15 @@ ADAPTER = Adapter(
         _GACHA_WIZARD,
         _MMILLION_WIZARD,
     ),
-    # dynamic discovery: /presents page を scrape して /presents/precam/<id>
-    # の 0-medal promo URL を抽出 → template wizard で各 page を訪問。
-    dynamic_wizard_list_url="https://www.dreammail.jp/presents",
-    dynamic_wizard_link_selector='a[href*="/presents/precam/"]',
-    dynamic_wizard_template=_PRECAM_TEMPLATE,
-    dynamic_wizard_max_count=10,
+    # precam (/presents/precam/<id>) 動的 discovery は 2026-05-31 に削除。
+    # 「参加」 anchor の click 後に外部 ad-network に飛ぶだけで verify pass
+    # 扱いにしていたが、実際の応募成立には外部 site でメアド + 複数項目の
+    # form 入力が必要で「応募確認済」通知は誤検出だった (user 報告 +
+    # CLAUDE.md の「false positive 禁止」「抽選応募は少項目で完結のみ」
+    # rule に違反)。1-click form-less な precam を pre-filter する手段が
+    # 無いので、precam 系を全面 disable。本物の lottery は gacha + mmillion
+    # で十分。再導入するなら参加先 page を inspect して form 有無を判定する
+    # 仕組みが必要。
     # Lottery output: 「応募した賞品一覧」 Slack format。daily gacha は
     # 厳密には抽選でないがメダル獲得を「応募成功」として表示 (本来の
     # 100万円 / precam が抽選 part)。
