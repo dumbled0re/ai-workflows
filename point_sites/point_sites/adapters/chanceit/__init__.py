@@ -130,12 +130,55 @@ ADAPTER = Adapter(
     # dynamic_wizard とは別パスで並列実行される (main.py の wizards_to_run は
     # daily_wizards + 動的展開 wizards の concat)。
     daily_wizards=_TASKLIST_WIZARDS,
-    # easy_apply (dynamic_wizard discovery from /present/list/easy-entry/)
-    # は 2026-05-31 に停止。user 方針更新:
-    # 「抽選は自分でする、自動化は medal/point 獲得に集中」 ([[2026-05-31]])。
-    # task_* wizards (記事 visit でメダル獲得) は獲得側なので残す。
-    # 復活させる場合は dynamic_wizard_list_urls + link_selector + template を
-    # 戻すだけ — git log で commit 復元可能。
+    # Dynamic wizard discovery: ``/present/list/easy-entry/`` のみを scrape する。
+    # 2026-05-31 update: 一旦 disable したが、chanceit easy_apply は member
+    # cookie の PII auto-fill のみで **無料応募** (medal/point 消費なし) と
+    # 確認済 → re-enable。fruitmail_lottery (口数 = ポイント消費) とは経済
+    # モデルが違うので「メダル獲得優先」方針と矛盾しない。要 user mypage
+    # 応募履歴 で実応募成立を確認 (まだ verify されてないので false-positive
+    # の可能性ゼロではない、commit 0f81631 の disable 理由参照)。
+    #
+    # 2026-05-27 巻き戻し履歴: easy-entry のみ scrape する仕様。daily-weekly /
+    # instant-win / cash-giftcard 等の他カテゴリは「賞品カテゴリ」 (現金 /
+    # 即時 / 毎日) であって「応募形式」 ではないため、X(Twitter)から応募 等の
+    # SNS 投稿必須 prize が混入する事が user 観察で判明 (49 件中の偽陽性源)。
+    # easy-entry/ だけは「応募形式 = 応募が簡単」 で構造的に SNS 投稿系を
+    # 含まないので、これだけ運用。期待件数: 14 件/日。
+    dynamic_wizard_list_urls=("https://www.chance.com/present/list/easy-entry/",),
+    dynamic_wizard_link_selector='a[href*="/present/detail/"]',
+    dynamic_wizard_template=DailyWizard(
+        name="chanceit_easy_apply",  # name suffixed with _<index> at runtime
+        url="<placeholder>",  # replaced with each discovered prize URL
+        clicks=(
+            # 「この懸賞に応募する」button (anchor to /jump.srv?id=XXX)。
+            # chanceit 会員 cookie で server 側が PII auto-fill、
+            # 1 click で entry 完了する想定 (公式「30秒足らずで応募」)。
+            ('a[href*="/jump.srv?id="]', 1),
+        ),
+        use_navigation_click=True,
+        click_force=True,
+        initial_wait_ms=3000,
+        final_wait_ms=8000,
+        # 2026-05-25 確定 (run 26387678417 inspect):
+        # apply anchor は ``target="_blank"`` で新 tab を開く構造のため、
+        # 素朴な click では現 page URL が変化せず silent no-op になる。
+        # pre_click_evaluate で target を剥離して same-tab navigation 化、
+        # /jump.srv?id=<id> へ遷移させる。
+        pre_click_evaluate=(
+            "document.querySelectorAll('a[href*=\"/jump.srv?id=\"]')"
+            ".forEach(function(a) { a.target = '_self'; a.removeAttribute('target'); });"
+        ),
+        # click 後の遷移先候補:
+        #   - /jump.srv?id=<id> → 外部 partner サイト (= chance.com 以外)
+        #   - /jump.srv?id=<id> → /thanks/ や /complete/ (chance.com 内)
+        # /present/detail/<id>/ に残っていれば click 不発 = 未確定。
+        # /jump.srv または chance.com 以外の host にいれば応募 click 成立。
+        # ``error`` 含むのは 失敗 URL なので除外。
+        success_url_pattern=r"^(?!.*/present/detail/)(?!.*error)",
+    ),
+    # 2026-05-27 cap 設定: easy-entry の ~14 件/日 + バッファ 20。
+    # selector misfire で 100 件超 click とかを防ぐ safety cap。
+    dynamic_wizard_max_count=20,
     # Lottery-style Slack: 「応募した賞品一覧」format。賞品名 + URL を
     # 列挙、user が当選時に内容を識別できるよう。
     lottery_mode=True,
