@@ -177,6 +177,31 @@ ADAPTER = Adapter(
             clicks=(),
         ),
     ),
+    # /game/pressrelease/ ニュース記事 visit 系 — 1 日 ~10 記事の visit で
+    # スタンプ + ポイント獲得 ("本日 N 枚目" widget で stamp counter)。
+    # 2026-05-31 inspect (run 26701697237) で確定:
+    #   - hub: https://www.fruitmail.net/game/pressrelease/
+    #   - article anchors: a[href*="/press_release/detail.php"] (今日 10 件)
+    #   - 「ニュース記事を読んでポイントGET」公式キャッチコピー
+    #   - data-is-watched 属性で済/未済を server 側が tracking
+    # chanceit task_* wizards と同パターンの「visit-only で credit」型。
+    # max_count=10 は当日観測値、selector miss で 100 件 click 等の暴走防止。
+    dynamic_wizard_list_urls=("https://www.fruitmail.net/game/pressrelease/",),
+    dynamic_wizard_link_selector='a[href*="/press_release/detail.php"]',
+    dynamic_wizard_template=DailyWizard(
+        name="fruitmail_press_article",  # name suffixed with _<index> at runtime
+        url="<placeholder>",  # replaced with each discovered article URL
+        clicks=(),
+        initial_wait_ms=2000,
+        # 5s で view-tracking XHR / impression credit が走る時間を確保
+        # (chanceit task_* と同 5s)。
+        final_wait_ms=5000,
+        title_selector="h1",
+        # 訪問先がそのまま detail.php に着地するなら match。login redirect /
+        # 404 時は別 URL になるので不一致 → 「未確定」 表示。
+        success_url_pattern=r"/press_release/detail\.php",
+    ),
+    dynamic_wizard_max_count=10,
     # 2026-05-16 inspect (--anonymous) で確定。form id="login" action は
     # 同 URL POST。identifier は email or 会員 ID 両対応 (name="identifier")、
     # password は name="password"。submit は専用 class の button。
