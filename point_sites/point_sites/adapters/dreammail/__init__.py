@@ -100,6 +100,33 @@ _GACHA_WIZARD = DailyWizard(
 )
 
 
+# /omkj おみくじ365 wizard。1 日 1 回、メダル必ず獲得 (1 枚〜)。
+# inspect (2026-05-31 run 26700895849) で確定:
+#   <button type="button" id="omkjBtn" data-date="...">おみくじをひく</button>
+# click 後 XHR `POST /api/omkj/check/` + `POST /api/omkj/challenge/` 発火、
+# URL は ``/omkj`` のまま不変。result DOM:
+#   <div id="resultOmkj" style="display: block;">
+#     <div id="kikkyoOmkj"><img src="/img/omkj/kikkyo_N.png"></div>  ← 大吉/中吉/...
+#     <div id="pointOmkj">メダル1枚進呈</div>                          ← 必ず 1 枚以上
+#   </div>
+# URL 不変 → success_url_pattern 使えず。success_text_marker で
+# 「枚進呈」を check (landing には現れない、click 成功後のみ DOM に挿入)。
+# メダル消費なし、副作用なし。
+_OMKJ_WIZARD = DailyWizard(
+    name="dreammail_omkj",
+    url="https://www.dreammail.jp/omkj",
+    clicks=(("#omkjBtn", 1),),
+    # XHR-only (no navigation) なので False。click_force で element.click()
+    # を evaluate-based 発火 (Playwright の actionability check を bypass)。
+    use_navigation_click=False,
+    click_force=True,
+    initial_wait_ms=3000,
+    final_wait_ms=5000,
+    title_selector="#dateOmkj, h1",
+    success_text_marker="枚進呈",
+)
+
+
 ADAPTER = Adapter(
     name="dreammail",
     site_label="ドリームメール",
@@ -139,10 +166,11 @@ ADAPTER = Adapter(
         "https://www.dreammail.jp/presents",
         "https://www.dreammail.jp/game",
     ),
-    # daily_wizards: 現状は /game/gacha のみ。mmillion (現金100万) は 50 メダル
+    # daily_wizards: /game/gacha (1 日 1 回ガチャ) + /omkj (おみくじ365)。
+    # 両方ともメダル獲得専用 (消費なし)。mmillion (現金100万) は 50 メダル
     # 消費のため、メダル蓄積優先方針 ([[2026-05-31 user 方針]]) で外した。
     # gacha が安定してメダル稼げるようになったら mmillion 復活検討。
-    daily_wizards=(_GACHA_WIZARD,),
+    daily_wizards=(_GACHA_WIZARD, _OMKJ_WIZARD),
     # precam (/presents/precam/<id>) 動的 discovery は 2026-05-31 に削除。
     # 「参加」 anchor の click 後に外部 ad-network に飛ぶだけで verify pass
     # 扱いにしていたが、実際の応募成立には外部 site でメアド + 複数項目の
