@@ -288,7 +288,13 @@ def _content_with_retry(page: object, max_attempts: int = 5, wait_ms: int = 2000
     raise last_exc
 
 
-def _fetch_balance(clicker: Clicker, cfg: Config) -> int | None:
+def _fetch_balance(clicker: Clicker, cfg: Config) -> tuple[int | None, int | None]:
+    """Return (primary, secondary) balance for the configured mypage.
+
+    ``secondary`` is ``None`` for adapters without ``secondary_balance_patterns``
+    set, or when the secondary parse fails. Primary is the value used for
+    credit-ratio degradation, OutcomeTracker, and stagnation detection.
+    """
     if cfg.adapter.balance_uses_browser:
         # Lazy import keeps Playwright off the import path of adapters
         # that don't opt in (no chromium download cost on those runs).
@@ -304,19 +310,21 @@ def _fetch_balance(clicker: Clicker, cfg: Config) -> int | None:
                 cookies=browser_cookies_in,
                 default_cookie_domain=default_domain,
             ) as bc:
-                balance = bc.fetch_balance(
+                balance, secondary = bc.fetch_balance(
                     cfg.adapter.mypage_url,
                     patterns=cfg.adapter.balance_patterns,
+                    secondary_patterns=cfg.adapter.secondary_balance_patterns,
                 )
                 _merge_browser_cookies(clicker, bc.export_cookies(), allowed_hosts=cfg.adapter.allowed_hosts)
         except Exception as exc:
             logger.warning("browser balance fetch failed: %s", exc)
-            return None
-        return balance
+            return None, None
+        return balance, secondary
     return fetch_balance(
         clicker.session,
         cfg.adapter.mypage_url,
         patterns=cfg.adapter.balance_patterns,
+        secondary_patterns=cfg.adapter.secondary_balance_patterns,
     )
 
 
@@ -586,10 +594,21 @@ def cmd_run(
     # whether points actually credited. Only meaningful in real click mode;
     # dry-run / extract-links don't trigger any click side-effects.
     balance_before: int | None = None
+    secondary_balance_before: int | None = None
     if not dry_run and not extract_links and clicker is not None and clicker.authenticated:
-        balance_before = _fetch_balance(clicker, cfg)
+        balance_before, secondary_balance_before = _fetch_balance(clicker, cfg)
         if balance_before is not None:
-            logger.info("balance before clicks: %d pt", balance_before)
+            logger.info(
+                "balance before clicks: %d %s",
+                balance_before,
+                cfg.adapter.balance_label,
+            )
+        if secondary_balance_before is not None and cfg.adapter.secondary_balance_label:
+            logger.info(
+                "secondary balance before clicks: %d %s",
+                secondary_balance_before,
+                cfg.adapter.secondary_balance_label,
+            )
 
     # Source caps max_messages internally via cfg.max_messages; allow CLI
     # ``--max-messages`` to tighten that for this run only.
@@ -1173,10 +1192,21 @@ def cmd_run(
     # against ``balance_before``. Skipped on dry/extract runs (no clicks
     # were issued) and on failed-auth paths (we already returned earlier).
     balance_after: int | None = None
+    secondary_balance_after: int | None = None
     if not dry_run and not extract_links and clicker is not None and clicker.authenticated:
-        balance_after = _fetch_balance(clicker, cfg)
+        balance_after, secondary_balance_after = _fetch_balance(clicker, cfg)
         if balance_after is not None:
-            logger.info("balance after clicks: %d pt", balance_after)
+            logger.info(
+                "balance after clicks: %d %s",
+                balance_after,
+                cfg.adapter.balance_label,
+            )
+        if secondary_balance_after is not None and cfg.adapter.secondary_balance_label:
+            logger.info(
+                "secondary balance after clicks: %d %s",
+                secondary_balance_after,
+                cfg.adapter.secondary_balance_label,
+            )
         # Save the jar one more time at the very end so all rotation
         # from the click loop is captured for the next run.
         _persist_cookies(clicker, cfg)
@@ -1292,6 +1322,10 @@ def cmd_run(
                 balance_before=balance_before,
                 balance_after=balance_after,
                 prior_balance_after=prior_balance_after,
+                balance_label=cfg.adapter.balance_label,
+                secondary_balance_before=secondary_balance_before,
+                secondary_balance_after=secondary_balance_after,
+                secondary_balance_label=cfg.adapter.secondary_balance_label,
                 degradation=degradation,
             )
         if parse_failure_ids:
@@ -1621,12 +1655,14 @@ def cmd_balance(cfg: Config) -> int:
         )
         return 2
     _persist_cookies(clicker, cfg)
-    balance = _fetch_balance(clicker, cfg)
+    balance, secondary = _fetch_balance(clicker, cfg)
     _persist_cookies(clicker, cfg)
     if balance is None:
         print("balance: <unknown> (parser failed; check logs for snippet)", file=sys.stderr)
         return 1
-    print(f"balance: {balance} pt")
+    print(f"balance: {balance} {cfg.adapter.balance_label}")
+    if secondary is not None and cfg.adapter.secondary_balance_label:
+        print(f"secondary: {secondary} {cfg.adapter.secondary_balance_label}")
     return 0
 
 

@@ -63,24 +63,32 @@ def fetch_balance(
     mypage_url: str,
     *,
     patterns: tuple[re.Pattern[str], ...] = DEFAULT_BALANCE_PATTERNS,
+    secondary_patterns: tuple[re.Pattern[str], ...] | None = None,
     timeout: tuple[float, float] = (10.0, 30.0),
-) -> int | None:
-    """GET mypage and parse the current coin balance.
+) -> tuple[int | None, int | None]:
+    """GET mypage and parse the current balance(s).
 
-    Returns ``None`` on any failure (network, non-200, or parse miss). The
-    caller treats ``None`` as "unknown" and skips verification for that run
-    rather than mistaking it for a zero balance.
+    Returns ``(primary, secondary)`` where each is ``int`` or ``None``.
+    ``None`` on either side means that side's parse failed (or the GET
+    failed — both will be ``None`` in that case). The caller treats
+    ``None`` as "unknown" and skips verification rather than mistaking
+    it for a zero balance.
+
+    ``secondary_patterns`` lets an adapter expose a second currency
+    (e.g. pointtown's コイン / pt pair) on the same mypage GET — saves
+    a duplicate request.
     """
     try:
         resp = session.get(mypage_url, timeout=timeout, allow_redirects=True)
     except requests.RequestException as exc:
         logger.warning("balance fetch request failed: %s", exc)
-        return None
+        return None, None
     if resp.status_code != 200:
         logger.warning("balance fetch returned HTTP %d", resp.status_code)
-        return None
+        return None, None
     body = resp.text
     balance = parse_balance(body, patterns)
+    secondary = parse_balance(body, secondary_patterns) if secondary_patterns else None
     if balance is None:
         # Log a small redacted snippet to aid parser updates without
         # leaking tracking IDs or session-bound markup.
@@ -89,4 +97,4 @@ def fetch_balance(
             "balance parse failed; no pattern matched. snippet head: %s",
             snippet[:200].replace("\n", " "),
         )
-    return balance
+    return balance, secondary

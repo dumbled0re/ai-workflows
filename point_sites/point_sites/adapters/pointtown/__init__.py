@@ -27,7 +27,6 @@ Required Secrets to enable:
 import re
 
 from ...common.adapter import Adapter
-from ...common.balance import DEFAULT_BALANCE_PATTERNS
 from ...common.sources import OnsiteInboxSource
 from ...common.wizard import DailyWizard
 from .parser import parse_inbox, parse_message
@@ -47,18 +46,28 @@ ADAPTER = Adapter(
         parse_inbox=parse_inbox,
         parse_message=parse_message,
     ),
-    # Click-coin URLs credit コイン (not ポイント — 10 coins auto-convert
-    # to 1 pt). The mypage header shows both labels, but the default
-    # 保有ポイント patterns hit the ポイント count first (always 0 for
-    # short-term click activity) and miss the actual signal we need to
-    # detect crediting. ``c-coin-large-label`` is the coin counter
-    # widget; this site-specific regex takes precedence over the
-    # defaults so degradation alerts fire when click-coin clicks stop
-    # crediting.
-    balance_patterns=(
-        re.compile(r'class="c-coin-large-label"[^>]*>\s*([0-9,]+)'),
-        *DEFAULT_BALANCE_PATTERNS,
-    ),
+    # Click-coin URLs credit コイン (not ポイント — 10 コイン auto-convert
+    # to 1 ポイント). The mypage header shows both labels via paired
+    # ``c-coin-large-label`` / ``c-point-large-label`` widgets (2026-05-31
+    # inspect run 26703986705 確定)。コイン は click 1 件ごとに即時加算
+    # されるので credit verification の primary signal、ポイント は変換
+    # 完了タイミングだけ 1 動くので secondary。
+    #
+    # ``[^"]*`` で class 末尾を貪欲一致にしているのは ``u-expand-link``
+    # 等の追加 class が付与されている variant にも対応するため (上記 inspect で
+    # 標準形と u-expand-link variant が混在することを確認)。
+    balance_patterns=(re.compile(r'class="c-coin-large-label[^"]*"[^>]*>\s*([0-9,]+)'),),
+    balance_label="コイン",
+    # 10 コイン → 1 ポイント の自動変換でコイン残高が突発的に減るため、
+    # コインだけ表示すると「マイナス加算」 に見えて user が混乱する
+    # ([[2026-05-31 user 観察]])。ポイント値も secondary として併記。
+    # 注意: mypage には ``c-point-large-label`` 要素が 2 つ存在する
+    # (1: /mypage/point-history = 実ポイント値、2: /mypage/prepared-point
+    # = 加算予定の pending 値)。parse_balance は最初の match を返すので、
+    # HTML 上で history link が先に来るかぎり実ポイント値が取れる。
+    # 万一順序が逆になったら href で pin する変更が要。
+    secondary_balance_patterns=(re.compile(r'class="c-point-large-label[^"]*"[^>]*>\s*([0-9,]+)'),),
+    secondary_balance_label="pt",
     discover_seeds=(
         "https://www.pointtown.com/mypage",
         "https://www.pointtown.com/mypage/mail",

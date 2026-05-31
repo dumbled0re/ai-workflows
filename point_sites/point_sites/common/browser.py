@@ -294,14 +294,15 @@ class BrowserClicker:
         mypage_url: str,
         *,
         patterns: tuple[re.Pattern[str], ...] = DEFAULT_BALANCE_PATTERNS,
+        secondary_patterns: tuple[re.Pattern[str], ...] | None = None,
         hydrate_wait_ms: int = 4_000,
-    ) -> int | None:
+    ) -> tuple[int | None, int | None]:
         """Browser equivalent of ``balance.fetch_balance``.
 
         Loads ``mypage_url`` with a real browser so JS-rendered balance
         widgets (``pointincome`` / sugutama mile counter etc.) are
-        present in ``page.content()``. Returns ``None`` on any failure;
-        the caller treats that as "balance unknown" rather than zero.
+        present in ``page.content()``. Returns ``(primary, secondary)``;
+        ``None`` on any failure / parse miss.
 
         Uses ``wait_until="domcontentloaded"`` instead of the default
         ``networkidle`` because ad-heavy mypages (sugutama / pointtown:
@@ -314,20 +315,21 @@ class BrowserClicker:
             page = self.goto(mypage_url, wait_until="domcontentloaded")
         except Exception as exc:
             logger.warning("browser balance fetch navigation failed: %s", exc)
-            return None
+            return None, None
         try:
             page.wait_for_timeout(hydrate_wait_ms)
             html = page.content()
         finally:
             page.close()
         balance = parse_balance(html, patterns)
+        secondary = parse_balance(html, secondary_patterns) if secondary_patterns else None
         if balance is None:
             snippet = re.sub(r"[A-Za-z0-9+/=_-]{20,}", "<redacted>", html)
             logger.warning(
                 "browser balance parse failed; no pattern matched. snippet head: %s",
                 snippet[:200].replace("\n", " "),
             )
-        return balance
+        return balance, secondary
 
     def export_cookies(self) -> list[dict[str, object]]:
         """Return the live jar in the project's persisted shape.

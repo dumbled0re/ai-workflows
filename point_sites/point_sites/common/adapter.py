@@ -62,6 +62,24 @@ class Adapter:
     # Balance scraping (compiled regexes, ordered most-specific → most-permissive)
     balance_patterns: tuple[Pattern[str], ...] = field(default_factory=tuple)
 
+    # Display unit for ``balance_patterns`` result in Slack notifications
+    # (e.g. "pt" / "コイン" / "マイル"). Defaults to "pt" for compatibility
+    # with the existing notifier hard-codes. Adapters override when the
+    # site uses a non-point unit as primary (e.g. pointtown's coin counter).
+    balance_label: str = "pt"
+
+    # Optional secondary balance — for sites that surface TWO currencies
+    # whose values interact (e.g. pointtown: 10 コイン auto-convert to 1
+    # ポイント; coin balance drops on conversion which looks like a loss
+    # in the Slack delta unless the converted-to point value is shown
+    # alongside). When set, ``Notifier.send_summary`` renders an extra
+    # ``/ <label>: before→after (Δ)`` clause next to the primary balance
+    # line. The primary balance still drives credit-ratio degradation,
+    # OutcomeTracker, and stagnation detection — the secondary is purely
+    # for user display.
+    secondary_balance_patterns: tuple[Pattern[str], ...] | None = None
+    secondary_balance_label: str | None = None
+
     # Read-only discover crawl seeds
     discover_seeds: tuple[str, ...] = field(default_factory=tuple)
 

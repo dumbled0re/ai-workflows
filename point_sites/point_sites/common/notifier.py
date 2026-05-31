@@ -44,6 +44,11 @@ def _format_verification(
     balance_before: int | None,
     balance_after: int | None,
     prior_balance_after: int | None = None,
+    *,
+    balance_label: str = "pt",
+    secondary_balance_before: int | None = None,
+    secondary_balance_after: int | None = None,
+    secondary_balance_label: str | None = None,
 ) -> str | None:
     """Render the post-click balance verification line.
 
@@ -58,6 +63,14 @@ def _format_verification(
     between cron runs (e.g. delayed pointsite crediting or other manual
     activity), since a within-run Δ of 0 looks alarming on its own when
     balance is actually growing day-over-day.
+
+    ``balance_label`` defaults to "pt" for back-compat; adapters with a
+    non-point primary unit (pointtown's コイン) override it.
+
+    When ``secondary_balance_*`` is supplied an extra ``/ <label>:
+    before→after (Δ)`` clause is appended. Use for sites that surface
+    two currencies whose values interact (pointtown: 10 コイン → 1 pt
+    auto-conversion makes coin-only delta look like a loss).
     """
     has_both = balance_before is not None and balance_after is not None
     if not has_both:
@@ -70,15 +83,26 @@ def _format_verification(
     inter_suffix = ""
     if prior_balance_after is not None and prior_balance_after != balance_before:
         inter_delta = balance_before - prior_balance_after
-        inter_suffix = f" / 前回比 {inter_delta:+}pt ({prior_balance_after}→{balance_before})"
+        inter_suffix = f" / 前回比 {inter_delta:+}{balance_label} ({prior_balance_after}→{balance_before})"
+
+    secondary_suffix = ""
+    if secondary_balance_before is not None and secondary_balance_after is not None and secondary_balance_label:
+        sec_delta = secondary_balance_after - secondary_balance_before
+        secondary_suffix = (
+            f" / {secondary_balance_label}: {secondary_balance_before}→{secondary_balance_after} (Δ{sec_delta:+})"
+        )
 
     if estimated_total_pt <= 0:
-        return f"✓ 残高: {balance_before}→{balance_after} (Δ{delta:+}pt, 推定なし){inter_suffix}"
+        return (
+            f"✓ 残高: {balance_before}→{balance_after} (Δ{delta:+}{balance_label}, 推定なし)"
+            f"{secondary_suffix}{inter_suffix}"
+        )
     ratio = delta / estimated_total_pt
     flag = " ⚠加算が想定より少ない" if ratio < 0.5 else ""
     return (
         f"✓ 加算確認: {balance_before}→{balance_after} "
-        f"(Δ{delta:+}pt / 推定{estimated_total_pt}pt, 比率 {ratio:.0%}){flag}{inter_suffix}"
+        f"(Δ{delta:+}{balance_label} / 推定{estimated_total_pt}pt, 比率 {ratio:.0%}){flag}"
+        f"{secondary_suffix}{inter_suffix}"
     )
 
 
@@ -216,6 +240,10 @@ class Notifier:
         balance_before: int | None = None,
         balance_after: int | None = None,
         prior_balance_after: int | None = None,
+        balance_label: str = "pt",
+        secondary_balance_before: int | None = None,
+        secondary_balance_after: int | None = None,
+        secondary_balance_label: str | None = None,
         degradation: DegradationAlert | None = None,
     ) -> None:
         failed = [r for r in results if r.final_status != "success"]
@@ -223,7 +251,16 @@ class Notifier:
             f"[point_sites] {summary.started_at:%Y-%m-%d %H:%M} 完了",
             f"✅ 成功: {summary.success_count}件 / 推定獲得: {estimated_total_pt}pt",
         ]
-        verification = _format_verification(estimated_total_pt, balance_before, balance_after, prior_balance_after)
+        verification = _format_verification(
+            estimated_total_pt,
+            balance_before,
+            balance_after,
+            prior_balance_after,
+            balance_label=balance_label,
+            secondary_balance_before=secondary_balance_before,
+            secondary_balance_after=secondary_balance_after,
+            secondary_balance_label=secondary_balance_label,
+        )
         if verification:
             lines.append(verification)
         lines.extend(
