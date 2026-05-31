@@ -16,18 +16,13 @@ name: fruitmail_lottery
 # fruitmail_lottery has its own queue.
 
 on:
-  # 2026-05-25 cron 再有効化:
-  #   - DailyWizard.success_url_pattern で「/prize/step2/ 到達」を verify
-  #     条件にすることで、click 完走 → false-positive 「応募成功」通知の
-  #     大事故 (PII 未入力 account で誤通知) を防止
-  #   - notifier 文言を「応募確認済 / 未確定」に変更、未確定は user に
-  #     mypage 確認を促す
-  #   - 口数: 各 wizard で 1 口固定 (default)。multi-口 カテゴリ
-  #     (everyweek / gorgeous) は cron 毎日発火で日々 1 口ずつ消費、
-  #     1-口カテゴリ (everyday / everymonth) は当日 quota が空なら origin
-  #     停止で「未確定」表示 — user の手動応募とも矛盾しない設計
-  schedule:
-    - cron: "30 0 * * *"  # JST 9:30
+  # 2026-05-31 cron 停止:
+  #   user 方針更新 — fruitmail_lottery の応募口数は ポイント (= メダル) 消費。
+  #   方針が「メダル獲得優先・抽選は手動」に変わったので、cron を停止して
+  #   ポイント消費を停止。手動 dispatch (workflow_dispatch) は残す。
+  #   復活させるときは下記 schedule の comment を外す。
+  # schedule:
+  #   - cron: "30 0 * * *"  # JST 9:30
   workflow_dispatch:
     inputs:
       dry_run:
