@@ -150,6 +150,8 @@ class Notifier:
         started_at: object,  # datetime, kept loose to avoid import cycles
         finished_at: object,
         wizard_results: list[dict[str, object]],
+        run_header: str = "抽選応募",
+        verified_label: str = "応募確認済",
     ) -> None:
         """Slack 通知: 抽選専用 「応募状況一覧」 format.
 
@@ -178,21 +180,21 @@ class Notifier:
         from datetime import datetime as _dt
 
         if isinstance(started_at, _dt) and isinstance(finished_at, _dt):
-            lines.append(f"【{site_label} 抽選応募 run】 {started_at:%Y-%m-%d %H:%M}")
+            lines.append(f"【{site_label} {run_header} run】 {started_at:%Y-%m-%d %H:%M}")
             lines.append(
-                f"✅ 応募確認済: {len(verified)} 件 / ⚠️ 未確定: {len(unconfirmed)} 件 "
+                f"✅ {verified_label}: {len(verified)} 件 / ⚠️ 未確定: {len(unconfirmed)} 件 "
                 f"/ ⏭ 応募上限/対象外: {len(skipped)} 件 "
                 f"/ 処理時間 {(finished_at - started_at).total_seconds():.0f}秒"
             )
         else:
-            lines.append(f"【{site_label} 抽選応募 run】")
+            lines.append(f"【{site_label} {run_header} run】")
             lines.append(
-                f"✅ 応募確認済: {len(verified)} 件 / ⚠️ 未確定: {len(unconfirmed)} 件 "
+                f"✅ {verified_label}: {len(verified)} 件 / ⚠️ 未確定: {len(unconfirmed)} 件 "
                 f"/ ⏭ 応募上限/対象外: {len(skipped)} 件"
             )
         if verified:
             lines.append("")
-            lines.append("--- 応募確認済 (server-side verify pass) ---")
+            lines.append(f"--- {verified_label} (server-side verify pass) ---")
             for entry in verified:
                 url = str(entry.get("url") or "")
                 title = str(entry.get("title") or "").strip()

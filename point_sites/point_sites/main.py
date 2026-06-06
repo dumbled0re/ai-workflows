@@ -1305,14 +1305,18 @@ def cmd_run(
                     finally:
                         source.close()
         elif cfg.adapter.lottery_mode:
-            # 抽選専用 adapter (chanceit 等) は「応募した賞品一覧」format。
-            # Generic send_summary は point yield / balance delta 前提で
-            # 抽選 yield に合わない。
+            # 抽選 / daily mission の wizard-listing format。Generic
+            # send_summary は point yield / balance delta 前提で抽選 yield
+            # に合わない。chanceit のように 抽選ではない adapter は
+            # ``lottery_run_header`` / ``lottery_verified_label`` で文言を
+            # 上書きできる (デフォルトは "抽選応募" / "応募確認済")。
             notifier.send_lottery_summary(
                 site_label=cfg.adapter.site_label,
                 started_at=started_at,
                 finished_at=datetime.now(UTC),
                 wizard_results=wizard_results,
+                run_header=cfg.adapter.lottery_run_header or "抽選応募",
+                verified_label=cfg.adapter.lottery_verified_label or "応募確認済",
             )
         else:
             notifier.send_summary(

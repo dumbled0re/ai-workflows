@@ -167,6 +167,17 @@ class Adapter:
     # lists each prize with status emoji.
     lottery_mode: bool = False
 
+    # Override per-wizard Slack labels when ``lottery_mode=True`` but the
+    # adapter isn't actually a 抽選 site. chanceit is the canonical case:
+    # tasklist article-visit missions feed the same per-wizard format,
+    # but the run isn't 抽選応募 (it's 記事閲覧 for stamp accrual). When
+    # set, the notifier substitutes these strings into the run header
+    # and the verified-section label. ``None`` falls back to the 抽選
+    # defaults so existing adapters (dreammail / fruitmail_lottery) are
+    # unaffected.
+    lottery_run_header: str | None = None
+    lottery_verified_label: str | None = None
+
     # Recent-run window for balance-stagnation detection. Default
     # ``None`` disables it, which is the right call for high-yield
     # sites where credit-ratio degradation already covers them.

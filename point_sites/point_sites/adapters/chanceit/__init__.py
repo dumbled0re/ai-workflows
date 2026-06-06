@@ -47,52 +47,70 @@ TOS 注意 (memory project_chanceit_tos 参照、本 adapter で明文化):
 
 from __future__ import annotations
 
+import re
+
 from ...common.adapter import Adapter
-from ...common.balance import DEFAULT_BALANCE_PATTERNS
 from ...common.wizard import DailyWizard
 
+# Chanceit-specific balance pattern. DEFAULT_BALANCE_PATTERNS picks up
+# the first ``class="point_red">10pt`` it finds, which on tasklist.jsp
+# is a *reward catalog* value (per-task reward shown next to a スタンプ
+# 10個獲得 requirement), NOT the user's balance. That bug masked +0pt
+# yield for 5 days (run logs reported "10pt" every day while the
+# header pt counter was actually 11pt). Anchor on ``class="user_pt"``
+# which only appears on the mypage header's balance link.
+_CHANCEIT_BALANCE_PATTERNS = (re.compile(r'class="user_pt"[\s\S]*?>([0-9,]+)\s*pt', re.IGNORECASE),)
 
-# /mypage/tasklist.jsp 「毎日コツコツ貯める」 daily missions の visit-only
-# wizards. 2026-05-25 anonymous inspect (run 26402797581) で確定:
+
+# /mypage/tasklist.jsp 「毎日コツコツ貯める」 daily missions の wizards.
 #
-#   <div id="task_list"><div class="my_task">
-#     <table><tbody>
-#       <tr><td class="pt_contents"><div class="do">
-#         <a href="https://www.chance.com/article/ranking/?g=6">芸能人...</a>
-#       </div></td>
-#       <td><p>スタンプ10個獲得</p></td>
-#       <td><p class="get-pt"><span class="point_red">10pt</span></p></td>
-#       </tr>...
+# 2026-06-06 検証 (run 27052494587 等) で確定した事実:
+#   - 5日 (06-01〜06-05) cron で 9 wizard × 5 = 45 visit 全 verify=True
+#     なのに point_log の 2026-06 履歴は「該当の履歴はありません」 (0pt)
+#   - 5月の click-log 全履歴も 5/31 1pt のみ (cron 開始 5/25 直後の偶発、
+#     再現性なし)
+#   - 旧実装は category index `/article/ranking/?g=6` を visit するだけ
+#     で離脱。実 user は index から個別記事 detail link
+#     (`?process=detail&id=NNNNN`) に進んで本文を読む
 #
-# 9 件の article 系 mission は URL を訪問するだけで server-side でスタンプが
-# 加算される (= 1-click visit-only)。会員 cookie 必須なので anonymous で
-# inspect 出来ても credit はされない。各 article は別 page なので 1 wizard
-# = 1 article visit。
+# 仮説: 「index visit」では server-side でスタンプ加算されない。
+# detail page まで遷移して滞留すれば credit される可能性あり。
+# 2026-06-13 まで観察、click-log に entry が出なければ adapter 撤退判断。
 #
-# 除外 mission:
-#   - /game/ibgame/, /game/typing/, /game/mpgame/: 実プレイ必要 (canvas /
-#     score-gated)。anti-cheat 検出リスク
-#   - /game/estlier/play.jsp?id=XX: getmoney と同じ NUMBERS DX 系で
-#     anti-cheat (run 26357587465) 警告あり、skip
-#   - /pjump.srv?id=25677: アンケート → CLAUDE.md policy NG (survey
-#     data fraud)
+# 実装方針:
+#   - `clicks=(("a[href*='process=detail']", 1),)` で index 内の最初の
+#     detail link を click。use_navigation_click=True で href を follow
+#   - `final_wait_ms=30000` で 30s detail page に滞留 (広告 impression +
+#     view-tracking XHR 完了を待つ)
+#   - `success_url_pattern` を `process=detail&id=\d+` に変更し、URL が
+#     detail に遷移してることを真の verify 条件にする (= index page で
+#     止まってたら未確定扱い)
+#
+# 除外 mission (旧コメントから保持):
+#   - /game/ibgame/, /game/typing/, /game/mpgame/: 実プレイ必要
+#   - /game/estlier/play.jsp?id=XX: anti-cheat 警告あり
+#   - /pjump.srv?id=25677: アンケート → CLAUDE.md policy NG
 #   - /#potitto-chance: home page fragment、別 mechanism
 #   - /getfriend.srv: 友達紹介 referral、out of scope
-#
-# success_url_pattern: 訪問先がそのまま article page に着地するなら
-# chance.com/article/ で match。login redirect / error 時は別 URL に
-# なるので不一致 → 「未確定」表示。
-# title_selector: h1.header_title が article のタイトル要素。
 def _article_visit(name: str, url: str) -> DailyWizard:
     return DailyWizard(
         name=name,
         url=url,
-        clicks=(),
-        initial_wait_ms=2000,
-        # 5s 滞留で広告 impression + view-tracking XHR が走る時間を確保。
-        final_wait_ms=5000,
+        # index page から最初の detail link を click して本文 page に遷移。
+        # use_navigation_click=True で <a href> の href が follow される。
+        clicks=(("a[href*='process=detail']", 1),),
+        use_navigation_click=True,
+        initial_wait_ms=3000,
+        inter_click_ms=500,
+        # detail page で 30s 滞留して広告 impression / view-tracking XHR
+        # の完了を待つ。短すぎると credit trigger に届かない可能性あり。
+        final_wait_ms=30000,
         title_selector="h1.header_title, h1",
-        success_url_pattern=r"chance\.com/article/",
+        # 真の verify 条件: URL が `?process=detail&id=NNNNN` に遷移済か。
+        # 旧 `chance\.com/article/` だと index page で止まっても match
+        # するので false positive を生んでた (06-01〜06-05 5日連続 verify
+        # pass で実 +0pt の根本原因)。
+        success_url_pattern=r"process=detail&id=\d+",
     )
 
 
@@ -121,7 +139,7 @@ ADAPTER = Adapter(
     # source=None: wizards-only adapter. click-mail pipeline 不要、
     # Gmail API setup 不要、cookie だけで daily 動作。
     source=None,
-    balance_patterns=DEFAULT_BALANCE_PATTERNS,
+    balance_patterns=_CHANCEIT_BALANCE_PATTERNS,
     discover_seeds=(
         "https://www.chance.com/present/list/easy-entry/",  # 応募が簡単
     ),
@@ -159,6 +177,12 @@ ADAPTER = Adapter(
     # Lottery-style Slack: 「応募した賞品一覧」format。賞品名 + URL を
     # 列挙、user が当選時に内容を識別できるよう。
     lottery_mode=True,
+    # 2026-06-06 検証で「抽選応募 / 応募確認済」表記は実態と乖離と確定
+    # (chanceit cron は記事閲覧で stamp 加算を狙うだけで「応募」はしない)。
+    # detail-click 仕様検証期間 (〜2026-06-13) は「(検証中) 記事閲覧 /
+    # 着地確認」表示。仕様確定後に "記事閲覧" / "着地確認済" へ。
+    lottery_run_header="(検証中) 記事閲覧",
+    lottery_verified_label="着地確認済",
     # 当選確率が低い & 1 日 14 件程度なので stagnation 判定難しい。
     # 1 月程度 yield 観察してから stagnation_window を設定する判断。
     stagnation_window=None,
