@@ -943,15 +943,26 @@ def phase_apply_critique() -> None:
     from stock_analyzer.ai_analyzer import load_analysis_results
     from stock_analyzer.critic import (
         apply_critique,
+        enforce_calibration_gate,
         enforce_discovery_cap,
         format_summary_for_slack,
         load_critique_result,
     )
+    from stock_analyzer.performance_tracker import load_history as _load_perf_history
 
     holdings_result, discovery_result = load_analysis_results()
     critique_result = load_critique_result(_DATA_DIR / "critique_result.json")
 
     holdings_result, discovery_result, summary = apply_critique(holdings_result, discovery_result, critique_result)
+
+    # Calibration gate: code-level downgrade of (confidence × direction)
+    # buckets with realized win rate < 50% and n >= 10. Targets HIGH_UP
+    # (sitting at 38.5% as of 2026-06-06) and LOW (~49% both directions).
+    # Runs *before* enforce_discovery_cap so dropped LOW picks free up
+    # slots for surviving MEDIUM picks instead of being kept at the
+    # expense of better ones.
+    perf_stats = _load_perf_history().get("performance_stats")
+    holdings_result, discovery_result = enforce_calibration_gate(holdings_result, discovery_result, summary, perf_stats)
 
     # Deterministic enforcement: even after critic, the AI sometimes
     # leaves the discovery list at 20+ picks (real-world observed:

@@ -402,6 +402,112 @@ def enforce_discovery_cap(
     return discovery_result
 
 
+_CALIBRATION_BAD_THRESHOLD_PCT = 50.0
+"""Win rate below which a (confidence × direction) bucket is considered
+broken. The historical baseline for resolved trades is ~59% overall.
+A bucket under 50% is worse than coin-flip = pure noise, and historically
+HIGH_UP has been sitting at 38.5% which is the canonical "broken" case
+this gate targets."""
+
+_CALIBRATION_MIN_SAMPLES = 10
+"""Minimum bucket sample size before the gate fires. Below this, the
+win rate is too noisy to act on — e.g. n=3 with 0 wins would otherwise
+trigger the gate spuriously."""
+
+
+def enforce_calibration_gate(
+    holdings_result: dict | None,
+    discovery_result: dict | None,
+    summary: dict[str, list[str]],
+    performance_stats: dict | None,
+) -> tuple[dict | None, dict | None]:
+    """Code-level downgrade of (confidence × direction) buckets with poor
+    realized accuracy. Catches anything the AI insists on against the
+    calibration_zone red signal in the prompt.
+
+    Historical 2026-06-06 case: HIGH_UP sits at 38.5% (n=13) — coin-flip
+    or worse. ``performance_stats.by_confidence_direction`` carries the
+    realized rates; this gate reads them and, for any bucket under 50%
+    with adequate sample size, downgrades incoming picks from that bucket.
+
+    Action by direction:
+    - HIGH_UP broken → downgrade HIGH to MEDIUM (preserves the trade
+      signal but removes the over-confident label which would otherwise
+      drive larger position sizing via Kelly).
+    - LOW (either direction) broken → drop entirely. LOW is supposed to
+      mean "weak conviction"; if even that is wrong half the time, the
+      pick is noise. Goes to the ``rejected`` summary so the next-cron
+      portfolio inject picks it up.
+
+    holdings are gated too — a HIGH-confidence DOWN recommendation on a
+    holding (= sell signal) at 50% accuracy is just as expensive as a
+    bad new-trade signal because the user acts on it.
+    """
+    if not performance_stats:
+        return holdings_result, discovery_result
+    by_cd = performance_stats.get("by_confidence_direction") or {}
+    if not isinstance(by_cd, dict):
+        return holdings_result, discovery_result
+
+    # Identify broken buckets: win rate below threshold AND n >= min samples.
+    broken: set[tuple[str, str]] = set()
+    for key, bucket in by_cd.items():
+        if not isinstance(bucket, dict):
+            continue
+        n = bucket.get("total", 0)
+        acc = bucket.get("accuracy_pct")
+        if n < _CALIBRATION_MIN_SAMPLES or acc is None:
+            continue
+        # key format: "HIGH_UP" / "MEDIUM_DOWN" / etc
+        if acc < _CALIBRATION_BAD_THRESHOLD_PCT and "_" in key:
+            conf, direction = key.split("_", 1)
+            broken.add((conf.upper(), direction.upper()))
+    if not broken:
+        return holdings_result, discovery_result
+
+    downgraded: list[str] = []
+    rejected: list[str] = []
+
+    def filter_picks(picks: list[dict]) -> list[dict]:
+        """Apply gate to a list of picks in-place — returns surviving picks."""
+        out: list[dict] = []
+        for p in picks:
+            conf = (p.get("confidence") or "MEDIUM").upper()
+            direction = (p.get("prediction") or p.get("direction") or "").upper()
+            ticker = p.get("ticker", "?")
+            if (conf, direction) in broken:
+                # LOW → drop. HIGH → downgrade to MEDIUM.
+                if conf == "LOW":
+                    rejected.append(f"{ticker}({direction}/LOW)")
+                    continue
+                if conf == "HIGH":
+                    p["confidence_pre_calibration_gate"] = "HIGH"
+                    p["confidence"] = "MEDIUM"
+                    downgraded.append(f"{ticker}({direction}/HIGH→MEDIUM)")
+                # MEDIUM with broken bucket: leave alone (downgrading to LOW
+                # then dropping would over-correct; the AI's MEDIUM signal
+                # is still the strongest indicator we have).
+            out.append(p)
+        return out
+
+    # Apply to discovery (short_term + long_term)
+    if discovery_result is not None:
+        for key in ("short_term_picks", "long_term_picks", "recommended_stocks"):
+            picks = discovery_result.get(key)
+            if isinstance(picks, list):
+                discovery_result[key] = filter_picks(picks)
+    # Apply to holdings
+    if holdings_result is not None:
+        for key in ("holdings", "holdings_review", "recommendations"):
+            picks = holdings_result.get(key)
+            if isinstance(picks, list):
+                holdings_result[key] = filter_picks(picks)
+
+    summary.setdefault("downgraded", []).extend(downgraded)
+    summary.setdefault("rejected", []).extend(rejected)
+    return holdings_result, discovery_result
+
+
 def format_summary_for_slack(summary: dict[str, list[str]]) -> str:
     """One-line Slack message: 'Critic: N kept / M downgraded (tickers) / K rejected (tickers)'."""
     if not any(summary.values()):

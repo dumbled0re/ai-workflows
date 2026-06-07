@@ -1658,6 +1658,30 @@ def format_performance_feedback(history: dict) -> str:
         if net < 0:
             lines.append("  ⚠ net で実損です。エントリー数を絞るか、勝率自体を上げる必要があります")
 
+    # Paper portfolio NAV one-liner (Phase 6 — DD 172% root cause: trade-level
+    # DD inflates daily re-recommendations). 100万円 / 5%-sized / 5並列の
+    # NAV ベース DD は trade-level DD と桁違いに小さい。real-money decision
+    # は NAV DD で考えるべきなので、日次 feedback に常時表示する。
+    try:
+        from stock_analyzer.backtest import _DEFAULT_TC_ROUND_TRIP_PCT, simulate_paper_portfolio
+
+        paper = simulate_paper_portfolio(
+            history,
+            initial_nav=1_000_000.0,
+            position_size_pct=5.0,
+            max_concurrent=5,
+            tc_round_trip_pct=_DEFAULT_TC_ROUND_TRIP_PCT,
+        )
+        if paper.positions > 0:
+            ret_pct = (paper.final_nav - paper.initial_nav) / paper.initial_nav * 100
+            lines.append(
+                f"📊 paper portfolio (100万 / 5%×5並列): NAV {paper.final_nav:,.0f}円 "
+                f"({ret_pct:+.1f}%) / max DD {paper.max_drawdown_pct:.2f}% / "
+                f"{paper.positions} ポジ"
+            )
+    except Exception:
+        pass
+
     # Overpriced bias 検証 (Phase 5 #46): HIGH bucket の事前 5/21/63d
     # return が MEDIUM/LOW より大幅高なら "buying high" bias の証拠。
     op_bias = stats.get("overpriced_bias")

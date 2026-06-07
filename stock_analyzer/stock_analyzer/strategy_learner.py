@@ -442,6 +442,37 @@ def build_weekly_review_prompt(predictions_history: dict, strategy_notes: dict) 
         net_block = format_gross_vs_net_for_prompt(net_report)
         if net_block:
             prompt += "\n" + net_block + "\n"
+
+        # Position-aware & paper portfolio. Trade-level DD is inflated when
+        # the bot recommends the same (ticker, direction) daily (e.g. 3777.T
+        # ran 21 DOWN preds in 30 days = 6x DD inflation). These views
+        # collapse re-recommendations into single positions and simulate
+        # what a 100万円 paper portfolio with 5%/position sizing would
+        # actually experience — far closer to live-money decision context.
+        from stock_analyzer.backtest import (
+            format_paper_portfolio_summary,
+            format_position_aware_summary,
+            simulate_paper_portfolio,
+            simulate_position_aware,
+        )
+
+        pos_result, episodes = simulate_position_aware(
+            predictions_history, tc_round_trip_pct=_DEFAULT_TC_ROUND_TRIP_PCT
+        )
+        pos_block = format_position_aware_summary(pos_result, episodes)
+        if pos_block:
+            prompt += "\n" + pos_block + "\n"
+
+        paper_result = simulate_paper_portfolio(
+            predictions_history,
+            initial_nav=1_000_000.0,
+            position_size_pct=5.0,
+            max_concurrent=5,
+            tc_round_trip_pct=_DEFAULT_TC_ROUND_TRIP_PCT,
+        )
+        paper_block = format_paper_portfolio_summary(paper_result)
+        if paper_block:
+            prompt += "\n" + paper_block + "\n"
     except Exception:
         pass
 
