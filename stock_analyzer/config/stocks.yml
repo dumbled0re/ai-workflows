@@ -9,6 +9,10 @@ holdings:
     name: "ソフトフロントH"
     shares: 100
     avg_cost: 220
+  - ticker: "2930.T"
+    name: "北の達人"
+    shares: 100
+    avg_cost: 127
   - ticker: "3070.T"
     name: "ジェリービーンズ"
     shares: 100
@@ -61,14 +65,18 @@ holdings:
     name: "NEW ART"
     shares: 1
     avg_cost: 1489
+  - ticker: "7776.T"
+    name: "セルシード"
+    shares: 100
+    avg_cost: 262
   - ticker: "7859.T"
     name: "アルメディオ"
     shares: 200
     avg_cost: 218
   - ticker: "7974.T"
     name: "任天堂"
-    shares: 10
-    avg_cost: 7530
+    shares: 45
+    avg_cost: 7466
   - ticker: "8173.T"
     name: "Joshin"
     shares: 1
@@ -81,6 +89,10 @@ holdings:
     name: "三菱UFJ"
     shares: 100
     avg_cost: 1515
+  - ticker: "8729.T"
+    name: "ソニーFG"
+    shares: 100
+    avg_cost: 141
   - ticker: "9432.T"
     name: "NTT"
     shares: 100
