@@ -572,6 +572,18 @@ def compute_performance_stats(history: dict) -> dict:
     if drift is not None:
         stats["drift_indicator"] = drift
 
+    # Direction-level recent win rate (UP / DOWN separately) over the same
+    # window as drift_indicator. Catches the case where the *overall* recent
+    # expectancy is negative because one direction (typically UP in a
+    # mean-reverting regime) collapsed while the other direction is fine —
+    # the per-bucket (confidence × direction) gate misses this when the
+    # long-run bucket accuracy is still above 50%. Surfaced separately
+    # from drift_indicator so the code-level gate can act on direction
+    # without re-deriving it.
+    rdw = _compute_recent_direction_winrate(resolved, recent_n=14, min_dir_n=5)
+    if rdw is not None:
+        stats["recent_direction_winrate"] = rdw
+
     # Calibration zone: codex 設計相談 (issue #46) に基づく階層化 circuit
     # breaker。HIGH/MEDIUM accuracy ratio + rolling Sharpe + drift を
     # 統合して Red/Yellow/Green を判定。AI prompt に zone を注入し、Red
@@ -1179,6 +1191,62 @@ def _compute_drift_indicator(
         "recent_n": len(recent_returns),
         "baseline_n": len(baseline_returns),
     }
+
+
+def _compute_recent_direction_winrate(
+    resolved: list[dict],
+    recent_n: int = 14,
+    min_dir_n: int = 5,
+) -> dict | None:
+    """Split the most recent ``recent_n`` resolved trades by predicted
+    direction and report win-rate + mean directional return per direction.
+
+    The all-time ``by_confidence_direction`` bucket is dominated by older
+    trades; if the AI's UP picks just collapsed in the last two weeks but
+    the long-run UP win rate is still 58 %, no per-bucket gate fires. This
+    function gives the gate a *fresh* signal split by direction so it can
+    react.
+
+    Returns ``None`` when the recent window is too small for either
+    direction to clear ``min_dir_n``. Otherwise:
+    ``{
+        "recent_n": <total resolved in window>,
+        "UP":   {"n": int, "wins": int, "winrate_pct": float,
+                 "mean_dir_return_pct": float} | None,
+        "DOWN": {"n": int, "wins": int, "winrate_pct": float,
+                 "mean_dir_return_pct": float} | None,
+    }``
+
+    A direction key is ``None`` when its sample in the window is below
+    ``min_dir_n`` (interpret as "not enough data to gate on this direction").
+    """
+    chrono = sorted(
+        (p for p in resolved if p.get("reviewed_date") and p.get("prediction") in {"UP", "DOWN"}),
+        key=lambda p: p["reviewed_date"],
+    )
+    if len(chrono) < min_dir_n:
+        return None
+    recent = chrono[-recent_n:]
+    if not recent:
+        return None
+    out: dict = {"recent_n": len(recent)}
+    have_any = False
+    for direction in ("UP", "DOWN"):
+        in_dir = [p for p in recent if p.get("prediction") == direction]
+        if len(in_dir) < min_dir_n:
+            out[direction] = None
+            continue
+        wins = sum(1 for p in in_dir if p.get("status") == "win")
+        dir_returns = [r for r in (_directional_return(p) for p in in_dir) if r is not None]
+        mean_dir_ret = sum(dir_returns) / len(dir_returns) if dir_returns else 0.0
+        out[direction] = {
+            "n": len(in_dir),
+            "wins": wins,
+            "winrate_pct": round(wins / len(in_dir) * 100, 1),
+            "mean_dir_return_pct": round(mean_dir_ret, 2),
+        }
+        have_any = True
+    return out if have_any else None
 
 
 # Calibration zone thresholds (codex 設計相談、issue #46)。

@@ -7,6 +7,7 @@ from stock_analyzer.critic import (
     _coerce_downgrade,
     apply_critique,
     build_critic_prompt,
+    enforce_calibration_gate,
     enforce_discovery_cap,
     format_summary_for_slack,
     load_critique_result,
@@ -343,6 +344,138 @@ def test_sanitize_unicode_strips_lone_surrogates_from_prompt() -> None:
     # Verify the surrogate-stripped string still survives in the prompt
     assert "polluted" in prompt
     assert "tail" in prompt
+
+
+def test_calibration_gate_long_run_high_up_downgrades_to_medium() -> None:
+    """Existing per-bucket trigger: HIGH_UP < 50% & n>=10 → HIGH→MEDIUM."""
+    discovery = {
+        "short_term_picks": [_pick("A.T", prediction="UP", confidence="HIGH")],
+        "long_term_picks": [],
+    }
+    summary: dict[str, list[str]] = {"kept": [], "downgraded": [], "rejected": []}
+    perf_stats = {
+        "by_confidence_direction": {
+            "HIGH_UP": {"total": 13, "wins": 5, "accuracy_pct": 38.5},
+            "MEDIUM_UP": {"total": 100, "wins": 60, "accuracy_pct": 60.0},
+        }
+    }
+    _, d2 = enforce_calibration_gate(None, discovery, summary, perf_stats)
+    assert d2 is not None
+    pick = d2["short_term_picks"][0]
+    assert pick["confidence"] == "MEDIUM"
+    assert pick["confidence_pre_calibration_gate"] == "HIGH"
+    assert any("HIGH→MEDIUM" in d for d in summary["downgraded"])
+
+
+def test_calibration_gate_long_run_low_up_rejects_pick() -> None:
+    """LOW_<dir> < 50% & n>=10 → drop from discovery."""
+    discovery = {
+        "short_term_picks": [
+            _pick("A.T", prediction="UP", confidence="LOW"),
+            _pick("B.T", prediction="DOWN", confidence="MEDIUM"),
+        ],
+        "long_term_picks": [],
+    }
+    summary: dict[str, list[str]] = {"kept": [], "downgraded": [], "rejected": []}
+    perf_stats = {
+        "by_confidence_direction": {
+            "LOW_UP": {"total": 48, "wins": 20, "accuracy_pct": 41.7},
+        }
+    }
+    _, d2 = enforce_calibration_gate(None, discovery, summary, perf_stats)
+    assert d2 is not None
+    surviving = [p["ticker"] for p in d2["short_term_picks"]]
+    assert "A.T" not in surviving
+    assert "B.T" in surviving
+    assert any("A.T" in r for r in summary["rejected"])
+
+
+def test_calibration_gate_recent_drift_downgrades_medium_up_to_low() -> None:
+    """The recent-drift widened gate: when drift_indicator says we're
+    actively bleeding AND recent_direction_winrate.UP is below 50, a
+    MEDIUM_UP pick steps down to LOW even though long-run MEDIUM_UP is
+    still above 50."""
+    discovery = {
+        "short_term_picks": [
+            _pick("UP1.T", prediction="UP", confidence="MEDIUM"),
+            _pick("DN1.T", prediction="DOWN", confidence="MEDIUM"),
+        ],
+        "long_term_picks": [],
+    }
+    summary: dict[str, list[str]] = {"kept": [], "downgraded": [], "rejected": []}
+    perf_stats = {
+        # Long-run MEDIUM_UP is fine (existing gate would no-op).
+        "by_confidence_direction": {
+            "MEDIUM_UP": {"total": 244, "wins": 142, "accuracy_pct": 58.2},
+            "MEDIUM_DOWN": {"total": 252, "wins": 169, "accuracy_pct": 67.1},
+        },
+        "drift_indicator": {
+            "is_drift": True,
+            "recent_expectancy_pct": -3.66,
+            "baseline_expectancy_pct": 1.49,
+            "p_value": 0.004,
+            "recent_n": 14,
+            "baseline_n": 632,
+            "delta_pp": -5.15,
+        },
+        # UP just collapsed in the recent window; DOWN is fine.
+        "recent_direction_winrate": {
+            "recent_n": 14,
+            "UP": {"n": 9, "wins": 3, "winrate_pct": 33.3, "mean_dir_return_pct": -4.0},
+            "DOWN": {"n": 5, "wins": 3, "winrate_pct": 60.0, "mean_dir_return_pct": 1.5},
+        },
+    }
+    _, d2 = enforce_calibration_gate(None, discovery, summary, perf_stats)
+    assert d2 is not None
+    by_ticker = {p["ticker"]: p for p in d2["short_term_picks"]}
+    # MEDIUM_UP stepped down to LOW with marker preserved.
+    assert by_ticker["UP1.T"]["confidence"] == "LOW"
+    assert by_ticker["UP1.T"]["confidence_pre_calibration_gate"] == "MEDIUM"
+    # MEDIUM_DOWN unchanged — DOWN direction is fine in the recent window.
+    assert by_ticker["DN1.T"]["confidence"] == "MEDIUM"
+    assert "confidence_pre_calibration_gate" not in by_ticker["DN1.T"]
+    assert any("UP1.T" in d and "recent-drift" in d for d in summary["downgraded"])
+
+
+def test_calibration_gate_recent_drift_inactive_when_recent_expectancy_positive() -> None:
+    """Drift signal alone isn't enough — we require recent EV < 0 too so
+    a positive-EV drift (improvement) doesn't punish picks."""
+    discovery = {
+        "short_term_picks": [_pick("UP1.T", prediction="UP", confidence="MEDIUM")],
+        "long_term_picks": [],
+    }
+    summary: dict[str, list[str]] = {"kept": [], "downgraded": [], "rejected": []}
+    perf_stats = {
+        "by_confidence_direction": {
+            "MEDIUM_UP": {"total": 244, "wins": 142, "accuracy_pct": 58.2},
+        },
+        "drift_indicator": {
+            "is_drift": True,
+            "recent_expectancy_pct": 2.0,  # positive: improving, not bleeding
+            "baseline_expectancy_pct": 0.5,
+            "p_value": 0.04,
+            "recent_n": 14,
+            "baseline_n": 100,
+            "delta_pp": 1.5,
+        },
+        "recent_direction_winrate": {
+            "recent_n": 14,
+            "UP": {"n": 9, "wins": 3, "winrate_pct": 33.3, "mean_dir_return_pct": -4.0},
+            "DOWN": None,
+        },
+    }
+    _, d2 = enforce_calibration_gate(None, discovery, summary, perf_stats)
+    assert d2 is not None
+    assert d2["short_term_picks"][0]["confidence"] == "MEDIUM"
+    assert "confidence_pre_calibration_gate" not in d2["short_term_picks"][0]
+
+
+def test_calibration_gate_no_op_when_no_performance_stats() -> None:
+    discovery = {"short_term_picks": [_pick("A.T")], "long_term_picks": []}
+    summary: dict[str, list[str]] = {"kept": [], "downgraded": [], "rejected": []}
+    h2, d2 = enforce_calibration_gate(None, discovery, summary, None)
+    assert h2 is None
+    assert d2 is not None and d2["short_term_picks"][0]["confidence"] == "HIGH"
 
 
 def test_coerce_downgrade_handles_unknown_values_safely() -> None:

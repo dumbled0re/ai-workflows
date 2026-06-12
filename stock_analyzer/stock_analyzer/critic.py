@@ -414,6 +414,15 @@ _CALIBRATION_MIN_SAMPLES = 10
 win rate is too noisy to act on — e.g. n=3 with 0 wins would otherwise
 trigger the gate spuriously."""
 
+_RECENT_DRIFT_DIR_BAD_THRESHOLD_PCT = 50.0
+"""Win rate below which a direction (UP/DOWN) is considered broken in
+the *recent* window. Lower than long-run threshold would over-correct on
+noise; equal threshold means a direction needs to be coin-flip-bad in the
+recent 14-trade window AND there's a statistically significant drift
+AND recent expectancy is negative — three independent signals stacking
+before the code-level gate widens its scope beyond the per-bucket
+long-run check."""
+
 
 def enforce_calibration_gate(
     holdings_result: dict | None,
@@ -462,11 +471,50 @@ def enforce_calibration_gate(
         if acc < _CALIBRATION_BAD_THRESHOLD_PCT and "_" in key:
             conf, direction = key.split("_", 1)
             broken.add((conf.upper(), direction.upper()))
+
+    # Direction-level recent drift gate: only triggers when ALL of
+    #   1. drift_indicator.is_drift = True (statistically significant decay)
+    #   2. drift_indicator.recent_expectancy_pct < 0 (recent EV is negative)
+    #   3. recent_direction_winrate[<dir>].winrate_pct < 50 (this direction
+    #      is dragging the recent window)
+    # are true. Goal: catch the case where e.g. MEDIUM_UP has 58% long-run
+    # accuracy (existing gate inactive) but in the last 14 trades UP went
+    # 2-of-6 — picks in that direction should be downgraded one notch
+    # regardless of confidence label until the drift recovers.
+    #
+    # Adds (HIGH, dir) and (MEDIUM, dir) for the offending direction(s) to
+    # ``broken``; existing per-bucket LOW gating already covers (LOW, dir).
+    drift = performance_stats.get("drift_indicator") if isinstance(performance_stats, dict) else None
+    rdw = performance_stats.get("recent_direction_winrate") if isinstance(performance_stats, dict) else None
+    drift_dir_widened: list[str] = []
+    if (
+        isinstance(drift, dict)
+        and drift.get("is_drift")
+        and isinstance(drift.get("recent_expectancy_pct"), int | float)
+        and drift["recent_expectancy_pct"] < 0
+        and isinstance(rdw, dict)
+    ):
+        for direction in ("UP", "DOWN"):
+            dir_stat = rdw.get(direction)
+            if not isinstance(dir_stat, dict):
+                continue
+            winrate = dir_stat.get("winrate_pct")
+            if not isinstance(winrate, int | float):
+                continue
+            if winrate < _RECENT_DRIFT_DIR_BAD_THRESHOLD_PCT:
+                # MEDIUM downgrade is the meaningful step here — HIGH for
+                # this direction is also added so a still-issued HIGH in
+                # the dragging direction lands on MEDIUM instead.
+                broken.add(("HIGH", direction))
+                broken.add(("MEDIUM", direction))
+                drift_dir_widened.append(direction)
+
     if not broken:
         return holdings_result, discovery_result
 
     downgraded: list[str] = []
     rejected: list[str] = []
+    drift_dir_set = set(drift_dir_widened)
 
     def filter_picks(picks: list[dict]) -> list[dict]:
         """Apply gate to a list of picks in-place — returns surviving picks."""
@@ -484,9 +532,20 @@ def enforce_calibration_gate(
                     p["confidence_pre_calibration_gate"] = "HIGH"
                     p["confidence"] = "MEDIUM"
                     downgraded.append(f"{ticker}({direction}/HIGH→MEDIUM)")
-                # MEDIUM with broken bucket: leave alone (downgrading to LOW
-                # then dropping would over-correct; the AI's MEDIUM signal
-                # is still the strongest indicator we have).
+                elif conf == "MEDIUM" and direction in drift_dir_set:
+                    # Recent direction-drift widened the gate to (MEDIUM, dir).
+                    # Step MEDIUM down to LOW so position sizing / Kelly use
+                    # the weak-signal level, but keep the pick (don't drop)
+                    # since the AI's signal is still the best we have.
+                    # Long-run per-bucket trigger keeps MEDIUM untouched (see
+                    # below: existing behaviour preserved when this direction
+                    # isn't in drift_dir_set).
+                    p["confidence_pre_calibration_gate"] = "MEDIUM"
+                    p["confidence"] = "LOW"
+                    downgraded.append(f"{ticker}({direction}/MEDIUM→LOW recent-drift)")
+                # MEDIUM with long-run-broken bucket (not in drift_dir_set):
+                # leave alone — dropping or downgrading on long-run alone
+                # would over-correct given the all-time win rate is OK.
             out.append(p)
         return out
 

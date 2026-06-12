@@ -583,6 +583,90 @@ def test_drift_indicator_skips_entries_without_reviewed_date() -> None:
     assert drift["baseline_n"] == 20
 
 
+def _resolved_dir(
+    prediction: str,
+    status: str,
+    actual_return_pct: float,
+    reviewed_date: str,
+    ticker: str = "X.T",
+) -> dict:
+    """Helper that decouples prediction direction from the realised
+    return sign — needed for direction-level win-rate tests where we
+    deliberately set UP picks that lose (raw return < 0) or DOWN picks
+    that lose (raw return > 0)."""
+    return _pred(status, prediction, actual_return_pct, date="2026-01-01", reviewed_date=reviewed_date) | {
+        "ticker": ticker
+    }
+
+
+def test_recent_direction_winrate_splits_up_and_down() -> None:
+    """Per-direction win rate over the most recent window matches a
+    hand-computed split. The all-time bucket and the recent direction
+    bucket can diverge; this is the recent half."""
+    # Baseline 20 wins (alternating UP/DOWN) to clear drift sample-size gates.
+    rows = []
+    for i in range(1, 21):
+        rows.append(_resolved_dir("UP", "win", 2.0, f"2026-01-{i:02d}", ticker=f"B{i}.T"))
+    # Recent window: 6 UP picks 2-of-6 win, 5 DOWN picks 3-of-5 win.
+    recent_specs = [
+        ("UP", "win", 3.0),
+        ("UP", "loss", -2.0),
+        ("UP", "loss", -3.5),
+        ("UP", "loss", -4.0),
+        ("UP", "win", 1.5),
+        ("UP", "loss", -2.0),
+        ("DOWN", "win", -4.0),
+        ("DOWN", "win", -2.0),
+        ("DOWN", "loss", 1.0),
+        ("DOWN", "loss", 2.5),
+        ("DOWN", "win", -1.5),
+    ]
+    for i, (pred, status, ret) in enumerate(recent_specs, start=1):
+        rows.append(_resolved_dir(pred, status, ret, f"2026-02-{i:02d}", ticker=f"R{i}.T"))
+
+    stats = compute_performance_stats({"predictions": rows})
+    rdw = stats.get("recent_direction_winrate")
+    assert rdw is not None, "expected recent_direction_winrate stat to be populated"
+    assert rdw["recent_n"] == 14  # window cap
+    # The window may include older baseline rows since recent_n=14 includes
+    # the last 14 chronologically — but the 11 recent specs are guaranteed
+    # in the tail. Validate counts allow that.
+    up = rdw["UP"]
+    down = rdw["DOWN"]
+    assert up is not None and down is not None
+    # All 11 recent specs land in the window; the remaining 3 slots come
+    # from baseline UP wins. Net: UP n = 6 + 3 = 9, wins = 2 + 3 = 5;
+    # DOWN n = 5, wins = 3.
+    assert up["n"] == 9
+    assert up["wins"] == 5
+    assert up["winrate_pct"] == 55.6
+    assert down["n"] == 5
+    assert down["wins"] == 3
+    assert down["winrate_pct"] == 60.0
+
+
+def test_recent_direction_winrate_returns_none_below_min_dir_n() -> None:
+    """Direction with fewer than min_dir_n samples in the window → that
+    side is None (not enough data to gate on it)."""
+    rows = []
+    # 20 UP baseline. No DOWN at all.
+    for i in range(1, 21):
+        rows.append(_resolved_dir("UP", "win", 1.0, f"2026-01-{i:02d}", ticker=f"U{i}.T"))
+    stats = compute_performance_stats({"predictions": rows})
+    rdw = stats.get("recent_direction_winrate")
+    assert rdw is not None
+    assert rdw["UP"] is not None
+    assert rdw["DOWN"] is None
+
+
+def test_recent_direction_winrate_absent_when_history_tiny() -> None:
+    """Below the min_dir_n threshold across the whole history, the stat
+    is suppressed entirely."""
+    rows = [_resolved_dir("UP", "win", 2.0, "2026-01-01")]
+    stats = compute_performance_stats({"predictions": rows})
+    assert "recent_direction_winrate" not in stats
+
+
 def test_format_feedback_emits_drift_warning_block() -> None:
     """When drift is statistically significant, the feedback block
     must include the ⚠ line + the t-test p-value so the AI sees the
