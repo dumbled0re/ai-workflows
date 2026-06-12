@@ -35,7 +35,7 @@
       "still_valid": false,
       "date_added": "2026-04-27",
       "last_validated": "2026-04-27",
-      "deprecated_date": "2026-06-05"
+      "deprecated_date": "2026-06-12"
     },
     {
       "insight": "PBR1倍以下かつROE10%以上の銘柄は割安成長株の候補。セクター内で相対的に有利",
@@ -74,7 +74,7 @@
       "still_valid": false,
       "date_added": "2026-04-28",
       "last_validated": "2026-04-28",
-      "deprecated_date": "2026-06-11"
+      "deprecated_date": "2026-06-12"
     },
     {
       "insight": "PBR0.9倍以下かつ配当利回り3.5%以上かつ売上成長率15%超の銘柄は長期保有の優先候補。さらにPER15以下なら割安判断が成立しやすい",
@@ -3427,13 +3427,112 @@
       "still_valid": true,
       "date_added": "2026-06-11",
       "last_validated": "2026-06-11"
+    },
+    {
+      "insight": "MEDIUM_DOWN（MEDIUM信頼度かつDOWN方向）が全信頼度×方向バケット中最高勝率67.1%を示す。DOWN予測全体はEV+2.01%・PF 2.15・累積+684%でUP(EV+0.68%・PF 1.29・累積+207%)を3倍以上上回り、MEDIUM+DOWNの組み合わせを戦略の絶対主軸とし、UP予測は市場回復局面（異なる3セクター以上で同日UP同時成功の翌営業日以降）のみに限定する",
+      "evidence": "MEDIUM_DOWN: 67.1%(169/252件) > MEDIUM_UP: 58.2%(142/244件) > LOW_DOWN: 54.5% > HIGH_DOWN: 53.6% > HIGH_UP: 38.5%。direction=DOWN: 341件 EV+2.01% PF 2.15 DD 68.4% net+684.0% vs direction=UP: 305件 EV+0.68% PF 1.29 DD 66.7% net+207.3%",
+      "confidence": "HIGH",
+      "category": "market_regime",
+      "still_valid": true,
+      "date_added": "2026-06-12",
+      "last_validated": "2026-06-12"
+    },
+    {
+      "insight": "HIGH信頼度(50.7%)がMEDIUM(62.7%)を11.5ポイント下回るキャリブレーション逆転が深刻。HIGH_UP(38.5%・5/13件)はコインフリップ以下のため、HIGH信頼度のUP予測を廃止し、UP方向はMEDIUMのみを使用する。HIGH付与はDOWN方向かつテクニカル+ファンダメンタル+需給の全条件同方向かつ全除外フラグ（バイオ・製薬・暗号資産テーマ・急騰小型株・連続方向転換・市場逆張り）が皆無の場合のみに厳格化し、目標勝率65%以上を設定する",
+      "evidence": "HIGH: 50.7%(35/69件) < MEDIUM: 62.7%(311/496件)。HIGH_UP: 38.5%(5/13件) vs MEDIUM_UP: 58.2%(142/244件)（差19.7pt）。HIGH_DOWN: 53.6%(30/56件) < MEDIUM_DOWN: 67.1%(169/252件)",
+      "confidence": "HIGH",
+      "category": "risk_management",
+      "still_valid": true,
+      "date_added": "2026-06-12",
+      "last_validated": "2026-06-12"
+    },
+    {
+      "insight": "macd_crossoverシグナルはあらゆる局面で単独・補助的使用を含め完全禁止する。lift -40.5%は全24シグナル中最悪であり、このシグナルを含む予測の勝率は25%まで低下する。スクリーニング重みを最低値(1)に設定する",
+      "evidence": "macd_crossover: with 25.0%(12件) vs without 65.5%(333件) → lift -40.5%（全シグナル最悪）。複数セッション累計でも-32%〜-45%と一貫して最悪シグナル",
+      "confidence": "HIGH",
+      "category": "technical_pattern",
+      "still_valid": true,
+      "date_added": "2026-06-12",
+      "last_validated": "2026-06-12"
+    },
+    {
+      "insight": "earnings_beat（決算好調・lift -26.6%）・sma25_breakout（lift -25.4%）・earnings_yoy_growth（lift -24.4%）・forward_estimate_raise（lift -22.1%）はバイ・ザ・ルーマー（材料出尽くし売り）効果が強く、単独エントリー根拠として使用完全禁止。スクリーニング重みを最低値(1)に設定する",
+      "evidence": "earnings_beat: with 38.9%(18件) vs without 65.4%(327件) → lift -26.6%。sma25_breakout: with 41.2%(34件) vs without 66.6%(311件) → lift -25.4%。earnings_yoy_growth: lift -24.4%。forward_estimate_raise: lift -22.1%。いずれも勝率を40%台まで引き下げる",
+      "confidence": "HIGH",
+      "category": "fundamental_insight",
+      "still_valid": true,
+      "date_added": "2026-06-12",
+      "last_validated": "2026-06-12"
+    },
+    {
+      "insight": "earnings_consistent_beat（連続決算好調）は全24シグナル中最高のlift +11.3%を持つ唯一の高信頼性ファンダメンタルシグナル。スクリーニング重みを最高水準(60)に設定し、このシグナルが発火した予測を最優先採用する",
+      "evidence": "earnings_consistent_beat: with 75.0%(12件) vs without 63.7%(333件) → lift +11.3%（全24シグナル中最高。ファンダメンタル系唯一の大きな正lift）",
+      "confidence": "HIGH",
+      "category": "fundamental_insight",
+      "still_valid": true,
+      "date_added": "2026-06-12",
+      "last_validated": "2026-06-12"
+    },
+    {
+      "insight": "relative_strength(lift +7.5%)とforward_estimate_cut（業績予想下方修正・lift +6.9%）は高信頼性の正シグナルとしてスクリーニング重みを高く設定する。forward_estimate_cutはDOWN予測専用の最強ファンダメンタルシグナルである",
+      "evidence": "relative_strength: with 71.4%(7件) vs without 63.9%(338件) → lift +7.5%（全シグナル2位）。forward_estimate_cut: with 70.6%(17件) vs without 63.7%(328件) → lift +6.9%（全シグナル3位）",
+      "confidence": "HIGH",
+      "category": "fundamental_insight",
+      "still_valid": true,
+      "date_added": "2026-06-12",
+      "last_validated": "2026-06-12"
+    },
+    {
+      "insight": "per_value(PER割安・lift -16.4%)・roe_profitable(ROE収益性・lift -16.5%)・revenue_growth(売上成長・lift -13.8%)は単独エントリー根拠として使用禁止。long_term複合条件（PBR≤0.9+配当≥3.5%+売上成長≥15%+PER≤15の4条件全揃い）の構成要素としてのみ使用可",
+      "evidence": "per_value: with 50.0%(50件) vs without 66.4%(295件) → lift -16.4%。roe_profitable: with 50.7%(67件) vs without 67.3%(278件) → lift -16.5%。revenue_growth: with 52.9%(68件) vs without 66.8%(277件) → lift -13.8%",
+      "confidence": "HIGH",
+      "category": "fundamental_insight",
+      "still_valid": true,
+      "date_added": "2026-06-12",
+      "last_validated": "2026-06-12"
+    },
+    {
+      "insight": "rsi_healthy_momentum(-18.7%)・bollinger_lower(-14.8%)・analyst_target_upside(-15.0%)・analyst_consensus_buy(-12.6%)・low_peg_ratio(-13.4%)・analyst_upgrade_drift(-14.3%)は単独エントリー根拠として使用禁止。スクリーニング重みを最小化する",
+      "evidence": "rsi_healthy_momentum: with 47.6%(42件) vs without 66.3%(303件) → lift -18.7%。bollinger_lower: with 50.0%(18件) vs without 64.8%(327件) → lift -14.8%。analyst_target_upside: lift -15.0%(71件)。analyst_consensus_buy: lift -12.6%(65件)。low_peg_ratio: lift -13.4%(64件)。analyst_upgrade_drift: lift -14.3%(6件)",
+      "confidence": "HIGH",
+      "category": "technical_pattern",
+      "still_valid": true,
+      "date_added": "2026-06-12",
+      "last_validated": "2026-06-12"
+    },
+    {
+      "insight": "LOW信頼度はUP・DOWN両方向でエントリー完全禁止。LOW全体46.9%・LOW_UP 41.7%・LOW_DOWN 54.5%はいずれもベースライン59.4%を下回り、累積N=81件でコインフリップ水準が統計的に確定。過去のLOW_DOWN 83.3%(N=12)は統計的ノイズと断定",
+      "evidence": "LOW全体: 46.9%(38/81件) < baseline 59.4%。LOW_UP: 41.7%(20/48件)。LOW_DOWN: 54.5%(18/33件)。N=81件での統計的確定。N=12時の83.3%→N=27で48.1%→N=81で46.9%と一貫して低水準が継続",
+      "confidence": "HIGH",
+      "category": "risk_management",
+      "still_valid": true,
+      "date_added": "2026-06-12",
+      "last_validated": "2026-06-12"
+    },
+    {
+      "insight": "source=short_termはTC控除後net+40.5%(holdings net+786.3%の約1/20)と全フィルター最低水準。短期シグナルベースの予測を大幅削減し、holdings(63.0%)とlong_term(4条件スクリーニング)にリソースを集中する",
+      "evidence": "source=short_term: 75件 勝率45.3% EV+0.54% PF 1.18 DD 57.2% net+40.5%(TC drag 20%)。source=holdings: 492件 勝率63.0% net+786.3%。最悪サブセットではshort_term EV-1.51%・PF 0.55・net-24.8%まで悪化が実証済み",
+      "confidence": "HIGH",
+      "category": "risk_management",
+      "still_valid": true,
+      "date_added": "2026-06-12",
+      "last_validated": "2026-06-12"
+    },
+    {
+      "insight": "volume_spike（出来高20日平均2倍以上）はN=646全体統計でlift -5.2%と負に転落しており、単独最高重みシグナルとしての地位を剥奪する。relative_strength・forward_estimate_cut等の強い正シグナルとの組み合わせでのみ補助的使用（重み10）を認める",
+      "evidence": "volume_spike: with 59.4%(32件) vs without 64.5%(313件) → lift -5.2%（N=646全体統計）。過去サブセット分析ではlift +7.1%〜+14.9%だったが全体統計N=646では負に転落",
+      "confidence": "MEDIUM",
+      "category": "technical_pattern",
+      "still_valid": true,
+      "date_added": "2026-06-12",
+      "last_validated": "2026-06-12"
     }
   ],
   "regime_strategies": {
-    "上昇トレンド": "MEDIUM信頼度のUP予測を主軸とする。relative_strength・sector_rotation・earnings_consistent_beatシグナルが発火した銘柄を最優先採用し、建設インフラ（PBR≤0.9+配当4%超+売上成長30%超）は3日以上のトレンド継続が期待できる。金融・証券セクターが転換初動で最速反応することを活用する。連続的中中銘柄はトレーリングストップで利益を伸ばし、月間MEDIUM件数は30件以内に絞り込む。前日に3セクター以上でUP同時成功が確認された翌営業日以降のみUPエントリーを解禁する",
-    "下降トレンド": "DOWN予測（MEDIUM信頼度）を絶対主軸とし、UP予測は全停止する。forward_estimate_cut・relative_strengthシグナルが発火した銘柄のDOWN予測を最優先採用。高PER・収益悪化懸念の大型株はDOWN精度90%超だが、3セクター以上同時UP成功翌日には即停止する。保有のDOWN/損切り推奨が50%超になった時点でUP全停止を発動し、10件以上がDOWN/損切り推奨なら新規UP推奨を完全停止して現金化優先。同一銘柄2連続DOWN失敗→10営業日全予測禁止ルールを厳守する",
-    "レンジ相場": "source=holdingsとlong_termに絞り込み、MEDIUM信頼度の予測を厳選する。relative_strength・forward_estimate_cutシグナルが発火した銘柄のみに限定し、月間件数を20件以内に制限してTC drag削減を優先する。long_termはPBR≤0.9+配当≥3.5%+売上成長≥15%+PER≤15の4条件全満足銘柄のみを対象とする。连続失敗銘柄の禁止ルールを厳守し、同時保有は5件以内を維持する",
-    "高ボラティリティ": "新規エントリーを大幅制限し、連続的中中の既存トレンド銘柄のトレーリングストップ管理に集中する。同時保有5件以下を厳守し、バイオ・製薬・暗号資産テーマ株・急騰小型株（時価総額300億円以下かつ直近20日+20%超）は完全除外。損切り基準（新規-5%・保有-8%超・回復シグナルなし）を厳格適用し、10件以上の同時DOWN/損切り推奨発生時は全新規UP推奨を停止して現金化優先。マクロイベント前後はポジション縮小を検討する"
+    "上昇トレンド": "MEDIUM信頼度のUP予測のみを使用。relative_strength・earnings_consistent_beat・sector_rotationシグナル発火銘柄を最優先採用。同時保有5件以内・月30件以内を厳守。holdings分析主軸でlong_term（PBR≤0.9+配当≥3.5%+売上成長≥15%+PER≤15の4条件全満足）銘柄を追加。HIGH_UP予測は禁止",
+    "下降トレンド": "MEDIUM/HIGH信頼度のDOWN予測に特化。forward_estimate_cut・relative_strengthシグナル発火銘柄を最優先採用。ファンダメンタル過大評価+業績懸念大型株のDOWNを積極活用。保有のDOWN/損切り推奨が50%超でUP予測を全停止。同日10件以上がDOWN/損切り推奨なら新規UP推奨を完全停止",
+    "レンジ相場": "MEDIUM_DOWNを優先しつつ、holdings分析で需給・ファンダメンタル変化を中心に銘柄選別。件数を月15件以内に絞り精度優先。LOW信頼度は全方向禁止。バイオ・製薬・暗号資産テーマ・急騰小型株を完全除外",
+    "高ボラティリティ": "保有銘柄数5件以内を厳守し新規エントリーを最小化。DOWN予測のみに限定し、2回連続失敗銘柄は即時10営業日全予測禁止を発動。損切り基準-8%超・回復シグナルなしを厳格適用。市場底打ち転換シグナル（異なる3セクター以上で同日UP同時成功）確認後のみUPエントリーを段階解禁"
   },
-  "last_review_date": "2026-06-11"
+  "last_review_date": "2026-06-12"
 }
