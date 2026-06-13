@@ -108,6 +108,7 @@ def phase_prepare() -> None:
 
     # Performance tracking: load history and prepare for review
     from stock_analyzer.performance_tracker import (
+        build_recent_failure_block,
         build_up_gate_directive,
         format_performance_feedback,
         load_history,
@@ -158,26 +159,53 @@ def phase_prepare() -> None:
                     "Bayesian weight proposal generated (%d signals, dry-run)",
                     len(proposal.get("proposed", {})),
                 )
-            # Phase 5 auto-apply: Green zone + recovery_confirmed のときだけ
-            # active weights に反映。それ以外は dry-run で留まる (止血優先)。
-            zone_info = perf_history.get("performance_stats", {}).get("calibration_zone", {})
-            if zone_info.get("zone") == "green" and zone_info.get("recovery_confirmed"):
-                from stock_analyzer.strategy_learner import save_screening_weights
+            # Hand off the Bayesian proposal to the strategy_governor
+            # instead of writing screening_weights.json directly. The
+            # governor's gating (red/yellow zone, pending verify) and
+            # reconciliation against any concurrently queued weekly-
+            # review proposal then decides whether to actually move the
+            # active config. See strategy_governor module docstring for
+            # the failure-mode this replaces (concurrent writer race).
+            from stock_analyzer.strategy_governor import attempt_apply as _governor_apply
+            from stock_analyzer.strategy_governor import governor_status_block as _governor_status
+            from stock_analyzer.strategy_governor import submit_proposal as _governor_submit
 
-                new_weights = {**screening_weights}
-                applied = 0
-                for sig, data in proposal["proposed"].items():
-                    new_w = data["proposed_weight"]
-                    if new_w != new_weights.get(sig):
-                        new_weights[sig] = new_w
-                        applied += 1
-                if applied > 0:
-                    save_screening_weights(new_weights)
-                    logger.info(
-                        "Phase 5 auto-apply: Green zone confirmed, applied %d weight changes from Bayesian proposal",
-                        applied,
-                    )
-                    screening_weights = new_weights  # so downstream uses new values
+            bayesian_target_weights = {
+                sig: data["proposed_weight"]
+                for sig, data in proposal["proposed"].items()
+                if isinstance(data, dict) and "proposed_weight" in data
+            }
+            if bayesian_target_weights:
+                zone_info = perf_history.get("performance_stats", {}).get("calibration_zone") or {}
+                _governor_submit(
+                    source="bayesian",
+                    proposed_weights=bayesian_target_weights,
+                    reason=(
+                        f"Bayesian shrinkage proposal ({len(bayesian_target_weights)} signals); "
+                        f"calibration_zone={zone_info.get('zone', 'unknown')}, "
+                        f"recovery_confirmed={zone_info.get('recovery_confirmed')}"
+                    ),
+                    today=now_jst.strftime("%Y-%m-%d"),
+                )
+
+            applied_summary = _governor_apply(
+                perf_stats=perf_history.get("performance_stats"),
+                today=now_jst.strftime("%Y-%m-%d"),
+            )
+            if applied_summary:
+                # Re-load active weights so downstream consumers (signal
+                # scoring, walkforward gate threshold) see the new
+                # values within the same cron.
+                screening_weights = load_screening_weights()
+                logger.info(
+                    "strategy_governor applied %d signal weight changes (id=%s)",
+                    len(applied_summary.get("applied") or {}),
+                    applied_summary.get("change_id"),
+                )
+
+            status_block = _governor_status()
+            if status_block:
+                strategy_notes_text = (strategy_notes_text + "\n\n" + status_block).strip()
     except Exception:
         logger.exception("Bayesian weight proposal failed (continuing without it)")
 
@@ -546,6 +574,47 @@ def phase_prepare() -> None:
     perf_history = review_predictions(perf_history, current_prices, date_str)
     performance_feedback = format_performance_feedback(perf_history)
 
+    # Compact "what didn't work" block — codex 2026-06-13 P1: surface
+    # the most actionable failure signatures (drift, direction winrate,
+    # negative-lift signals, weak regimes, in-flight verify) without
+    # ballooning the prompt. Prepend so it sits *above* the broader
+    # stats block; the AI reads top-down and we want filtering rules
+    # before averages.
+    recent_failure_block = build_recent_failure_block(perf_history)
+    if recent_failure_block:
+        performance_feedback = (recent_failure_block + "\n\n" + performance_feedback).strip()
+        logger.info("Recent-failure block injected into prompt")
+
+    # P2: prompt lint + patch candidate. Runs against the live templates
+    # each cron; emits data/prompt_patch_candidate.md when findings
+    # exist or when calibration_zone is not green. Never edits the
+    # templates — that stays manual on purpose (codex 2026-06-13).
+    try:
+        from stock_analyzer.ai_analyzer import (
+            DISCOVERY_PROMPT_TEMPLATE,
+            HOLDINGS_PROMPT_TEMPLATE,
+            SYSTEM_PROMPT,
+        )
+        from stock_analyzer.prompt_lint import generate_patch_candidate, lint_all_templates
+
+        templates = {
+            "SYSTEM_PROMPT": SYSTEM_PROMPT,
+            "HOLDINGS_PROMPT_TEMPLATE": HOLDINGS_PROMPT_TEMPLATE,
+            "DISCOVERY_PROMPT_TEMPLATE": DISCOVERY_PROMPT_TEMPLATE,
+        }
+        lint_findings = lint_all_templates(templates)
+        zone_info = perf_history.get("performance_stats", {}).get("calibration_zone")
+        patch_path = generate_patch_candidate(lint_findings, zone_info)
+        if patch_path:
+            logger.info(
+                "prompt_lint: %d findings, candidate written to %s (zone=%s)",
+                len(lint_findings),
+                patch_path,
+                (zone_info or {}).get("zone", "unknown"),
+            )
+    except Exception:
+        logger.exception("prompt_lint failed (continuing without)")
+
     # UP-gate directive: when the recent UP-prediction hit rate is below
     # threshold, prepend a hard directive that restricts new short_term
     # UP picks and tells the AI it can use ``NO_TRADE`` for holdings
@@ -787,10 +856,26 @@ def phase_prepare() -> None:
     # each saved prediction. Without this, by_regime audit can't split
     # historical outcomes by what market backdrop the AI was operating
     # under at pick time (Phase D 改善 #2026-06-13).
+    # P3 2026-06-13 拡張: regime classifier の生 feature を一緒に
+    # snapshot しておくと、後で by_regime audit が「分類が変わったとき
+    # に何が動いていたか」 を遡れる。例: 弱気判定の根拠が VIX 急上昇か
+    # 5d return 落ち込みかで対応戦略が変わる。
+    regime_features: dict = {}
+    if isinstance(market_context, dict):
+        nikkei = market_context.get("nikkei225") or {}
+        vix = market_context.get("vix") or {}
+        for k in ("change_1d_pct", "change_5d_pct", "change_1m_pct"):
+            v = nikkei.get(k)
+            if isinstance(v, (int, float)):
+                regime_features[f"nikkei_{k}"] = float(v)
+        v = vix.get("current")
+        if isinstance(v, (int, float)):
+            regime_features["vix_current"] = float(v)
     regime_meta = {
         "regime": current_regime_name,
         "regime_strategy_key": regime_strategy_key,
         "captured_at": now_jst.isoformat(),
+        "features": regime_features,
     }
     with open(meta_dir / "current_regime.json", "w", encoding="utf-8") as f:
         json.dump(regime_meta, f, ensure_ascii=False)
@@ -1055,6 +1140,22 @@ def phase_apply_critique() -> None:
     with open(discovery_path, "w", encoding="utf-8") as f:
         json.dump(discovery_result, f, ensure_ascii=False, indent=2)
 
+    # P3 2026-06-13: persist per-ticker verdict for downstream
+    # critic_efficacy audit. The summary above lists tickers per bucket
+    # but not the verdict mapping a save_new_predictions can stamp on
+    # each pred. Build that lookup from the raw critique_result.
+    critic_decisions_by_ticker: dict[str, str] = {}
+    for c in (critique_result or {}).get("critiques") or []:
+        if not isinstance(c, dict):
+            continue
+        ticker = c.get("ticker")
+        verdict = c.get("verdict")
+        if ticker and verdict in ("keep", "downgrade", "reject"):
+            critic_decisions_by_ticker[str(ticker)] = verdict
+    if critic_decisions_by_ticker:
+        with open(_DATA_DIR / "critic_decisions.json", "w", encoding="utf-8") as f:
+            json.dump(critic_decisions_by_ticker, f, ensure_ascii=False)
+
     summary_text = format_summary_for_slack(summary)
     with open(_DATA_DIR / "critic_summary.json", "w", encoding="utf-8") as f:
         json.dump({"summary": summary, "text": summary_text}, f, ensure_ascii=False)
@@ -1158,6 +1259,21 @@ def phase_notify() -> None:
         except Exception:
             logger.warning("Failed to load current_regime.json", exc_info=True)
 
+    # Load critic verdicts so each saved prediction carries the
+    # critic's keep/downgrade/reject decision. Downstream
+    # ``critic_efficacy`` consumes this to measure whether the critic
+    # actually predicted bad picks (= rejected ones lost more often).
+    critic_decisions: dict[str, str] = {}
+    critic_decisions_path = _DATA_DIR / "critic_decisions.json"
+    if critic_decisions_path.exists():
+        try:
+            with open(critic_decisions_path, encoding="utf-8") as f:
+                loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    critic_decisions = {str(k): str(v) for k, v in loaded.items() if isinstance(v, str)}
+        except Exception:
+            logger.warning("Failed to load critic_decisions.json", exc_info=True)
+
     if current_prices:
         perf_history = save_new_predictions(
             perf_history,
@@ -1167,6 +1283,7 @@ def phase_notify() -> None:
             signal_components=signal_components,
             pre_entry_metrics=pre_entry_metrics,
             regime=current_regime_name,
+            critic_decisions=critic_decisions,
         )
         save_history(perf_history)
         logger.info("New predictions saved to tracking history")
@@ -1364,7 +1481,6 @@ def phase_apply_review() -> None:
         apply_review_results,
         load_screening_weights,
         load_strategy_notes,
-        save_screening_weights,
         save_strategy_notes,
     )
 
@@ -1397,13 +1513,54 @@ def phase_apply_review() -> None:
     strategy_notes = load_strategy_notes()
     screening_weights = load_screening_weights()
 
-    strategy_notes, screening_weights = apply_review_results(review_result, strategy_notes, screening_weights)
+    # Capture the AI-proposed weight adjustments *before*
+    # apply_review_results mutates screening_weights, then route them
+    # through the governor instead of letting apply_review_results
+    # write the active file. strategy_notes still apply directly —
+    # those are qualitative content (insights, regime strategies) the
+    # governor doesn't gate.
+    proposed_weight_adjustments_raw = review_result.get("screening_weight_adjustments") or {}
+    weekly_proposed: dict[str, float] = {}
+    if isinstance(proposed_weight_adjustments_raw, dict):
+        for sig, value in proposed_weight_adjustments_raw.items():
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                weekly_proposed[str(sig)] = float(value)
+    # Strip weight adjustments from the review_result we pass downstream
+    # so apply_review_results doesn't mutate screening_weights directly.
+    review_for_notes = dict(review_result)
+    review_for_notes.pop("screening_weight_adjustments", None)
 
+    strategy_notes, _ = apply_review_results(review_for_notes, strategy_notes, screening_weights)
     save_strategy_notes(strategy_notes)
-    save_screening_weights(screening_weights)
+
+    if weekly_proposed:
+        from stock_analyzer.performance_tracker import load_history as _load_perf_history_for_review
+        from stock_analyzer.strategy_governor import attempt_apply as _governor_apply
+        from stock_analyzer.strategy_governor import submit_proposal as _governor_submit
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        _governor_submit(
+            source="weekly_review",
+            proposed_weights=weekly_proposed,
+            reason=f"Weekly review screening_weight_adjustments ({len(weekly_proposed)} signals)",
+            today=today,
+        )
+        _perf_history = _load_perf_history_for_review()
+        applied_summary = _governor_apply(
+            perf_stats=_perf_history.get("performance_stats"),
+            today=today,
+        )
+        if applied_summary:
+            logger.info(
+                "strategy_governor applied %d weight changes from weekly review (id=%s)",
+                len(applied_summary.get("applied") or {}),
+                applied_summary.get("change_id"),
+            )
+        else:
+            logger.info("strategy_governor held weekly review weight changes (gated by zone / pending verify)")
 
     logger.info(
-        "Applied review: %d strategy notes, screening weights updated",
+        "Applied review: %d strategy notes",
         len(strategy_notes.get("notes", [])),
     )
 

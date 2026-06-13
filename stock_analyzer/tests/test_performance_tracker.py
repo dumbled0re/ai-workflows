@@ -13,10 +13,13 @@ from __future__ import annotations
 
 from stock_analyzer.performance_tracker import (
     _directional_return,
+    build_recent_failure_block,
     build_up_gate_directive,
+    compute_critic_efficacy,
     compute_performance_stats,
     compute_recent_up_hit_rate,
     extract_few_shot_examples,
+    format_critic_efficacy,
     format_few_shot_for_prompt,
     format_performance_feedback,
     review_predictions,
@@ -697,12 +700,124 @@ def test_by_regime_splits_trades_by_regime_field() -> None:
     assert by_regime["上昇トレンド"]["by_direction"]["UP"]["wins"] == 4
 
 
+def test_critic_efficacy_splits_resolved_by_verdict() -> None:
+    """compute_critic_efficacy returns per-verdict accuracy and average
+    directional return. ``keep`` picks should outperform ``reject``
+    picks if the critic is calibrated; this test just pins the
+    bucketing math."""
+    rows = []
+    # 6 keep entries: 4 wins / 2 losses
+    for i, status in enumerate(["win", "win", "win", "win", "loss", "loss"], start=1):
+        ret = 3.0 if status == "win" else -2.0
+        r = _resolved_dir("UP", status, ret, f"2026-01-{i:02d}", ticker=f"K{i}.T")
+        r["critic_verdict"] = "keep"
+        rows.append(r)
+    # 5 reject entries: 1 win / 4 losses
+    for i, status in enumerate(["win", "loss", "loss", "loss", "loss"], start=1):
+        ret = 2.5 if status == "win" else -3.0
+        r = _resolved_dir("UP", status, ret, f"2026-02-{i:02d}", ticker=f"R{i}.T")
+        r["critic_verdict"] = "reject"
+        rows.append(r)
+    # 3 downgrade — below min_samples=5 default, should be filtered
+    for i in range(1, 4):
+        r = _resolved_dir("UP", "win", 1.0, f"2026-03-{i:02d}", ticker=f"D{i}.T")
+        r["critic_verdict"] = "downgrade"
+        rows.append(r)
+
+    eff = compute_critic_efficacy({"predictions": rows})
+    assert eff is not None
+    assert "keep" in eff
+    assert "reject" in eff
+    assert "downgrade" not in eff  # below min_samples
+    assert eff["keep"]["n"] == 6 and eff["keep"]["accuracy_pct"] == 66.7
+    assert eff["reject"]["n"] == 5 and eff["reject"]["accuracy_pct"] == 20.0
+
+
+def test_critic_efficacy_none_when_no_verdicts() -> None:
+    """Legacy data (no critic_verdict field) → None."""
+    rows = [_resolved_dir("UP", "win", 2.0, f"2026-01-{i:02d}", ticker=f"L{i}.T") for i in range(1, 7)]
+    assert compute_critic_efficacy({"predictions": rows}) is None
+
+
+def test_format_critic_efficacy_emits_block_with_known_order() -> None:
+    """Render order is keep → downgrade → reject regardless of dict key
+    insertion order, so the weekly review prompt reads top-down."""
+    eff = {
+        "reject": {"n": 5, "wins": 1, "accuracy_pct": 20.0, "mean_dir_return_pct": -3.0},
+        "keep": {"n": 6, "wins": 4, "accuracy_pct": 66.7, "mean_dir_return_pct": 1.5},
+    }
+    text = format_critic_efficacy(eff)
+    assert "Critic 二次評価" in text
+    keep_idx = text.index("keep")
+    reject_idx = text.index("reject")
+    assert keep_idx < reject_idx
+
+
+def test_format_critic_efficacy_empty_when_no_data() -> None:
+    assert format_critic_efficacy(None) == ""
+    assert format_critic_efficacy({}) == ""
+
+
 def test_by_regime_absent_when_no_regime_stamped() -> None:
     """Legacy predictions without a regime field → no bucket emitted."""
     rows = [_resolved_dir("UP", "win", 2.0, f"2026-01-{i:02d}", ticker=f"L{i}.T") for i in range(1, 7)]
     # Don't stamp regime field.
     stats = compute_performance_stats({"predictions": rows})
     assert "by_regime" not in stats
+
+
+def test_recent_failure_block_empty_when_no_actionable_signals() -> None:
+    """No drift, no negative-lift signals, no bad regimes → block is
+    empty so it can be unconditionally concatenated."""
+    history = {"performance_stats": {}}
+    assert build_recent_failure_block(history) == ""
+
+
+def test_recent_failure_block_emits_drift_and_direction_lines() -> None:
+    """Drift + recent_direction_winrate both populated → both lines
+    appear under the header."""
+    history = {
+        "predictions": [],
+        "performance_stats": {
+            "drift_indicator": {
+                "is_drift": True,
+                "recent_n": 14,
+                "recent_expectancy_pct": -3.66,
+                "baseline_expectancy_pct": 1.49,
+                "p_value": 0.004,
+            },
+            "recent_direction_winrate": {
+                "UP": {"n": 9, "wins": 1, "winrate_pct": 11.1},
+                "DOWN": {"n": 5, "wins": 3, "winrate_pct": 60.0},
+            },
+        },
+    }
+    block = build_recent_failure_block(history)
+    assert "直近の失敗パターン" in block
+    assert "-3.66%" in block
+    assert "1.49%" in block
+    assert "p=0.004" in block
+    assert "UP 11.1%" in block
+    assert "DOWN 60.0%" in block
+
+
+def test_recent_failure_block_emits_bad_regimes_only_when_threshold_breached() -> None:
+    """Regime under 50 % with n ≥ 5 is surfaced; healthy regimes are
+    not."""
+    history = {
+        "predictions": [],
+        "performance_stats": {
+            "by_regime": {
+                "強気トレンド": {"n": 30, "accuracy_pct": 65.0},
+                "高ボラティリティ": {"n": 10, "accuracy_pct": 40.0},
+                "レンジ相場": {"n": 3, "accuracy_pct": 30.0},  # below n threshold
+            }
+        },
+    }
+    block = build_recent_failure_block(history)
+    assert "高ボラティリティ: 40.0% (n=10)" in block
+    assert "強気トレンド" not in block  # healthy
+    assert "レンジ相場" not in block  # sample too small
 
 
 def test_recent_direction_winrate_absent_when_history_tiny() -> None:

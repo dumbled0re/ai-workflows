@@ -305,6 +305,22 @@ def _signal_efficacy_block(predictions_history: dict) -> str:
         return ""
 
 
+def _critic_efficacy_block(predictions_history: dict) -> str:
+    """Build the critic-efficacy section. P3 2026-06-13: lets the
+    weekly review see whether the critic's keep/downgrade/reject
+    verdicts are actually predictive. Empty string when no resolved
+    predictions carry a critic_verdict yet (legacy history)."""
+    try:
+        from stock_analyzer.performance_tracker import (
+            compute_critic_efficacy,
+            format_critic_efficacy,
+        )
+
+        return format_critic_efficacy(compute_critic_efficacy(predictions_history))
+    except Exception:
+        return ""
+
+
 def build_weekly_review_prompt(predictions_history: dict, strategy_notes: dict) -> str:
     """Build the prompt for Claude's weekly strategy review.
 
@@ -417,6 +433,13 @@ def build_weekly_review_prompt(predictions_history: dict, strategy_notes: dict) 
     efficacy_block = _signal_efficacy_block(predictions_history)
     if efficacy_block:
         prompt += "\n" + efficacy_block + "\n"
+
+    # Critic efficacy — per-verdict realised win rate. Lets the weekly
+    # review judge whether the critic AI's rubric is actually predicting
+    # bad picks (= rejected picks should have the lowest win rate).
+    critic_block = _critic_efficacy_block(predictions_history)
+    if critic_block:
+        prompt += "\n" + critic_block + "\n"
 
     # Counterfactual backtest — re-run resolved history under canned
     # filters (HIGH-only, by direction, by source) to surface "what

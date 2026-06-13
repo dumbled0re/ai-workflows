@@ -181,6 +181,7 @@ def save_new_predictions(
     signal_components: dict[str, dict[str, bool]] | None = None,
     pre_entry_metrics: dict[str, dict[str, float]] | None = None,
     regime: str | None = None,
+    critic_decisions: dict[str, str] | None = None,
 ) -> dict:
     """Extract new predictions from Claude's analysis results and add to history.
 
@@ -250,6 +251,7 @@ def save_new_predictions(
                 "signal_components": sig_lookup.get(ticker, {}),
                 "pre_entry_metrics": pem_lookup.get(ticker, {}),
                 "regime": regime,
+                "critic_verdict": (critic_decisions or {}).get(ticker),
             }
         )
         new_count += 1
@@ -298,6 +300,7 @@ def save_new_predictions(
                 "signal_components": sig_lookup.get(ticker, {}),
                 "pre_entry_metrics": pem_lookup.get(ticker, {}),
                 "regime": regime,
+                "critic_verdict": (critic_decisions or {}).get(ticker),
             }
         )
         new_count += 1
@@ -342,6 +345,7 @@ def save_new_predictions(
                 "signal_components": sig_lookup.get(ticker, {}),
                 "pre_entry_metrics": pem_lookup.get(ticker, {}),
                 "regime": regime,
+                "critic_verdict": (critic_decisions or {}).get(ticker),
             }
         )
         new_count += 1
@@ -599,6 +603,10 @@ def compute_performance_stats(history: dict) -> dict:
     if by_regime:
         stats["by_regime"] = by_regime
 
+    critic_eff = compute_critic_efficacy(history, min_samples=5)
+    if critic_eff:
+        stats["critic_efficacy"] = critic_eff
+
     # Calibration zone: codex 設計相談 (issue #46) に基づく階層化 circuit
     # breaker。HIGH/MEDIUM accuracy ratio + rolling Sharpe + drift を
     # 統合して Red/Yellow/Green を判定。AI prompt に zone を注入し、Red
@@ -709,6 +717,111 @@ def compute_recent_up_hit_rate(history: dict, recent_n: int = _UP_GATE_RECENT_N)
         "threshold_pct": _UP_GATE_THRESHOLD_PCT,
         "below_threshold": hit_rate < _UP_GATE_THRESHOLD_PCT,
     }
+
+
+def build_recent_failure_block(history: dict) -> str:
+    """Render a compact "what didn't work recently" block for the daily
+    cron prompt.
+
+    Distinct from ``format_performance_feedback``'s broad statistical
+    feedback. This block is *short* on purpose — codex 2026-06-13
+    warning: long failure analyses pull AI selection toward statistical
+    noise, so we surface only the "avoid these specific conditions"
+    items the AI can actually use to filter candidates.
+
+    At most five lines:
+    1. recent expectancy vs baseline + drift p-value
+    2. UP / DOWN recent win rate
+    3. signal_efficacy worst-3 (negative lift, n >= 15)
+    4. by_regime bucket whose accuracy fell below 50 %
+    5. active verify in progress (governor's latest change_id)
+
+    Returns ``""`` when nothing actionable is present so the caller
+    can unconditionally concatenate without wrapping.
+    """
+    stats = history.get("performance_stats") or {}
+    lines: list[str] = []
+
+    drift = stats.get("drift_indicator")
+    if isinstance(drift, dict) and drift.get("is_drift"):
+        lines.append(
+            f"  - 直近 {drift.get('recent_n', '?')} trades expectancy "
+            f"{drift.get('recent_expectancy_pct', '?')}% (baseline "
+            f"{drift.get('baseline_expectancy_pct', '?')}%, p={drift.get('p_value', '?')}) "
+            "— statistically significant な実損 drift。新規 UP picks は強い独立 catalyst 必須"
+        )
+
+    rdw = stats.get("recent_direction_winrate")
+    if isinstance(rdw, dict):
+        bits = []
+        for direction in ("UP", "DOWN"):
+            d = rdw.get(direction)
+            if isinstance(d, dict):
+                bits.append(f"{direction} {d.get('winrate_pct', '?')}% (n={d.get('n', '?')})")
+        if bits:
+            lines.append("  - 直近 direction 別勝率: " + " / ".join(bits))
+
+    # Signal efficacy worst-3 negative lift, gated by min_samples=15 so we
+    # don't flag a 1-trade fluke. The full table goes into the weekly
+    # review prompt via format_signal_efficacy; here we only surface
+    # the actionable bottom rows.
+    try:
+        efficacy = compute_signal_efficacy(history, min_samples=15)
+    except Exception:
+        efficacy = {}
+    bad_signals: list[tuple[str, float, int]] = []
+    for sig, data in (efficacy or {}).items():
+        with_block = data.get("with_signal") or {}
+        without_block = data.get("without_signal") or {}
+        n_with = with_block.get("total", 0)
+        acc_with = with_block.get("accuracy_pct")
+        acc_without = without_block.get("accuracy_pct")
+        if isinstance(acc_with, int | float) and isinstance(acc_without, int | float) and n_with >= 15:
+            lift = acc_with - acc_without
+            if lift < -2.0:  # signal is actively dragging the bucket down
+                bad_signals.append((sig, lift, n_with))
+    if bad_signals:
+        bad_signals.sort(key=lambda x: x[1])  # most negative first
+        worst = bad_signals[:3]
+        formatted = ", ".join(f"{sig}({lift:+.1f}pp/n={n})" for sig, lift, n in worst)
+        lines.append("  - negative-lift signals (実勝率が baseline 以下): " + formatted)
+
+    by_regime = stats.get("by_regime")
+    if isinstance(by_regime, dict):
+        bad_regimes = []
+        for regime, data in by_regime.items():
+            if (
+                isinstance(data, dict)
+                and isinstance(data.get("accuracy_pct"), int | float)
+                and data["accuracy_pct"] < 50.0
+                and data.get("n", 0) >= 5
+            ):
+                bad_regimes.append(f"{regime}: {data['accuracy_pct']}% (n={data['n']})")
+        if bad_regimes:
+            lines.append("  - 直近 regime 別の勝率 50% 未満: " + " / ".join(bad_regimes))
+
+    # Governor's latest active change with pending verify
+    try:
+        from stock_analyzer.strategy_governor import load_change_log
+
+        log = load_change_log()
+        if log:
+            latest = log[-1]
+            if isinstance(latest, dict) and latest.get("verify_status") == "pending":
+                applied = latest.get("applied") or {}
+                sigs = ", ".join(applied.keys()) if applied else "(no weights)"
+                lines.append(
+                    f"  - 検証中の weight 変更: {latest.get('change_id', '?')} "
+                    f"(activated {latest.get('activated_at', '?')}, signals: {sigs}) — "
+                    "効果判定が出るまで同方向の signal 強化は当面据え置き"
+                )
+    except Exception:
+        pass
+
+    if not lines:
+        return ""
+    header = "=== 直近の失敗パターン (避けるべき条件) ==="
+    return header + "\n" + "\n".join(lines)
 
 
 def build_up_gate_directive(stats: dict) -> str:
@@ -1206,6 +1319,70 @@ def _compute_drift_indicator(
         "recent_n": len(recent_returns),
         "baseline_n": len(baseline_returns),
     }
+
+
+def compute_critic_efficacy(history: dict, min_samples: int = 5) -> dict | None:
+    """Group resolved predictions by ``critic_verdict`` and report the
+    win rate per bucket.
+
+    Goal: detect whether the critic AI's verdicts (keep / downgrade /
+    reject) are predictive of outcomes. A healthy critic should show
+    ``reject < downgrade < keep`` in win rate — rejected picks (which
+    we *did* still record at the time the verdict was issued, before
+    discovery_cap dropped them) should empirically be the worst.
+
+    Returns ``None`` when no resolved prediction carries a non-null
+    ``critic_verdict`` field (legacy data). Otherwise:
+
+    ``{verdict_name: {n, wins, accuracy_pct, mean_dir_return_pct}}``
+    """
+    verdict_buckets: dict[str, list[dict]] = {}
+    for p in history.get("predictions", []):
+        if p.get("status") not in ("win", "loss"):
+            continue
+        v = p.get("critic_verdict")
+        if not isinstance(v, str) or v not in ("keep", "downgrade", "reject"):
+            continue
+        verdict_buckets.setdefault(v, []).append(p)
+    if not verdict_buckets:
+        return None
+
+    out: dict[str, dict] = {}
+    for v, items in verdict_buckets.items():
+        if len(items) < min_samples:
+            continue
+        wins = sum(1 for p in items if p.get("status") == "win")
+        dir_returns = [r for r in (_directional_return(p) for p in items) if r is not None]
+        mean_dir = sum(dir_returns) / len(dir_returns) if dir_returns else 0.0
+        out[v] = {
+            "n": len(items),
+            "wins": wins,
+            "accuracy_pct": round(wins / len(items) * 100, 1),
+            "mean_dir_return_pct": round(mean_dir, 2),
+        }
+    return out or None
+
+
+def format_critic_efficacy(efficacy: dict[str, dict] | None) -> str:
+    """One-block summary suitable for the weekly review prompt. Empty
+    string when no efficacy data is available so the caller can
+    unconditionally concatenate."""
+    if not efficacy:
+        return ""
+    order = ("keep", "downgrade", "reject")
+    rows = []
+    for v in order:
+        d = efficacy.get(v)
+        if not isinstance(d, dict):
+            continue
+        rows.append(
+            f"  - {v:9} : n={d.get('n', '?'):3} 勝率 {d.get('accuracy_pct', '?')}%  "
+            f"mean_dir_return {d.get('mean_dir_return_pct', '?')}%"
+        )
+    if not rows:
+        return ""
+    header = "=== Critic 二次評価の予測効果 (verdict 別の勝率) ==="
+    return header + "\n" + "\n".join(rows)
 
 
 def _compute_by_regime(

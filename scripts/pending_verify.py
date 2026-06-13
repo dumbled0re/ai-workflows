@@ -346,11 +346,129 @@ def kind_recent_run_log_grep(args: dict) -> VerifyResult:
     )
 
 
+def kind_strategy_change_metric_check(args: dict) -> VerifyResult:
+    """Verify that a stock_analyzer strategy change moved the target
+    metric in the expected direction.
+
+    Args (all required unless noted):
+      change_id: governor batch ID. Used to look up the change_log
+        entry that activated the change and to scope the post-window
+        trade sample.
+      primary_metric: dot-path into ``predictions_history.performance_stats``
+        (e.g. ``net_expectancy.net_expectancy_pct``,
+        ``accuracy_pct``, ``calibration_zone.zone``).
+      improvement_direction: ``increase`` | ``decrease`` | ``zone_to_green``.
+      min_resolved_trades: minimum post-activation resolved trades
+        required before declaring a verdict (default 14).
+      rollback_snapshot: relative path to the snapshot JSON (declarative
+        only here; rollback execution stays manual to avoid surprises).
+
+    Outcomes:
+      success — metric moved in the expected direction with at least
+                ``min_resolved_trades`` post-activation resolutions.
+      failure — metric moved against the expected direction with the
+                same sample-size floor.
+      inconclusive — too few post-activation resolutions yet, or the
+                metric stayed within noise.
+    """
+    change_id = args.get("change_id")
+    primary = args.get("primary_metric")
+    direction = (args.get("improvement_direction") or "").lower()
+    min_trades = int(args.get("min_resolved_trades", 14))
+    if not change_id or not primary or direction not in ("increase", "decrease", "zone_to_green"):
+        return VerifyResult("failure", "schema invalid: change_id / primary_metric / improvement_direction required")
+
+    history_path = REPO_ROOT / "stock_analyzer" / "data" / "predictions_history.json"
+    change_log_path = REPO_ROOT / "stock_analyzer" / "data" / "strategy_change_log.json"
+    if not history_path.exists() or not change_log_path.exists():
+        return VerifyResult("inconclusive", "predictions_history or strategy_change_log missing")
+
+    try:
+        with open(history_path, encoding="utf-8") as f:
+            history = json.load(f)
+        with open(change_log_path, encoding="utf-8") as f:
+            change_log = json.load(f)
+    except (json.JSONDecodeError, OSError) as exc:
+        return VerifyResult("inconclusive", f"failed to read data files: {exc}")
+
+    entry = next((e for e in change_log if isinstance(e, dict) and e.get("change_id") == change_id), None)
+    if entry is None:
+        return VerifyResult("failure", f"change_id {change_id} not found in strategy_change_log")
+    activation_iso = entry.get("activated_at")
+    if not activation_iso:
+        return VerifyResult("inconclusive", "change_log entry missing activated_at")
+
+    resolved = [
+        p
+        for p in history.get("predictions", [])
+        if p.get("status") in ("win", "loss") and p.get("reviewed_date")
+    ]
+    post = [p for p in resolved if (p.get("reviewed_date") or "") >= activation_iso]
+    if len(post) < min_trades:
+        return VerifyResult(
+            "inconclusive",
+            f"post-activation resolved trades = {len(post)} (< min {min_trades}); still in observation window",
+        )
+
+    # Compute primary metric on the post-window vs pre-window slices.
+    # zone_to_green: read the latest calibration_zone directly; this is
+    # not a slice-comparison but a state check.
+    if direction == "zone_to_green":
+        zone_info = (history.get("performance_stats") or {}).get("calibration_zone") or {}
+        zone = zone_info.get("zone")
+        if zone == "green" and zone_info.get("recovery_confirmed"):
+            return VerifyResult("success", f"calibration_zone=green confirmed ({len(post)} post-trades)")
+        return VerifyResult("inconclusive", f"calibration_zone={zone}; awaiting green recovery_confirmed")
+
+    pre = [p for p in resolved if (p.get("reviewed_date") or "") < activation_iso]
+    if len(pre) < min_trades:
+        return VerifyResult(
+            "inconclusive",
+            f"pre-activation sample = {len(pre)} (< min {min_trades}); not enough baseline to compare",
+        )
+
+    def _slice_metric(sample: list[dict]) -> float | None:
+        if primary in ("net_expectancy.net_expectancy_pct", "net_expectancy_pct"):
+            # Mean directional return — what net_expectancy tracks.
+            returns = []
+            for p in sample:
+                r = p.get("actual_return_pct")
+                if r is None:
+                    continue
+                d = p.get("prediction")
+                if d == "UP":
+                    returns.append(float(r))
+                elif d == "DOWN":
+                    returns.append(-float(r))
+            if not returns:
+                return None
+            return sum(returns) / len(returns)
+        if primary in ("accuracy_pct",):
+            wins = sum(1 for p in sample if p.get("status") == "win")
+            return wins / len(sample) * 100
+        return None
+
+    pre_val = _slice_metric(pre)
+    post_val = _slice_metric(post)
+    if pre_val is None or post_val is None:
+        return VerifyResult("inconclusive", f"could not compute primary_metric={primary} on both slices")
+    delta = post_val - pre_val
+    # Treat |delta| < 0.5 (pp / %) as noise to avoid declaring victory
+    # over rounding error.
+    slice_note = f"pre={pre_val:.2f}, post={post_val:.2f}, n_post={len(post)}"
+    if abs(delta) < 0.5:
+        return VerifyResult("inconclusive", f"{primary} delta {delta:+.2f} within noise band ({slice_note})")
+    if (direction == "increase" and delta > 0) or (direction == "decrease" and delta < 0):
+        return VerifyResult("success", f"{primary} moved {delta:+.2f} in expected direction ({slice_note})")
+    return VerifyResult("failure", f"{primary} moved {delta:+.2f} AGAINST expected direction ({slice_note})")
+
+
 KIND_REGISTRY = {
     "workflow_run_grep": kind_workflow_run_grep,
     "workflow_run_no_grep": kind_workflow_run_no_grep,
     "recent_run_log_grep": kind_recent_run_log_grep,
     "manual": kind_manual,
+    "strategy_change_metric_check": kind_strategy_change_metric_check,
 }
 
 
