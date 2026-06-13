@@ -59,6 +59,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import shutil
+import subprocess
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -414,6 +417,89 @@ def attempt_apply(
     return summary
 
 
+# --- issue creation (best-effort, no-op without gh) -----------------------
+
+
+def _maybe_create_verify_issue(change_id: str, yaml_relpath: str, summary: dict) -> str | None:
+    """Best-effort GitHub issue creation for the pending-verify cron.
+
+    Skips silently when:
+    - ``gh`` is not on PATH (local dev, no CLI installed)
+    - ``GH_TOKEN`` / ``GITHUB_TOKEN`` env var is unset (running outside CI
+      where the user expects no GitHub side-effects)
+    - The subprocess fails for any reason
+
+    The intent is that GitHub-Actions runtime has both gh and a token,
+    so the cron flow auto-creates the issue end-to-end. Local pytest /
+    manual python runs skip the network call entirely.
+    """
+    if shutil.which("gh") is None:
+        logger.debug("gh CLI not available — verify issue creation skipped for %s", change_id)
+        return None
+    if not (os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")):
+        logger.debug("no GH_TOKEN / GITHUB_TOKEN — verify issue creation skipped for %s", change_id)
+        return None
+
+    applied = summary.get("applied") or {}
+    body_lines = [
+        "---",
+        f"verify_id: stock_analyzer/{change_id}",
+        "---",
+        "",
+        f"strategy_governor が {summary.get('activated_at', '?')} に適用した weight 変更の効果検証。",
+        f"YAML schema: `{yaml_relpath}`",
+        f"sources: {', '.join(summary.get('sources') or []) or 'unknown'}",
+        "",
+        "## 変更内容",
+        "",
+    ]
+    if applied:
+        before = summary.get("before") or {}
+        for sig, new_w in applied.items():
+            body_lines.append(f"- `{sig}`: {before.get(sig, '?')} → {new_w}")
+    else:
+        body_lines.append("- (active 変更なし、conflict のみ)")
+    conflicts = summary.get("conflicts") or []
+    if conflicts:
+        body_lines.extend(["", "## 競合保留", "", *(f"- `{s}`" for s in conflicts)])
+    body_lines.extend(
+        [
+            "",
+            "## 検証",
+            "",
+            "21 日 + 14 確定 trades 後に `pending_verify` cron が ",
+            "`kind_strategy_change_metric_check` を実行し、`net_expectancy_pct` の ",
+            "pre-change vs post-change を比較して passed / failed / inconclusive を判定。",
+        ]
+    )
+    body = "\n".join(body_lines)
+    title = f"[stock_analyzer] verify weight change {change_id}"
+    try:
+        proc = subprocess.run(
+            [
+                "gh",
+                "issue",
+                "create",
+                "--title",
+                title,
+                "--body",
+                body,
+                "--label",
+                "pending-verify",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
+        )
+        url = (proc.stdout or "").strip().splitlines()[-1] if proc.stdout else ""
+        logger.info("strategy_governor: verify issue created for %s → %s", change_id, url)
+        return url or None
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
+        logger.warning("strategy_governor: gh issue create failed for %s: %s", change_id, exc)
+        return None
+
+
 # --- verify artifact persistence ------------------------------------------
 
 
@@ -505,6 +591,14 @@ def _persist_verify_artifacts(
         yaml_path,
         snapshot_path,
     )
+
+    # Best-effort GitHub issue creation. The pending-verify cron needs
+    # the issue + yaml pair to run; in CI we create both, locally we
+    # leave just the yaml so a follow-up commit gets it into the repo.
+    yaml_relpath_str = str(yaml_path.relative_to(_REPO_ROOT))
+    issue_url = _maybe_create_verify_issue(change_id, yaml_relpath_str, summary)
+    if issue_url:
+        summary["verify_ticket"] = issue_url
     return yaml_path
 
 

@@ -122,4 +122,4 @@ def test_format_proposal_for_prompt_renders_top_changes() -> None:
     assert "sig_up" in text
     assert "🔺" in text  # weight up marker
     # 反映方法の指示文があること
-    assert "screening_weights.json" in text
+    assert "strategy_governor" in text

@@ -89,7 +89,16 @@ def load_screening_weights(path: str = _SCREENING_WEIGHTS_FILE) -> dict:
 
 
 def save_screening_weights(weights: dict, path: str = _SCREENING_WEIGHTS_FILE) -> None:
-    """Save tuned screening weights."""
+    """Save tuned screening weights.
+
+    DEPRECATED for production use: ``strategy_governor`` is the only
+    sanctioned writer of the active screening_weights file (see
+    strategy_governor module docstring for the 2026-06-13 race-condition
+    rationale). This helper stays for tests / migration tooling but
+    must not be called from cron paths — submit a proposal via
+    ``strategy_governor.submit_proposal`` instead and let the governor
+    arbitrate.
+    """
     p = Path(path)
     p.parent.mkdir(exist_ok=True)
     with open(p, "w", encoding="utf-8") as f:
@@ -234,7 +243,10 @@ def format_weight_proposal_for_prompt(proposal: dict, top_n: int = 8) -> str:
             f" (scale {data['scaling_factor']:.2f}, lift {data['shrunk_lift_pp']:+.1f}pp,"
             f" n={data['n_with']})"
         )
-    lines.append("  → 反映するには `data/screening_weights.json` に proposed_weight を手動コピー")
+    lines.append(
+        "  → active 反映は strategy_governor 経由 (毎 cron の attempt_apply)。"
+        "calibration_zone=green AND prior verify resolved のとき自動。手動上書き禁止"
+    )
     return "\n".join(lines)
 
 

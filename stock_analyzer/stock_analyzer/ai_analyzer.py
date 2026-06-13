@@ -118,7 +118,8 @@ HOLDINGS_PROMPT_TEMPLATE = """\
 - 方向の確信が持てない場合は prediction を "NO_TRADE" にして、action だけで判断する
   （保有しているからといって毎回 UP を付ける必要はない。方向不明は方向不明と書くこと）
 
-以下のJSON形式で回答してください:
+以下のJSON形式で回答してください。example は UP / DOWN / NO_TRADE 3 種をフォーマット
+説明として示しているだけで、分布の示唆ではありません:
 {{
   "holdings_analysis": [
     {{
@@ -131,13 +132,39 @@ HOLDINGS_PROMPT_TEMPLATE = """\
       "stop_loss": "損切りライン（価格）",
       "action": "保有継続/利確/損切り/買い増し",
       "short_summary": "1文の要約"
+    }},
+    {{
+      "ticker": "9999.T",
+      "name": "サンプル B (フォーマット例)",
+      "prediction": "DOWN",
+      "confidence": "MEDIUM",
+      "reasons": ["52週高値圏で momentum 失速", "forward 連続下方修正", "セクター rotation 逆風"],
+      "risk_factor": "短期反発時の含み益縮小",
+      "stop_loss": "直近高値 (DOWN 視点の損切り = 価格上方ブレイク)",
+      "action": "利確/損切り",
+      "short_summary": "中期売り目線、含み益のうちに利確"
+    }},
+    {{
+      "ticker": "8888.T",
+      "name": "サンプル C (フォーマット例)",
+      "prediction": "NO_TRADE",
+      "confidence": "MEDIUM",
+      "reasons": ["短期 momentum と長期 trend が逆方向", "決算発表 2 営業日前で event risk 高い"],
+      "risk_factor": "イベント結果次第で両方向に振れる",
+      "stop_loss": "決算後の動き次第、現状は事前指値しない",
+      "action": "保有継続",
+      "short_summary": "方向不明 — action 単独判断"
     }}
   ],
   "market_overview": "日本市場全体の概況と今後1-2週間の見通し（3-4文）"
 }}
 
 prediction は "UP" / "DOWN" / "NO_TRADE" のいずれか。NO_TRADE の場合も他のフィールドは
-通常通り埋め、short_summary に「方向不明 — action 単独判断」と記載してください。\
+通常通り埋め、short_summary に「方向不明 — action 単独判断」と記載してください。
+holdings は既保有なので、UP に偏ることなく DOWN (= 利確/損切り推奨) や NO_TRADE
+(= 方向不明、action 単独判断) も同等に正当な出力です。「保有してるからとりあえず UP」
+は禁止 — テクニカル + ファンダ + 需給 が UP 方向に揃ってない場合は明示的に DOWN か
+NO_TRADE にしてください。\
 """
 
 DISCOVERY_PROMPT_TEMPLATE = """\
