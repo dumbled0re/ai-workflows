@@ -783,6 +783,18 @@ def phase_prepare() -> None:
     with open(meta_dir / "pre_entry_metrics.json", "w", encoding="utf-8") as f:
         json.dump(pre_entry_metrics_by_ticker, f, ensure_ascii=False)
 
+    # Persist the current regime name so phase_notify can stamp it on
+    # each saved prediction. Without this, by_regime audit can't split
+    # historical outcomes by what market backdrop the AI was operating
+    # under at pick time (Phase D 改善 #2026-06-13).
+    regime_meta = {
+        "regime": current_regime_name,
+        "regime_strategy_key": regime_strategy_key,
+        "captured_at": now_jst.isoformat(),
+    }
+    with open(meta_dir / "current_regime.json", "w", encoding="utf-8") as f:
+        json.dump(regime_meta, f, ensure_ascii=False)
+
     # Universe staleness check — runs at most once per day (weekly
     # would be fine, but the daily cost is negligible). Failures are
     # silent: a missing live source just means "no opinion", we don't
@@ -945,15 +957,21 @@ def phase_apply_critique() -> None:
         apply_critique,
         enforce_calibration_gate,
         enforce_discovery_cap,
+        enforce_thesis_reuse_guard,
+        enforce_walkforward_soft_gate,
         format_summary_for_slack,
         load_critique_result,
     )
     from stock_analyzer.performance_tracker import load_history as _load_perf_history
+    from stock_analyzer.strategy_learner import load_screening_weights
 
     holdings_result, discovery_result = load_analysis_results()
     critique_result = load_critique_result(_DATA_DIR / "critique_result.json")
 
     holdings_result, discovery_result, summary = apply_critique(holdings_result, discovery_result, critique_result)
+
+    perf_history = _load_perf_history()
+    perf_stats = perf_history.get("performance_stats")
 
     # Calibration gate: code-level downgrade of (confidence × direction)
     # buckets with realized win rate < 50% and n >= 10. Targets HIGH_UP
@@ -961,8 +979,56 @@ def phase_apply_critique() -> None:
     # Runs *before* enforce_discovery_cap so dropped LOW picks free up
     # slots for surviving MEDIUM picks instead of being kept at the
     # expense of better ones.
-    perf_stats = _load_perf_history().get("performance_stats")
     holdings_result, discovery_result = enforce_calibration_gate(holdings_result, discovery_result, summary, perf_stats)
+
+    # Thesis-reuse guard: cap HIGH→MEDIUM on discovery picks where the AI
+    # is re-picking a ticker it picked within the last 30 days with
+    # essentially the same fired-signal fingerprint (Jaccard ≥ 0.7).
+    # ANYCOLOR 5032.T 2026-04-28 → 2026-05-22 case showed identical
+    # thesis reuse turns a +3.16 % win into a -21.98 % loss when the
+    # original move has already played out. Discovery-only (holdings
+    # are out of scope — we already own them).
+    signal_components_by_ticker: dict[str, dict[str, bool]] = {}
+    sig_path = _DATA_DIR / "signal_components.json"
+    if sig_path.exists():
+        try:
+            with open(sig_path, encoding="utf-8") as f:
+                loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    signal_components_by_ticker = loaded
+        except Exception:
+            logger.warning("Failed to load signal_components.json for reuse guard", exc_info=True)
+    holdings_result, discovery_result = enforce_thesis_reuse_guard(
+        holdings_result,
+        discovery_result,
+        summary,
+        perf_history,
+        signal_components_by_ticker,
+    )
+
+    # Walkforward soft gate: discovery picks whose deterministic
+    # screening score is outside today's top-N candidates take a
+    # one-notch confidence cut. AI is allowed a qualitative edge but
+    # not against the signal model's top quantile (walkforward CV
+    # observed ~75 % OOS accuracy there). top_n picks up from the
+    # walkforward_cv config so the threshold matches the OOS
+    # evaluation window.
+    wf_top_n = 6
+    wf_cv = perf_history.get("performance_stats", {}).get("walkforward_cv") if perf_history else None
+    if isinstance(wf_cv, dict) and isinstance(wf_cv.get("top_n"), int):
+        wf_top_n = int(wf_cv["top_n"])
+    try:
+        active_weights = load_screening_weights()
+    except Exception:
+        active_weights = {}
+        logger.warning("Failed to load screening_weights for walkforward gate", exc_info=True)
+    discovery_result = enforce_walkforward_soft_gate(
+        discovery_result,
+        summary,
+        signal_components_by_ticker,
+        active_weights,
+        top_n=wf_top_n,
+    )
 
     # Deterministic enforcement: even after critic, the AI sometimes
     # leaves the discovery list at 20+ picks (real-world observed:
@@ -1077,6 +1143,21 @@ def phase_notify() -> None:
         except Exception:
             logger.warning("Failed to load pre_entry_metrics.json", exc_info=True)
 
+    # Load the regime captured at prompt-build time so each new
+    # prediction is stamped with the market backdrop the AI was
+    # operating under. by_regime audit downstream consumes this to
+    # split outcomes by regime instead of mixing them.
+    current_regime_name: str | None = None
+    regime_path = _DATA_DIR / "current_regime.json"
+    if regime_path.exists():
+        try:
+            with open(regime_path, encoding="utf-8") as f:
+                regime_meta = json.load(f)
+                if isinstance(regime_meta, dict):
+                    current_regime_name = regime_meta.get("regime")
+        except Exception:
+            logger.warning("Failed to load current_regime.json", exc_info=True)
+
     if current_prices:
         perf_history = save_new_predictions(
             perf_history,
@@ -1085,6 +1166,7 @@ def phase_notify() -> None:
             current_prices,
             signal_components=signal_components,
             pre_entry_metrics=pre_entry_metrics,
+            regime=current_regime_name,
         )
         save_history(perf_history)
         logger.info("New predictions saved to tracking history")

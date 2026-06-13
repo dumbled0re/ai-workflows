@@ -516,8 +516,19 @@ def enforce_calibration_gate(
     rejected: list[str] = []
     drift_dir_set = set(drift_dir_widened)
 
-    def filter_picks(picks: list[dict]) -> list[dict]:
-        """Apply gate to a list of picks in-place — returns surviving picks."""
+    def filter_picks(picks: list[dict], source_kind: str) -> list[dict]:
+        """Apply gate to a list of picks in-place — returns surviving picks.
+
+        ``source_kind`` is ``"holdings"`` or ``"discovery"``. The
+        recent-direction-drift extension (drift_dir_set MEDIUM→LOW
+        step) only applies to discovery picks — holdings is currently
+        the strongest source (~73 % accuracy last 60 trades) and the
+        drift is concentrated in discovery, so demoting MEDIUM holdings
+        on a discovery-driven drift signal would over-correct. The
+        long-run per-bucket gate still applies to both sources because
+        broken buckets there are a property of the bucket, not the
+        source path.
+        """
         out: list[dict] = []
         for p in picks:
             conf = (p.get("confidence") or "MEDIUM").upper()
@@ -532,7 +543,7 @@ def enforce_calibration_gate(
                     p["confidence_pre_calibration_gate"] = "HIGH"
                     p["confidence"] = "MEDIUM"
                     downgraded.append(f"{ticker}({direction}/HIGH→MEDIUM)")
-                elif conf == "MEDIUM" and direction in drift_dir_set:
+                elif conf == "MEDIUM" and direction in drift_dir_set and source_kind == "discovery":
                     # Recent direction-drift widened the gate to (MEDIUM, dir).
                     # Step MEDIUM down to LOW so position sizing / Kelly use
                     # the weak-signal level, but keep the pick (don't drop)
@@ -546,6 +557,8 @@ def enforce_calibration_gate(
                 # MEDIUM with long-run-broken bucket (not in drift_dir_set):
                 # leave alone — dropping or downgrading on long-run alone
                 # would over-correct given the all-time win rate is OK.
+                # MEDIUM holdings under drift: also left alone (source-aware
+                # gate, see docstring).
             out.append(p)
         return out
 
@@ -554,16 +567,251 @@ def enforce_calibration_gate(
         for key in ("short_term_picks", "long_term_picks", "recommended_stocks"):
             picks = discovery_result.get(key)
             if isinstance(picks, list):
-                discovery_result[key] = filter_picks(picks)
+                discovery_result[key] = filter_picks(picks, source_kind="discovery")
     # Apply to holdings
     if holdings_result is not None:
         for key in ("holdings", "holdings_review", "recommendations"):
             picks = holdings_result.get(key)
             if isinstance(picks, list):
-                holdings_result[key] = filter_picks(picks)
+                holdings_result[key] = filter_picks(picks, source_kind="holdings")
 
     summary.setdefault("downgraded", []).extend(downgraded)
     summary.setdefault("rejected", []).extend(rejected)
+    return holdings_result, discovery_result
+
+
+def enforce_walkforward_soft_gate(
+    discovery_result: dict | None,
+    summary: dict[str, list[str]],
+    signal_components_by_ticker: dict[str, dict[str, bool]] | None,
+    screening_weights: dict | None,
+    top_n: int = 6,
+) -> dict | None:
+    """Soft-demote discovery picks whose deterministic screening score
+    is outside the top-N (walk-forward CV's evaluation top quantile)
+    of the day's screened universe.
+
+    Rationale: ``walkforward_cv`` shows the score-ranked top-N picks
+    hitting ~75 % accuracy out-of-sample. When the AI selects a
+    discovery candidate that's *not* in that top-N, it's making a
+    qualitative call against the signal model — sometimes correct,
+    but historically those picks underperform. Demote rather than
+    reject so the AI's qualitative edge isn't fully silenced; the
+    pick still appears with a lower confidence label that drives
+    smaller position sizing downstream.
+
+    Holdings are out of scope — the AI re-evaluates them on their own
+    merits, not against the screened universe.
+
+    No-op when:
+    - ``signal_components_by_ticker`` is empty / missing → no scores
+      to compute (e.g. first run).
+    - ``screening_weights`` is missing → can't compute scores.
+    - Fewer than ``top_n + 1`` candidates were screened → threshold
+      would be the lowest score and the gate becomes trivially
+      satisfied for every pick.
+    """
+    if discovery_result is None:
+        return discovery_result
+    components = signal_components_by_ticker or {}
+    weights = screening_weights or {}
+    if not components or not weights:
+        return discovery_result
+
+    # Compute screening_score per ticker from the saved fired-signal
+    # set + active weights. Mirrors the live screener's scoring formula
+    # so the threshold matches what the prompt-time stock_data text
+    # showed the AI.
+    scores: dict[str, float] = {}
+    for ticker, comps in components.items():
+        if not isinstance(comps, dict):
+            continue
+        total = 0.0
+        for sig, fired in comps.items():
+            if fired:
+                w = weights.get(sig)
+                if isinstance(w, int | float):
+                    total += float(w)
+        scores[ticker] = total
+
+    if len(scores) < top_n + 1:
+        return discovery_result
+
+    sorted_scores = sorted(scores.values(), reverse=True)
+    threshold = sorted_scores[top_n - 1]
+
+    downgraded: list[str] = []
+
+    def gate_picks(picks: list[dict]) -> None:
+        for p in picks:
+            ticker = p.get("ticker")
+            if not ticker or ticker not in scores:
+                continue
+            sc = scores[ticker]
+            if sc >= threshold:
+                continue
+            conf = (p.get("confidence") or "MEDIUM").upper()
+            if conf == "HIGH":
+                p["confidence_pre_walkforward_gate"] = "HIGH"
+                p["confidence"] = "MEDIUM"
+                p["walkforward_score"] = round(sc, 2)
+                p["walkforward_threshold"] = round(threshold, 2)
+                downgraded.append(f"{ticker}(wf-score {sc:.1f}<{threshold:.1f}/HIGH→MEDIUM)")
+            elif conf == "MEDIUM":
+                p["confidence_pre_walkforward_gate"] = "MEDIUM"
+                p["confidence"] = "LOW"
+                p["walkforward_score"] = round(sc, 2)
+                p["walkforward_threshold"] = round(threshold, 2)
+                downgraded.append(f"{ticker}(wf-score {sc:.1f}<{threshold:.1f}/MEDIUM→LOW)")
+            # LOW left alone — already at the floor; existing calibration
+            # gate handles LOW reject when its bucket is broken.
+
+    for key in ("short_term_picks", "long_term_picks", "recommended_stocks"):
+        picks = discovery_result.get(key)
+        if isinstance(picks, list):
+            gate_picks(picks)
+
+    summary.setdefault("downgraded", []).extend(downgraded)
+    return discovery_result
+
+
+_THESIS_REUSE_WINDOW_DAYS = 30
+"""How far back to look for a prior pick of the same ticker before
+treating it as 'fresh'. 30 days roughly matches the long_term holding
+window of 6–12 months sliced into review cycles; reuse within this
+window without a new catalyst is the failure mode that produced the
+ANYCOLOR 5032.T -22% case (4/28 MEDIUM_UP +3.16% win → 5/22 same
+thesis re-pick, -21.98% loss)."""
+
+_THESIS_REUSE_JACCARD_THRESHOLD = 0.7
+"""Jaccard overlap on fired-signal sets above which we treat the
+incoming pick as 'same thesis' as the prior one. 0.7 is conservative —
+genuine fresh catalysts will usually shift at least 30 % of the
+fingerprint (new earnings beat / new sector_rotation / new
+volume_breakout) while pure copy/paste re-picks score near 1.0."""
+
+
+def _signal_set(comp: dict | None) -> set[str]:
+    """Set of signal keys that fired (= value truthy). Empty set for
+    missing / non-dict / all-false."""
+    if not isinstance(comp, dict):
+        return set()
+    return {k for k, v in comp.items() if v}
+
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    union = a | b
+    if not union:
+        return 0.0
+    return len(a & b) / len(union)
+
+
+def enforce_thesis_reuse_guard(
+    holdings_result: dict | None,
+    discovery_result: dict | None,
+    summary: dict[str, list[str]],
+    history: dict | None,
+    signal_components_by_ticker: dict[str, dict[str, bool]] | None,
+    today_iso: str | None = None,
+) -> tuple[dict | None, dict | None]:
+    """Cap confidence on picks that re-use a prior thesis within the
+    look-back window.
+
+    Failure mode this addresses: the AI re-picks a ticker it picked
+    recently using essentially the same fired-signal fingerprint
+    (low_peg_ratio + revenue_growth + analyst_target_upside …) without
+    a new catalyst. Whether the prior pick won or lost, riding the
+    same thesis a second time tends to catch the price *after* the
+    move played out the first time — exactly the value-trap / momentum
+    fade pattern that just produced ANYCOLOR -22 % on 5032.T.
+
+    Holdings are out of scope: we already own them, the question of
+    "should the AI be re-recommending them" doesn't apply the same
+    way. Discovery (short_term / long_term) is where reuse hurts.
+
+    The guard is a *soft* downgrade — HIGH → MEDIUM only. MEDIUM and
+    LOW are left alone because (a) the AI's MEDIUM/LOW already signals
+    less conviction, and (b) over-correcting MEDIUM → LOW interacts
+    badly with the existing calibration gate (compound demotion).
+
+    Inputs that may be missing safely:
+    - ``history is None`` or no ``predictions`` → no-op (no prior to
+      compare against, e.g. first run on a fresh repo).
+    - ``signal_components_by_ticker is None`` or missing a ticker →
+      that pick is skipped; we don't guess from reasons text because
+      the signature would be too noisy.
+    - Prior pick of the same ticker has no ``signal_components`` saved
+      (early predictions before signal logging landed) → skipped, no
+      false-positive downgrade.
+    """
+    if discovery_result is None:
+        return holdings_result, discovery_result
+    if not isinstance(history, dict):
+        return holdings_result, discovery_result
+    predictions = history.get("predictions")
+    if not isinstance(predictions, list) or not predictions:
+        return holdings_result, discovery_result
+
+    # Most-recent saved prediction per ticker within the window. Sort
+    # by date desc and take first hit per ticker.
+    from datetime import date, datetime, timedelta
+
+    if today_iso is not None:
+        try:
+            cutoff = date.fromisoformat(today_iso) - timedelta(days=_THESIS_REUSE_WINDOW_DAYS)
+        except ValueError:
+            cutoff = datetime.now().date() - timedelta(days=_THESIS_REUSE_WINDOW_DAYS)
+    else:
+        cutoff = datetime.now().date() - timedelta(days=_THESIS_REUSE_WINDOW_DAYS)
+    cutoff_iso = cutoff.isoformat()
+
+    latest_by_ticker: dict[str, dict] = {}
+    for p in sorted(predictions, key=lambda x: x.get("date", ""), reverse=True):
+        ticker = p.get("ticker")
+        if not ticker or ticker in latest_by_ticker:
+            continue
+        if (p.get("date") or "") < cutoff_iso:
+            continue
+        latest_by_ticker[ticker] = p
+
+    if not latest_by_ticker:
+        return holdings_result, discovery_result
+
+    components = signal_components_by_ticker or {}
+    downgraded: list[str] = []
+
+    def apply_guard(picks: list[dict]) -> None:
+        for p in picks:
+            ticker = p.get("ticker")
+            conf = (p.get("confidence") or "MEDIUM").upper()
+            if not ticker or conf != "HIGH":
+                continue
+            prior = latest_by_ticker.get(ticker)
+            if prior is None:
+                continue
+            prior_signals = _signal_set(prior.get("signal_components"))
+            current_signals = _signal_set(components.get(ticker))
+            if not prior_signals or not current_signals:
+                continue
+            sim = _jaccard(prior_signals, current_signals)
+            if sim < _THESIS_REUSE_JACCARD_THRESHOLD:
+                continue
+            # High Jaccard within window → reuse without new catalyst
+            p["confidence_pre_thesis_guard"] = "HIGH"
+            p["confidence"] = "MEDIUM"
+            p["thesis_reuse_jaccard"] = round(sim, 2)
+            p["thesis_reuse_prior_date"] = prior.get("date")
+            p["thesis_reuse_prior_status"] = prior.get("status")
+            downgraded.append(
+                f"{ticker}(reuse jaccard={sim:.2f} vs {prior.get('date')}/{prior.get('status', 'pending')})"
+            )
+
+    for key in ("short_term_picks", "long_term_picks", "recommended_stocks"):
+        picks = discovery_result.get(key)
+        if isinstance(picks, list):
+            apply_guard(picks)
+
+    summary.setdefault("downgraded", []).extend(downgraded)
     return holdings_result, discovery_result
 
 

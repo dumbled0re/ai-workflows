@@ -9,6 +9,8 @@ from stock_analyzer.critic import (
     build_critic_prompt,
     enforce_calibration_gate,
     enforce_discovery_cap,
+    enforce_thesis_reuse_guard,
+    enforce_walkforward_soft_gate,
     format_summary_for_slack,
     load_critique_result,
 )
@@ -437,6 +439,59 @@ def test_calibration_gate_recent_drift_downgrades_medium_up_to_low() -> None:
     assert any("UP1.T" in d and "recent-drift" in d for d in summary["downgraded"])
 
 
+def test_calibration_gate_recent_drift_does_not_touch_holdings_medium() -> None:
+    """Source-aware: the recent-drift MEDIUM→LOW step only applies to
+    discovery picks. Holdings MEDIUM is left alone even when the drift
+    gate fires for the same direction. Long-run per-bucket downgrades
+    (e.g. HIGH→MEDIUM) still apply to holdings — only the drift-only
+    widening is source-restricted."""
+    holdings = {
+        "holdings": [
+            {"ticker": "HOLD_UP.T", "prediction": "UP", "confidence": "MEDIUM"},
+            {"ticker": "HOLD_HIGH.T", "prediction": "UP", "confidence": "HIGH"},
+        ]
+    }
+    discovery = {
+        "short_term_picks": [_pick("DISC_UP.T", prediction="UP", confidence="MEDIUM")],
+        "long_term_picks": [],
+    }
+    summary: dict[str, list[str]] = {"kept": [], "downgraded": [], "rejected": []}
+    perf_stats = {
+        "by_confidence_direction": {
+            # Long-run UP buckets fine — only drift extends the gate.
+            "MEDIUM_UP": {"total": 244, "wins": 142, "accuracy_pct": 58.2},
+            # HIGH_UP broken at long-run level — so HIGH should still get
+            # downgraded across BOTH sources.
+            "HIGH_UP": {"total": 13, "wins": 5, "accuracy_pct": 38.5},
+        },
+        "drift_indicator": {
+            "is_drift": True,
+            "recent_expectancy_pct": -3.66,
+            "p_value": 0.004,
+        },
+        "recent_direction_winrate": {
+            "recent_n": 14,
+            "UP": {"n": 9, "wins": 1, "winrate_pct": 11.1, "mean_dir_return_pct": -5.0},
+            "DOWN": None,
+        },
+    }
+    h2, d2 = enforce_calibration_gate(holdings, discovery, summary, perf_stats)
+    # Holdings MEDIUM_UP → untouched (source-aware drift exemption).
+    holdings_picks = h2["holdings"] if h2 else []
+    hu_medium = next(p for p in holdings_picks if p["ticker"] == "HOLD_UP.T")
+    assert hu_medium["confidence"] == "MEDIUM"
+    assert "confidence_pre_calibration_gate" not in hu_medium
+    # Holdings HIGH_UP → still downgraded to MEDIUM (long-run gate applies).
+    hu_high = next(p for p in holdings_picks if p["ticker"] == "HOLD_HIGH.T")
+    assert hu_high["confidence"] == "MEDIUM"
+    assert hu_high["confidence_pre_calibration_gate"] == "HIGH"
+    # Discovery MEDIUM_UP → still stepped down to LOW by the drift gate.
+    disc_picks = d2["short_term_picks"] if d2 else []
+    disc = disc_picks[0]
+    assert disc["confidence"] == "LOW"
+    assert disc["confidence_pre_calibration_gate"] == "MEDIUM"
+
+
 def test_calibration_gate_recent_drift_inactive_when_recent_expectancy_positive() -> None:
     """Drift signal alone isn't enough — we require recent EV < 0 too so
     a positive-EV drift (improvement) doesn't punish picks."""
@@ -476,6 +531,266 @@ def test_calibration_gate_no_op_when_no_performance_stats() -> None:
     h2, d2 = enforce_calibration_gate(None, discovery, summary, None)
     assert h2 is None
     assert d2 is not None and d2["short_term_picks"][0]["confidence"] == "HIGH"
+
+
+def test_thesis_reuse_guard_caps_high_to_medium_on_jaccard_overlap() -> None:
+    """Same ticker re-picked within 30 days with ~identical signal
+    fingerprint → HIGH→MEDIUM with marker fields set."""
+    discovery = {
+        "short_term_picks": [],
+        "long_term_picks": [_pick("5032.T", prediction="UP", confidence="HIGH")],
+    }
+    summary: dict[str, list[str]] = {"kept": [], "downgraded": [], "rejected": []}
+    history = {
+        "predictions": [
+            {
+                "ticker": "5032.T",
+                "date": "2026-05-15",
+                "status": "win",
+                "signal_components": {
+                    "rsi_healthy_momentum": True,
+                    "sma25_breakout": True,
+                    "per_value": True,
+                    "roe_profitable": True,
+                    "revenue_growth": True,
+                    "low_peg_ratio": True,
+                    "analyst_target_upside": True,
+                },
+            }
+        ]
+    }
+    components = {
+        "5032.T": {
+            "rsi_healthy_momentum": True,
+            "sma25_breakout": True,
+            "per_value": True,
+            "roe_profitable": True,
+            "revenue_growth": True,
+            "low_peg_ratio": True,
+            "analyst_target_upside": True,
+        }
+    }
+    _, d2 = enforce_thesis_reuse_guard(
+        None,
+        discovery,
+        summary,
+        history,
+        components,
+        today_iso="2026-06-05",
+    )
+    assert d2 is not None
+    pick = d2["long_term_picks"][0]
+    assert pick["confidence"] == "MEDIUM"
+    assert pick["confidence_pre_thesis_guard"] == "HIGH"
+    assert pick["thesis_reuse_jaccard"] == 1.0
+    assert pick["thesis_reuse_prior_date"] == "2026-05-15"
+    assert pick["thesis_reuse_prior_status"] == "win"
+    assert any("5032.T" in d and "reuse" in d for d in summary["downgraded"])
+
+
+def test_thesis_reuse_guard_skips_when_outside_window() -> None:
+    """Prior pick older than 30 days → guard does not fire."""
+    discovery = {
+        "short_term_picks": [],
+        "long_term_picks": [_pick("5032.T", prediction="UP", confidence="HIGH")],
+    }
+    summary: dict[str, list[str]] = {"kept": [], "downgraded": [], "rejected": []}
+    history = {
+        "predictions": [
+            {
+                "ticker": "5032.T",
+                "date": "2026-04-01",  # > 30 days before today_iso
+                "status": "win",
+                "signal_components": {"rsi_healthy_momentum": True, "per_value": True},
+            }
+        ]
+    }
+    components = {"5032.T": {"rsi_healthy_momentum": True, "per_value": True}}
+    _, d2 = enforce_thesis_reuse_guard(
+        None,
+        discovery,
+        summary,
+        history,
+        components,
+        today_iso="2026-06-05",
+    )
+    assert d2 is not None
+    pick = d2["long_term_picks"][0]
+    assert pick["confidence"] == "HIGH"
+    assert "confidence_pre_thesis_guard" not in pick
+
+
+def test_thesis_reuse_guard_skips_low_jaccard() -> None:
+    """Same ticker but signal fingerprint is mostly different
+    (new catalyst signature) → guard does not fire."""
+    discovery = {
+        "short_term_picks": [],
+        "long_term_picks": [_pick("5032.T", prediction="UP", confidence="HIGH")],
+    }
+    summary: dict[str, list[str]] = {"kept": [], "downgraded": [], "rejected": []}
+    history = {
+        "predictions": [
+            {
+                "ticker": "5032.T",
+                "date": "2026-05-20",
+                "status": "win",
+                "signal_components": {"rsi_healthy_momentum": True, "per_value": True},
+            }
+        ]
+    }
+    # Mostly disjoint new fingerprint — only 1 of 5 overlaps.
+    components = {
+        "5032.T": {
+            "earnings_beat": True,
+            "volume_breakout": True,
+            "forward_estimate_raise": True,
+            "sector_rotation": True,
+            "rsi_healthy_momentum": True,
+        }
+    }
+    _, d2 = enforce_thesis_reuse_guard(
+        None,
+        discovery,
+        summary,
+        history,
+        components,
+        today_iso="2026-06-05",
+    )
+    assert d2 is not None
+    pick = d2["long_term_picks"][0]
+    assert pick["confidence"] == "HIGH"
+    assert "confidence_pre_thesis_guard" not in pick
+
+
+def test_thesis_reuse_guard_only_caps_high() -> None:
+    """MEDIUM and LOW are left alone — compound demotion with the
+    calibration gate would over-correct."""
+    discovery = {
+        "short_term_picks": [],
+        "long_term_picks": [
+            _pick("A.T", prediction="UP", confidence="MEDIUM"),
+            _pick("B.T", prediction="UP", confidence="LOW"),
+        ],
+    }
+    summary: dict[str, list[str]] = {"kept": [], "downgraded": [], "rejected": []}
+    sigs = {"per_value": True, "revenue_growth": True}
+    history = {
+        "predictions": [
+            {"ticker": "A.T", "date": "2026-05-20", "status": "win", "signal_components": sigs},
+            {"ticker": "B.T", "date": "2026-05-20", "status": "loss", "signal_components": sigs},
+        ]
+    }
+    components = {"A.T": dict(sigs), "B.T": dict(sigs)}
+    _, d2 = enforce_thesis_reuse_guard(
+        None,
+        discovery,
+        summary,
+        history,
+        components,
+        today_iso="2026-06-05",
+    )
+    assert d2 is not None
+    assert d2["long_term_picks"][0]["confidence"] == "MEDIUM"
+    assert d2["long_term_picks"][1]["confidence"] == "LOW"
+
+
+def test_thesis_reuse_guard_holdings_out_of_scope() -> None:
+    """Holdings entries are not inspected — we already own them."""
+    holdings = {
+        "holdings_analysis": [_pick("A.T", prediction="UP", confidence="HIGH")],
+    }
+    summary: dict[str, list[str]] = {"kept": [], "downgraded": [], "rejected": []}
+    sigs = {"per_value": True, "revenue_growth": True}
+    history = {
+        "predictions": [
+            {"ticker": "A.T", "date": "2026-05-20", "status": "win", "signal_components": sigs},
+        ]
+    }
+    components = {"A.T": dict(sigs)}
+    h2, _ = enforce_thesis_reuse_guard(
+        holdings,
+        {"short_term_picks": [], "long_term_picks": []},
+        summary,
+        history,
+        components,
+        today_iso="2026-06-05",
+    )
+    assert h2 is not None
+    assert h2["holdings_analysis"][0]["confidence"] == "HIGH"
+
+
+def test_thesis_reuse_guard_no_op_without_history() -> None:
+    discovery = {"short_term_picks": [], "long_term_picks": [_pick("A.T", confidence="HIGH")]}
+    summary: dict[str, list[str]] = {"kept": [], "downgraded": [], "rejected": []}
+    _, d2 = enforce_thesis_reuse_guard(None, discovery, summary, None, None)
+    assert d2 is not None
+    assert d2["long_term_picks"][0]["confidence"] == "HIGH"
+
+
+def test_walkforward_gate_downgrades_picks_below_top_n_threshold() -> None:
+    """A HIGH pick whose deterministic screening score is below the
+    Nth-ranked candidate's score gets HIGH→MEDIUM with marker fields."""
+    discovery = {
+        "short_term_picks": [_pick("BELOW.T", confidence="HIGH")],
+        "long_term_picks": [_pick("ABOVE.T", confidence="HIGH"), _pick("MED.T", confidence="MEDIUM")],
+    }
+    summary: dict[str, list[str]] = {"kept": [], "downgraded": [], "rejected": []}
+    weights = {
+        "rsi_oversold_recovery": 8,
+        "volume_spike": 10,
+        "per_value": 2,
+        "revenue_growth": 3,
+        "pbr_undervalued": 8,
+        "dividend_yield": 4,
+    }
+    components = {
+        "TOP1.T": {"volume_spike": True, "pbr_undervalued": True, "dividend_yield": True},  # 22
+        "TOP2.T": {"volume_spike": True, "rsi_oversold_recovery": True},  # 18
+        "TOP3.T": {"volume_spike": True, "per_value": True, "revenue_growth": True},  # 15
+        "TOP4.T": {"pbr_undervalued": True, "rsi_oversold_recovery": True},  # 16
+        "TOP5.T": {"pbr_undervalued": True, "per_value": True, "revenue_growth": True},  # 13
+        "TOP6.T": {"per_value": True, "revenue_growth": True, "dividend_yield": True},  # 9
+        "ABOVE.T": {"volume_spike": True, "pbr_undervalued": True},  # 18 — above 6th
+        "BELOW.T": {"per_value": True, "revenue_growth": True},  # 5 — below 6th
+        "MED.T": {"per_value": True},  # 2 — also below 6th
+    }
+    d2 = enforce_walkforward_soft_gate(discovery, summary, components, weights, top_n=6)
+    assert d2 is not None
+    # ABOVE.T survives untouched (its score 18 ≥ threshold).
+    above = next(p for p in d2["long_term_picks"] if p["ticker"] == "ABOVE.T")
+    assert above["confidence"] == "HIGH"
+    assert "confidence_pre_walkforward_gate" not in above
+    # BELOW.T HIGH → MEDIUM (its score 5 < threshold).
+    below = next(p for p in d2["short_term_picks"] if p["ticker"] == "BELOW.T")
+    assert below["confidence"] == "MEDIUM"
+    assert below["confidence_pre_walkforward_gate"] == "HIGH"
+    assert below["walkforward_score"] == 5.0
+    assert isinstance(below["walkforward_threshold"], float)
+    # MED.T MEDIUM → LOW (same below-threshold but starts a notch lower).
+    med = next(p for p in d2["long_term_picks"] if p["ticker"] == "MED.T")
+    assert med["confidence"] == "LOW"
+    assert med["confidence_pre_walkforward_gate"] == "MEDIUM"
+
+
+def test_walkforward_gate_no_op_when_fewer_than_top_n_candidates() -> None:
+    """Without enough screened candidates, the threshold would be
+    trivially satisfied and gating becomes meaningless — no-op."""
+    discovery = {"short_term_picks": [_pick("A.T", confidence="HIGH")], "long_term_picks": []}
+    summary: dict[str, list[str]] = {"kept": [], "downgraded": [], "rejected": []}
+    components = {"A.T": {"per_value": True}}  # only 1 candidate, top_n=6
+    weights = {"per_value": 2}
+    d2 = enforce_walkforward_soft_gate(discovery, summary, components, weights, top_n=6)
+    assert d2 is not None
+    assert d2["short_term_picks"][0]["confidence"] == "HIGH"
+
+
+def test_walkforward_gate_no_op_without_weights() -> None:
+    discovery = {"short_term_picks": [_pick("A.T", confidence="HIGH")], "long_term_picks": []}
+    summary: dict[str, list[str]] = {"kept": [], "downgraded": [], "rejected": []}
+    components = {f"T{i}.T": {"per_value": True} for i in range(10)}
+    d2 = enforce_walkforward_soft_gate(discovery, summary, components, None, top_n=6)
+    assert d2 is not None
+    assert d2["short_term_picks"][0]["confidence"] == "HIGH"
 
 
 def test_coerce_downgrade_handles_unknown_values_safely() -> None:

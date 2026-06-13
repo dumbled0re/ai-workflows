@@ -659,6 +659,52 @@ def test_recent_direction_winrate_returns_none_below_min_dir_n() -> None:
     assert rdw["DOWN"] is None
 
 
+def test_by_regime_splits_trades_by_regime_field() -> None:
+    """Each prediction's stamped regime drives the by_regime bucket;
+    UP/DOWN sub-buckets reflect within-regime direction accuracy."""
+    rows = []
+    # Regime A: 6 trades (4 UP wins, 2 UP losses) → 66.7%
+    for i in range(1, 7):
+        status = "win" if i <= 4 else "loss"
+        ret = 3.0 if status == "win" else -2.0
+        p = _resolved_dir("UP", status, ret, f"2026-01-{i:02d}", ticker=f"A{i}.T")
+        p["regime"] = "上昇トレンド"
+        rows.append(p)
+    # Regime B: 5 trades (2 wins, 3 losses) → 40%
+    for i in range(1, 6):
+        status = "win" if i <= 2 else "loss"
+        ret = 2.5 if status == "win" else -3.0
+        p = _resolved_dir("UP", status, ret, f"2026-02-{i:02d}", ticker=f"B{i}.T")
+        p["regime"] = "高ボラティリティ"
+        rows.append(p)
+    # Regime C: 3 trades — should be filtered by min_n
+    for i in range(1, 4):
+        p = _resolved_dir("UP", "win", 1.5, f"2026-03-{i:02d}", ticker=f"C{i}.T")
+        p["regime"] = "レンジ相場"
+        rows.append(p)
+
+    stats = compute_performance_stats({"predictions": rows})
+    by_regime = stats.get("by_regime")
+    assert by_regime is not None
+    assert "上昇トレンド" in by_regime
+    assert "高ボラティリティ" in by_regime
+    assert "レンジ相場" not in by_regime  # below min_n=5
+    assert by_regime["上昇トレンド"]["n"] == 6
+    assert by_regime["上昇トレンド"]["accuracy_pct"] == 66.7
+    assert by_regime["高ボラティリティ"]["accuracy_pct"] == 40.0
+    # UP sub-bucket present.
+    assert "UP" in by_regime["上昇トレンド"]["by_direction"]
+    assert by_regime["上昇トレンド"]["by_direction"]["UP"]["wins"] == 4
+
+
+def test_by_regime_absent_when_no_regime_stamped() -> None:
+    """Legacy predictions without a regime field → no bucket emitted."""
+    rows = [_resolved_dir("UP", "win", 2.0, f"2026-01-{i:02d}", ticker=f"L{i}.T") for i in range(1, 7)]
+    # Don't stamp regime field.
+    stats = compute_performance_stats({"predictions": rows})
+    assert "by_regime" not in stats
+
+
 def test_recent_direction_winrate_absent_when_history_tiny() -> None:
     """Below the min_dir_n threshold across the whole history, the stat
     is suppressed entirely."""

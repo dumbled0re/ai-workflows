@@ -180,6 +180,7 @@ def save_new_predictions(
     today: str | None = None,
     signal_components: dict[str, dict[str, bool]] | None = None,
     pre_entry_metrics: dict[str, dict[str, float]] | None = None,
+    regime: str | None = None,
 ) -> dict:
     """Extract new predictions from Claude's analysis results and add to history.
 
@@ -248,6 +249,7 @@ def save_new_predictions(
                 "days_held": None,
                 "signal_components": sig_lookup.get(ticker, {}),
                 "pre_entry_metrics": pem_lookup.get(ticker, {}),
+                "regime": regime,
             }
         )
         new_count += 1
@@ -295,6 +297,7 @@ def save_new_predictions(
                 "days_held": None,
                 "signal_components": sig_lookup.get(ticker, {}),
                 "pre_entry_metrics": pem_lookup.get(ticker, {}),
+                "regime": regime,
             }
         )
         new_count += 1
@@ -338,6 +341,7 @@ def save_new_predictions(
                 "days_held": None,
                 "signal_components": sig_lookup.get(ticker, {}),
                 "pre_entry_metrics": pem_lookup.get(ticker, {}),
+                "regime": regime,
             }
         )
         new_count += 1
@@ -583,6 +587,17 @@ def compute_performance_stats(history: dict) -> dict:
     rdw = _compute_recent_direction_winrate(resolved, recent_n=14, min_dir_n=5)
     if rdw is not None:
         stats["recent_direction_winrate"] = rdw
+
+    # by_regime breakdown: split resolved trades by the regime stamped
+    # at prediction-save time. Earlier predictions don't carry a regime
+    # field (added 2026-06-13); only those with a non-null regime are
+    # included so the bucket stays clean. Reads as "in which market
+    # backdrop is the AI's selection actually working?" — the data
+    # the Bayesian weight proposal needs before we widen defensive
+    # boosts.
+    by_regime = _compute_by_regime(resolved, min_n=5)
+    if by_regime:
+        stats["by_regime"] = by_regime
 
     # Calibration zone: codex 設計相談 (issue #46) に基づく階層化 circuit
     # breaker。HIGH/MEDIUM accuracy ratio + rolling Sharpe + drift を
@@ -1191,6 +1206,65 @@ def _compute_drift_indicator(
         "recent_n": len(recent_returns),
         "baseline_n": len(baseline_returns),
     }
+
+
+def _compute_by_regime(
+    resolved: list[dict],
+    min_n: int = 5,
+) -> dict | None:
+    """Group resolved trades by the regime stamped at prediction time.
+
+    Output: ``{regime: {n, wins, accuracy_pct, mean_dir_return_pct,
+    by_direction: {UP|DOWN: {...}}}}``. Regimes with fewer than
+    ``min_n`` resolved trades are dropped from the result (the
+    sample is too small for a reliable rate). Returns ``None``
+    when no resolved trade carries a regime field — e.g. when only
+    legacy data exists before regime stamping landed.
+    """
+    from collections import defaultdict
+
+    buckets: dict[str, list[dict]] = defaultdict(list)
+    for p in resolved:
+        regime = p.get("regime")
+        if not isinstance(regime, str) or not regime:
+            continue
+        buckets[regime].append(p)
+
+    if not buckets:
+        return None
+
+    out: dict[str, dict] = {}
+    for regime_name, items in buckets.items():
+        if len(items) < min_n:
+            continue
+        wins = sum(1 for p in items if p.get("status") == "win")
+        dir_returns = [r for r in (_directional_return(p) for p in items) if r is not None]
+        mean_dir = sum(dir_returns) / len(dir_returns) if dir_returns else 0.0
+        # Per-direction sub-buckets (no min_n filter — UP/DOWN within a
+        # regime are reported even at small n because the size flags
+        # itself as caveat).
+        by_dir: dict[str, dict] = {}
+        for direction in ("UP", "DOWN"):
+            in_dir = [p for p in items if p.get("prediction") == direction]
+            if not in_dir:
+                continue
+            d_wins = sum(1 for p in in_dir if p.get("status") == "win")
+            d_returns = [r for r in (_directional_return(p) for p in in_dir) if r is not None]
+            d_mean = sum(d_returns) / len(d_returns) if d_returns else 0.0
+            by_dir[direction] = {
+                "n": len(in_dir),
+                "wins": d_wins,
+                "winrate_pct": round(d_wins / len(in_dir) * 100, 1),
+                "mean_dir_return_pct": round(d_mean, 2),
+            }
+        out[regime_name] = {
+            "n": len(items),
+            "wins": wins,
+            "accuracy_pct": round(wins / len(items) * 100, 1),
+            "mean_dir_return_pct": round(mean_dir, 2),
+            "by_direction": by_dir,
+        }
+    return out or None
 
 
 def _compute_recent_direction_winrate(

@@ -164,20 +164,32 @@ DISCOVERY_PROMPT_TEMPLATE = """\
 - エントリーポイントが来ていない銘柄は選ばない
 - リスクリワード比が良い（上昇余地 > 下落リスク）
 - カタリスト（決算、材料、出来高急増）がある
+- prediction は UP / DOWN / NO_TRADE のいずれか。買いだけでなく、明確な売り setup
+  (テクニカル + ファンダ + 需給がいずれも下方向) なら DOWN を出してよい。確信が
+  持てない銘柄は NO_TRADE または picks に入れない
 
 【長期投資候補（3-12ヶ月）】最大{top_n}銘柄
-- ファンダメンタルが優秀（高ROE、成長性、割安）
+- ファンダメンタルが優秀（高ROE、成長性、割安）であることは必要条件であって十分条件
+  ではない。エントリータイミング(price action / regime / catalyst freshness) も必ず確認
 - 業界内で競争優位性がある
 - 短期的には割安or横ばいでも、中長期で成長が見込める
 - 配当利回りや株主還元も考慮
+- prediction = UP に偏らないこと。長期 short / 長期 NO_TRADE も同等に正当な出力。
+  「ファンダ良いから取り敢えず UP」は禁止 — 価格が天井圏 / momentum が逆方向 /
+  regime mismatch / catalyst stale なら NO_TRADE か DOWN を出すこと
+- 同一銘柄を 30 日以内に再 pick する場合、前回採用 thesis (同じ reasons 集合) のまま
+  再提案するのは禁止。new catalyst / valuation reset / new technical setup のいずれか
+  を reasons[0] に明記。それが無い場合は再 pick せず別銘柄に回す
 
 該当銘柄がない場合は正直に空配列で回答してください。
 無理に{top_n}銘柄選ぶ必要はありません。short_term_picks は「今が買い時」と確信できる
 銘柄のみ。確信が持てない銘柄は picks に入れず、必要なら long_term_picks 側で再評価
-してください。「上記の UP予測ゲート」が prompt 内に存在する場合は、その指示を優先
-してください（短期 UP の制限がかかります）。
+してください。long_term_picks も「とりあえずファンダ良いもの」 を入れる場所ではない —
+入れない判断 (空配列) は明確な signal です。「上記の UP予測ゲート」が prompt 内に存在
+する場合は、その指示を優先してください。
 
-以下のJSON形式で回答してください:
+以下のJSON形式で回答してください。example はフォーマット説明用であり、
+UP/DOWN/NO_TRADE の分布バイアスを示唆するものではありません:
 {{
   "short_term_picks": [
     {{
@@ -186,10 +198,10 @@ DISCOVERY_PROMPT_TEMPLATE = """\
       "name": "企業名",
       "prediction": "UP",
       "confidence": "HIGH",
-      "expected_move": "+X%〜+Y% (Z週間)",
+      "expected_move": "+X%〜+Y% (Z週間) または -X%〜-Y% / range",
       "reasons": ["テクニカル根拠", "ファンダメンタル根拠", "カタリスト"],
       "risk_factor": "リスクの説明",
-      "entry_price": "推奨エントリー価格帯",
+      "entry_price": "推奨エントリー価格帯 (DOWN の場合は売り建てエントリー帯)",
       "stop_loss": "損切りライン",
       "target_price": "利確目標",
       "entry_strategy": "具体的なエントリー戦略（指値/成行、分割購入など）"
@@ -200,13 +212,26 @@ DISCOVERY_PROMPT_TEMPLATE = """\
       "rank": 1,
       "ticker": "XXXX.T",
       "name": "企業名",
-      "prediction": "UP",
-      "confidence": "HIGH",
-      "investment_thesis": "この銘柄に長期投資する理由（3-5文）",
-      "expected_return": "想定リターン（例: +20-30% / 6-12ヶ月）",
-      "reasons": ["成長性の根拠", "割安性の根拠", "競争優位性"],
+      "prediction": "DOWN",
+      "confidence": "MEDIUM",
+      "investment_thesis": "ファンダ表面割安だが forward 連続下方修正 + sector 否定、中期売り目線",
+      "expected_return": "-15〜-25% / 6-12ヶ月",
+      "reasons": ["成長性の劣化", "割安性の罠 (value trap)", "競争優位性の喪失"],
       "risk_factor": "リスクの説明",
-      "ideal_entry_zone": "理想的な買い場の価格帯",
+      "ideal_entry_zone": "理想的な売り建てゾーンの価格帯",
+      "dividend_info": "配当利回りや株主還元の情報"
+    }},
+    {{
+      "rank": 2,
+      "ticker": "YYYY.T",
+      "name": "企業名B",
+      "prediction": "NO_TRADE",
+      "confidence": "MEDIUM",
+      "investment_thesis": "ファンダ優秀だが価格が 52週高値圏で momentum 逆風。caught knife リスクが reward 超過",
+      "expected_return": "N/A (entry zone まで待ち)",
+      "reasons": ["fundamental は強い", "entry timing が悪い", "regime mismatch"],
+      "risk_factor": "上昇継続して機会損失",
+      "ideal_entry_zone": "再エントリー検討の価格帯 (e.g. -10% 押し)",
       "dividend_info": "配当利回りや株主還元の情報"
     }}
   ],
