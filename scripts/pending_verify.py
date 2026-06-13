@@ -427,40 +427,72 @@ def kind_strategy_change_metric_check(args: dict) -> VerifyResult:
             f"pre-activation sample = {len(pre)} (< min {min_trades}); not enough baseline to compare",
         )
 
-    def _slice_metric(sample: list[dict]) -> float | None:
-        if primary in ("net_expectancy.net_expectancy_pct", "net_expectancy_pct"):
-            # Mean directional return — what net_expectancy tracks.
-            returns = []
-            for p in sample:
-                r = p.get("actual_return_pct")
-                if r is None:
-                    continue
-                d = p.get("prediction")
-                if d == "UP":
-                    returns.append(float(r))
-                elif d == "DOWN":
-                    returns.append(-float(r))
-            if not returns:
-                return None
-            return sum(returns) / len(returns)
-        if primary in ("accuracy_pct",):
-            wins = sum(1 for p in sample if p.get("status") == "win")
-            return wins / len(sample) * 100
-        return None
+    def _verdict(metric: str) -> tuple[str, str]:
+        # We rebind the closure-captured ``_slice_metric`` for each
+        # metric name by reading the sample inside this helper.
+        def _slice(sample: list[dict], m: str) -> float | None:
+            if m in ("net_expectancy.net_expectancy_pct", "net_expectancy_pct"):
+                returns: list[float] = []
+                for p in sample:
+                    r = p.get("actual_return_pct")
+                    if r is None:
+                        continue
+                    d = p.get("prediction")
+                    if d == "UP":
+                        returns.append(float(r))
+                    elif d == "DOWN":
+                        returns.append(-float(r))
+                return sum(returns) / len(returns) if returns else None
+            if m == "accuracy_pct":
+                wins = sum(1 for p in sample if p.get("status") == "win")
+                return wins / len(sample) * 100 if sample else None
+            if m in ("up_winrate_pct", "recent_direction_winrate.UP.winrate_pct"):
+                up_pred = [p for p in sample if p.get("prediction") == "UP"]
+                if not up_pred:
+                    return None
+                return sum(1 for p in up_pred if p.get("status") == "win") / len(up_pred) * 100
+            if m in ("down_winrate_pct", "recent_direction_winrate.DOWN.winrate_pct"):
+                down_pred = [p for p in sample if p.get("prediction") == "DOWN"]
+                if not down_pred:
+                    return None
+                return sum(1 for p in down_pred if p.get("status") == "win") / len(down_pred) * 100
+            return None
 
-    pre_val = _slice_metric(pre)
-    post_val = _slice_metric(post)
-    if pre_val is None or post_val is None:
-        return VerifyResult("inconclusive", f"could not compute primary_metric={primary} on both slices")
-    delta = post_val - pre_val
-    # Treat |delta| < 0.5 (pp / %) as noise to avoid declaring victory
-    # over rounding error.
-    slice_note = f"pre={pre_val:.2f}, post={post_val:.2f}, n_post={len(post)}"
-    if abs(delta) < 0.5:
-        return VerifyResult("inconclusive", f"{primary} delta {delta:+.2f} within noise band ({slice_note})")
-    if (direction == "increase" and delta > 0) or (direction == "decrease" and delta < 0):
-        return VerifyResult("success", f"{primary} moved {delta:+.2f} in expected direction ({slice_note})")
-    return VerifyResult("failure", f"{primary} moved {delta:+.2f} AGAINST expected direction ({slice_note})")
+        pre_v = _slice(pre, metric)
+        post_v = _slice(post, metric)
+        if pre_v is None or post_v is None:
+            return ("inconclusive", f"{metric}: could not compute on both slices")
+        d = post_v - pre_v
+        det = f"{metric}: pre={pre_v:.2f}, post={post_v:.2f}, delta={d:+.2f}"
+        if abs(d) < 0.5:
+            return ("inconclusive", f"{det} (within noise band)")
+        if (direction == "increase" and d > 0) or (direction == "decrease" and d < 0):
+            return ("success", det)
+        return ("failure", det)
+
+    primary_verdict, primary_detail = _verdict(primary)
+    slice_note = f"n_post={len(post)}; {primary_detail}"
+
+    secondary_metrics_raw = args.get("secondary_metrics") or []
+    if isinstance(secondary_metrics_raw, list) and secondary_metrics_raw:
+        contradictory: list[str] = []
+        sec_details = []
+        for m in secondary_metrics_raw:
+            v, d = _verdict(str(m))
+            sec_details.append(f"{v}: {d}")
+            if (primary_verdict == "success" and v == "failure") or (
+                primary_verdict == "failure" and v == "success"
+            ):
+                contradictory.append(m)
+        full = f"{slice_note}; secondary=[{'; '.join(sec_details)}]"
+        if contradictory:
+            return VerifyResult(
+                "inconclusive",
+                f"primary={primary_verdict} but secondary contradicted: {contradictory}. {full}",
+            )
+        return VerifyResult(primary_verdict, full)
+
+    return VerifyResult(primary_verdict, slice_note)
 
 
 KIND_REGISTRY = {

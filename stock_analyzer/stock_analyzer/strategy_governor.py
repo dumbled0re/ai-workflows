@@ -578,6 +578,9 @@ def _persist_verify_artifacts(
         f"  primary_metric: net_expectancy.net_expectancy_pct\n"
         f"  improvement_direction: increase\n"
         f"  min_resolved_trades: {_DEFAULT_MIN_RESOLVED}\n"
+        f"  secondary_metrics:\n"
+        f"    - accuracy_pct\n"
+        f"    - up_winrate_pct\n"
         f"  rollback_snapshot: {snapshot_path.relative_to(_REPO_ROOT)}\n"
         f"max_attempts: 6\n"
         f"retry_after_hours: 72\n"
@@ -600,6 +603,279 @@ def _persist_verify_artifacts(
     if issue_url:
         summary["verify_ticket"] = issue_url
     return yaml_path
+
+
+# --- auto-rollback ---------------------------------------------------------
+
+
+def _slice_metric(metric: str, sample: list[dict]) -> float | None:
+    """Compute one of the supported scalar metrics over a sample of
+    resolved trades. ``None`` when the metric can't be computed (empty
+    sample, unsupported metric name).
+    """
+    if metric in ("net_expectancy.net_expectancy_pct", "net_expectancy_pct"):
+        returns: list[float] = []
+        for p in sample:
+            r = p.get("actual_return_pct")
+            if r is None:
+                continue
+            d = p.get("prediction")
+            if d == "UP":
+                returns.append(float(r))
+            elif d == "DOWN":
+                returns.append(-float(r))
+        return sum(returns) / len(returns) if returns else None
+    if metric == "accuracy_pct":
+        wins = sum(1 for p in sample if p.get("status") == "win")
+        return wins / len(sample) * 100 if sample else None
+    if metric in ("up_winrate_pct", "recent_direction_winrate.UP.winrate_pct"):
+        up = [p for p in sample if p.get("prediction") == "UP"]
+        if not up:
+            return None
+        return sum(1 for p in up if p.get("status") == "win") / len(up) * 100
+    if metric in ("down_winrate_pct", "recent_direction_winrate.DOWN.winrate_pct"):
+        down = [p for p in sample if p.get("prediction") == "DOWN"]
+        if not down:
+            return None
+        return sum(1 for p in down if p.get("status") == "win") / len(down) * 100
+    return None
+
+
+def _verdict_for_metric(
+    metric: str,
+    pre: list[dict],
+    post: list[dict],
+    direction: str,
+    noise_band_pp: float = 0.5,
+) -> tuple[str, str]:
+    """Single-metric pre-vs-post comparison → ``(verdict, detail)``.
+    Returns ``inconclusive`` when either slice can't compute or the
+    delta is in the noise band.
+    """
+    pre_val = _slice_metric(metric, pre)
+    post_val = _slice_metric(metric, post)
+    if pre_val is None or post_val is None:
+        return ("inconclusive", f"{metric}: could not compute on both slices")
+    delta = post_val - pre_val
+    detail = f"{metric}: pre={pre_val:.2f}, post={post_val:.2f}, delta={delta:+.2f}"
+    if abs(delta) < noise_band_pp:
+        return ("inconclusive", f"{detail} (within noise band)")
+    if (direction == "increase" and delta > 0) or (direction == "decrease" and delta < 0):
+        return ("success", detail)
+    return ("failure", detail)
+
+
+def evaluate_change_metric(
+    change_id: str,
+    perf_history: dict,
+    primary_metric: str = "net_expectancy.net_expectancy_pct",
+    improvement_direction: str = "increase",
+    min_resolved_trades: int = 14,
+    noise_band_pp: float = 0.5,
+    log: list[dict] | None = None,
+    secondary_metrics: list[str] | None = None,
+) -> tuple[str, str]:
+    """Re-run the metric check inline. Returns ``(verdict, detail)``
+    where verdict ∈ ``{"success","failure","inconclusive"}``.
+
+    Mirrors ``scripts/pending_verify.py:kind_strategy_change_metric_check``
+    so the governor can act on the same verdict without depending on
+    the verify cron's issue plumbing. Both paths read the same data
+    files and apply the same threshold so they agree by construction.
+
+    Secondary metrics (optional list of metric names) implement
+    "evidence stacking" — when the primary verdict is success or
+    failure but a secondary contradicts it (resolves with the opposite
+    direction signal), the verdict is downgraded to ``inconclusive``.
+    This catches false-positives where one metric moved due to mix
+    shift rather than genuine signal change.
+    """
+    entries = log if log is not None else load_change_log()
+    entry = next((e for e in entries if isinstance(e, dict) and e.get("change_id") == change_id), None)
+    if entry is None:
+        return ("inconclusive", f"change_id {change_id} not in change_log")
+    activation_iso = entry.get("activated_at")
+    if not activation_iso:
+        return ("inconclusive", "change_log entry missing activated_at")
+
+    resolved = [
+        p for p in perf_history.get("predictions", []) if p.get("status") in ("win", "loss") and p.get("reviewed_date")
+    ]
+    post = [p for p in resolved if (p.get("reviewed_date") or "") >= activation_iso]
+    if len(post) < min_resolved_trades:
+        return ("inconclusive", f"post-activation resolved trades = {len(post)} (< min {min_resolved_trades})")
+    pre = [p for p in resolved if (p.get("reviewed_date") or "") < activation_iso]
+    if len(pre) < min_resolved_trades:
+        return ("inconclusive", f"pre-activation sample = {len(pre)} (< min {min_resolved_trades})")
+
+    primary_verdict, primary_detail = _verdict_for_metric(
+        primary_metric, pre, post, improvement_direction, noise_band_pp=noise_band_pp
+    )
+    # Without secondary metrics the primary verdict stands as-is.
+    if not secondary_metrics:
+        return (primary_verdict, f"n_post={len(post)}, {primary_detail}")
+
+    contradictory: list[str] = []
+    secondary_details: list[str] = []
+    for m in secondary_metrics:
+        v, d = _verdict_for_metric(m, pre, post, improvement_direction, noise_band_pp=noise_band_pp)
+        secondary_details.append(f"{v}: {d}")
+        if (primary_verdict == "success" and v == "failure") or (primary_verdict == "failure" and v == "success"):
+            contradictory.append(m)
+    detail = f"n_post={len(post)}, primary={primary_detail}; secondary=[{'; '.join(secondary_details)}]"
+    if contradictory:
+        return (
+            "inconclusive",
+            f"primary={primary_verdict} but secondary contradicted: {contradictory}. {detail}",
+        )
+    return (primary_verdict, detail)
+
+
+def rollback_change(
+    change_id: str,
+    reason: str,
+    today: str | None = None,
+    log_path: Path | None = None,
+    weights_path: Path | None = None,
+    snapshot_dir: Path | None = None,
+) -> dict | None:
+    """Restore the pre-change weights snapshot for ``change_id`` and
+    record a new change_log entry with ``source="auto-rollback"``.
+
+    Idempotent: re-calling on an already-rolled-back entry is a no-op
+    (returns None, logs a debug line). Marks the original entry's
+    ``verify_status`` to ``failed_rolled_back`` so future passes
+    don't reprocess it.
+
+    Returns the new audit-log entry on success, ``None`` when no
+    rollback was performed (snapshot missing, original entry not
+    found, already rolled back, etc.).
+    """
+    if today is None:
+        today = datetime.now().strftime("%Y-%m-%d")
+
+    log = load_change_log(log_path)
+    target_idx: int | None = None
+    for i, entry in enumerate(log):
+        if isinstance(entry, dict) and entry.get("change_id") == change_id:
+            target_idx = i
+            break
+    if target_idx is None:
+        logger.warning("rollback_change: %s not in change_log; no-op", change_id)
+        return None
+    original = log[target_idx]
+    if original.get("verify_status") in ("failed_rolled_back", "passed"):
+        logger.debug("rollback_change: %s already finalised (%s); no-op", change_id, original.get("verify_status"))
+        return None
+
+    snapshot_d = snapshot_dir or _SNAPSHOT_DIR
+    snapshot_path = snapshot_d / f"{change_id}.json"
+    if not snapshot_path.exists():
+        logger.warning("rollback_change: snapshot missing for %s at %s", change_id, snapshot_path)
+        return None
+    try:
+        snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("rollback_change: failed to read snapshot for %s: %s", change_id, exc)
+        return None
+    before_weights = snapshot.get("active_weights_before")
+    if not isinstance(before_weights, dict):
+        logger.warning("rollback_change: snapshot for %s missing active_weights_before", change_id)
+        return None
+
+    weights_p = weights_path or _ACTIVE_WEIGHTS_FILE
+    current_raw = _load_json(weights_p, {})
+    restored_raw = dict(current_raw)
+    rolled: dict[str, float] = {}
+    for sig, prior_w in before_weights.items():
+        if isinstance(prior_w, int | float) and current_raw.get(sig) != prior_w:
+            restored_raw[sig] = prior_w
+            rolled[sig] = float(prior_w)
+    if not rolled:
+        # Snapshot matches current state — nothing to restore. Still
+        # mark the entry as rolled back so it doesn't loop.
+        log[target_idx]["verify_status"] = "failed_rolled_back"
+        log[target_idx]["rollback_at"] = today
+        save_change_log(log, log_path)
+        logger.info("rollback_change: snapshot for %s already equals current; marked rolled back", change_id)
+        return None
+
+    new_change_id = f"rb-{today}-{uuid.uuid4().hex[:8]}"
+    audit = {
+        "change_id": new_change_id,
+        "activated_at": today,
+        "sources": ["auto-rollback"],
+        "applied": {k: round(v) for k, v in rolled.items()},
+        "conflicts": [],
+        "before": {k: float(current_raw.get(k, 0)) for k in rolled},
+        "after": {k: float(v) for k, v in rolled.items()},
+        "reason": f"auto-rollback of {change_id}: {reason}",
+        "verify_status": "rolled_back",  # rollback itself is not subject to verify
+        "verify_ticket": None,
+        "rolled_back_change_id": change_id,
+    }
+    restored_raw["_last_applied"] = new_change_id
+    _save_json(weights_p, restored_raw)
+    log[target_idx]["verify_status"] = "failed_rolled_back"
+    log[target_idx]["rollback_at"] = today
+    log.append(audit)
+    save_change_log(log, log_path)
+    logger.warning(
+        "strategy_governor: auto-rolled back %s — restored %d weights to snapshot (new audit %s)",
+        change_id,
+        len(rolled),
+        new_change_id,
+    )
+    return audit
+
+
+def auto_rollback_failed_changes(
+    perf_history: dict,
+    today: str | None = None,
+    log_path: Path | None = None,
+    weights_path: Path | None = None,
+    snapshot_dir: Path | None = None,
+) -> list[str]:
+    """Inspect every ``pending`` entry in the change_log and rollback
+    the ones whose metric check now returns ``failure``.
+
+    Returns the list of change_ids that were rolled back. Intended to
+    be called once at the start of each cron's ``phase_prepare`` so
+    the rest of the run uses post-rollback weights when applicable.
+
+    Conservatism: ``inconclusive`` does **not** trigger rollback —
+    only an explicit ``failure`` verdict does. Inconclusive verdicts
+    return the change to the queue for next cron, matching the
+    pending_verify cron's retry semantics.
+    """
+    if today is None:
+        today = datetime.now().strftime("%Y-%m-%d")
+    entries = load_change_log(log_path)
+    rolled_back: list[str] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("verify_status") != "pending":
+            continue
+        # The audit entry from a rollback itself has verify_status =
+        # "rolled_back", so it's correctly skipped by the filter above.
+        change_id = entry.get("change_id")
+        if not change_id:
+            continue
+        verdict, detail = evaluate_change_metric(change_id, perf_history, log=entries)
+        if verdict != "failure":
+            continue
+        rolled = rollback_change(
+            change_id,
+            reason=detail,
+            today=today,
+            log_path=log_path,
+            weights_path=weights_path,
+            snapshot_dir=snapshot_dir,
+        )
+        if rolled is not None:
+            rolled_back.append(change_id)
+    return rolled_back
 
 
 # --- prompt helpers --------------------------------------------------------

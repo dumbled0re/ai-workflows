@@ -801,6 +801,61 @@ def test_recent_failure_block_emits_drift_and_direction_lines() -> None:
     assert "DOWN 60.0%" in block
 
 
+def test_recent_failure_block_lists_previously_rejected_tickers(tmp_path, monkeypatch) -> None:
+    """data/critic_decisions.json (last cron's verdicts) → block lists
+    reject + downgrade tickers so the AI doesn't reissue them without
+    fresh catalyst."""
+    # Build a fake critic_decisions.json under tmp_path mirroring the
+    # real layout, then point the module's _DATA_DIR-derived path at it.
+    fake_data_dir = tmp_path / "data"
+    fake_data_dir.mkdir()
+    (fake_data_dir / "critic_decisions.json").write_text(
+        '{"A.T": "reject", "B.T": "reject", "C.T": "downgrade", "D.T": "keep"}',
+        encoding="utf-8",
+    )
+    # The block resolves path via Path(__file__).parent.parent / "data";
+    # monkeypatch the module-level __file__ resolution by tweaking the
+    # CWD-relative join inside the function isn't easy. Simpler:
+    # we monkeypatch a synthetic Path constructor — but the simplest is
+    # to override the resolved path at runtime via env. The block reads
+    # straight from the project's data dir, so we substitute via a
+    # symlink-style trick: temporarily set the project's data file.
+    import stock_analyzer.performance_tracker as pt
+
+    real_path = pt.Path(pt.__file__).parent.parent / "data" / "critic_decisions.json"
+    backed_up = None
+    try:
+        if real_path.exists():
+            backed_up = real_path.read_text(encoding="utf-8")
+        real_path.parent.mkdir(parents=True, exist_ok=True)
+        real_path.write_text(
+            '{"A.T": "reject", "B.T": "reject", "C.T": "downgrade", "D.T": "keep"}',
+            encoding="utf-8",
+        )
+        history = {
+            "predictions": [],
+            "performance_stats": {
+                "drift_indicator": {
+                    "is_drift": True,
+                    "recent_n": 14,
+                    "recent_expectancy_pct": -1.0,
+                    "baseline_expectancy_pct": 1.0,
+                    "p_value": 0.04,
+                }
+            },
+        }
+        block = build_recent_failure_block(history)
+        assert "前回 cron で critic が落とした" in block
+        assert "A.T" in block and "B.T" in block
+        assert "C.T" in block
+        assert "D.T" not in block  # keep verdicts are not surfaced
+    finally:
+        if backed_up is not None:
+            real_path.write_text(backed_up, encoding="utf-8")
+        elif real_path.exists():
+            real_path.unlink()
+
+
 def test_recent_failure_block_emits_bad_regimes_only_when_threshold_breached() -> None:
     """Regime under 50 % with n ≥ 5 is surfaced; healthy regimes are
     not."""

@@ -23,9 +23,12 @@ import pytest
 from stock_analyzer.strategy_governor import (
     _MAX_PER_CHANGE_DELTA,
     attempt_apply,
+    auto_rollback_failed_changes,
+    evaluate_change_metric,
     governor_status_block,
     load_change_log,
     load_proposals,
+    rollback_change,
     submit_proposal,
 )
 
@@ -280,6 +283,256 @@ def test_attempt_apply_writes_verify_yaml_and_snapshot(tmp_path: Path, monkeypat
     assert snap["change_id"] == change_id
     assert snap["active_weights_before"] == {"per_value": 5}
     assert snap["applied"]["per_value"] == 9
+
+
+def _resolved_trade(date_iso: str, ret_pct: float, prediction: str = "UP", status: str | None = None) -> dict:
+    """Tiny helper for evaluator/auto-rollback tests."""
+    return {
+        "status": status or ("win" if ret_pct > 0 else "loss"),
+        "prediction": prediction,
+        "actual_return_pct": ret_pct,
+        "reviewed_date": date_iso,
+    }
+
+
+def test_evaluate_change_metric_success_when_post_better(tmp_path: Path) -> None:
+    """Post-activation expectancy meaningfully above pre → success."""
+    log = [
+        {
+            "change_id": "wts-x",
+            "activated_at": "2026-06-13",
+            "verify_status": "pending",
+            "applied": {"per_value": 9},
+        }
+    ]
+    pre = [_resolved_trade(f"2026-05-{d:02d}", 1.0) for d in range(1, 16)]
+    post = [_resolved_trade(f"2026-07-{d:02d}", 4.0) for d in range(1, 16)]
+    perf = {"predictions": pre + post}
+    verdict, detail = evaluate_change_metric("wts-x", perf, log=log)
+    assert verdict == "success"
+    assert "delta=+3.00" in detail
+
+
+def test_evaluate_change_metric_failure_when_post_worse() -> None:
+    log = [
+        {
+            "change_id": "wts-y",
+            "activated_at": "2026-06-13",
+            "verify_status": "pending",
+        }
+    ]
+    pre = [_resolved_trade(f"2026-05-{d:02d}", 2.0) for d in range(1, 16)]
+    post = [_resolved_trade(f"2026-07-{d:02d}", -3.0, status="loss") for d in range(1, 16)]
+    perf = {"predictions": pre + post}
+    verdict, _ = evaluate_change_metric("wts-y", perf, log=log)
+    assert verdict == "failure"
+
+
+def test_evaluate_change_metric_secondary_contradicts_downgrades_to_inconclusive() -> None:
+    """Primary says success but a secondary metric says failure →
+    downgrade to inconclusive. Prevents single-metric false positives
+    from triggering automatic verdicts."""
+    log = [
+        {
+            "change_id": "wts-mixed",
+            "activated_at": "2026-06-13",
+            "verify_status": "pending",
+        }
+    ]
+    # Pre: 15 UP @ +1.0 (wins), 15 DOWN @ -2.0 (wins) — net_expectancy
+    # = (15*1 + 15*2)/30 = 1.5, accuracy_pct = 100
+    pre = []
+    for d in range(1, 16):
+        pre.append(_resolved_trade(f"2026-05-{d:02d}", 1.0, prediction="UP"))
+    for d in range(1, 16):
+        pre.append(
+            {
+                "status": "win",
+                "prediction": "DOWN",
+                "actual_return_pct": -2.0,
+                "reviewed_date": f"2026-05-{15 + d:02d}",
+            }
+        )
+    # Post: 30 UP @ +4.0 (huge wins) — primary net_expectancy = 4.0 (up)
+    # but accuracy_pct still 100, no contradiction yet. To create
+    # contradiction, set post UP all losses with positive raw return…
+    # simpler: post net_expectancy IMPROVES but accuracy COLLAPSES.
+    post = []
+    # 20 UP wins @ +3% → net = +3, accuracy 100 within this sample → not contradictory
+    # Instead: post net up, but accuracy down by mixing big wins + small-but-many losses
+    # 5 UP wins @ +20% (net contribution huge), 10 UP losses @ -1.5%
+    for d in range(1, 6):
+        post.append(_resolved_trade(f"2026-07-{d:02d}", 20.0, prediction="UP"))
+    for d in range(6, 16):
+        post.append(_resolved_trade(f"2026-07-{d:02d}", -1.5, prediction="UP", status="loss"))
+    # Pre had: net 1.5 (sum 30*1.5 over 30 trades), accuracy 100.
+    # Post net: (5*20 + 10*-1.5)/15 = (100-15)/15 = 5.67 → SUCCESS
+    # Post accuracy: 5/15 = 33.3 → DOWN by 66.7pp → FAILURE
+    # → secondary contradicts → inconclusive.
+
+    perf = {"predictions": pre + post}
+    verdict, detail = evaluate_change_metric(
+        "wts-mixed",
+        perf,
+        log=log,
+        secondary_metrics=["accuracy_pct"],
+    )
+    assert verdict == "inconclusive"
+    assert "contradicted" in detail
+    assert "accuracy_pct" in detail
+
+
+def test_evaluate_change_metric_secondary_concurs_keeps_primary() -> None:
+    """When primary and all secondaries point the same way, the
+    primary verdict is preserved."""
+    log = [
+        {
+            "change_id": "wts-aligned",
+            "activated_at": "2026-06-13",
+            "verify_status": "pending",
+        }
+    ]
+    pre = [_resolved_trade(f"2026-05-{d:02d}", 1.0, prediction="UP") for d in range(1, 16)]
+    post = [_resolved_trade(f"2026-07-{d:02d}", 4.0, prediction="UP") for d in range(1, 16)]
+    perf = {"predictions": pre + post}
+    verdict, detail = evaluate_change_metric(
+        "wts-aligned",
+        perf,
+        log=log,
+        secondary_metrics=["accuracy_pct"],
+    )
+    assert verdict == "success"
+    assert "primary" in detail
+    assert "secondary" in detail
+
+
+def test_evaluate_change_metric_inconclusive_below_min_samples() -> None:
+    log = [
+        {
+            "change_id": "wts-z",
+            "activated_at": "2026-06-13",
+            "verify_status": "pending",
+        }
+    ]
+    # Only 5 post-trades → below default 14
+    pre = [_resolved_trade(f"2026-05-{d:02d}", 1.0) for d in range(1, 16)]
+    post = [_resolved_trade(f"2026-07-{d:02d}", 4.0) for d in range(1, 6)]
+    verdict, detail = evaluate_change_metric("wts-z", {"predictions": pre + post}, log=log)
+    assert verdict == "inconclusive"
+    assert "min" in detail
+
+
+def test_rollback_change_restores_snapshot_and_marks_entry(tmp_path: Path, monkeypatch) -> None:
+    """rollback_change copies snapshot's active_weights_before back to
+    the active file, appends an auto-rollback audit, and marks the
+    original entry as failed_rolled_back."""
+    weights_p = tmp_path / "weights.json"
+    log_p = tmp_path / "log.json"
+    snap_dir = tmp_path / "snapshots"
+    snap_dir.mkdir(parents=True)
+    # Active config reflects the (allegedly bad) post-change state.
+    _write_active(weights_p, {"per_value": 9, "dividend_yield": 4})
+    # Snapshot says before-change was per_value=5.
+    (snap_dir / "wts-bad.json").write_text(
+        json.dumps(
+            {
+                "change_id": "wts-bad",
+                "active_weights_before": {"per_value": 5, "dividend_yield": 4},
+            }
+        ),
+        encoding="utf-8",
+    )
+    log_p.write_text(
+        json.dumps(
+            [
+                {
+                    "change_id": "wts-bad",
+                    "activated_at": "2026-06-13",
+                    "verify_status": "pending",
+                    "applied": {"per_value": 9},
+                    "before": {"per_value": 5},
+                    "after": {"per_value": 9},
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    audit = rollback_change(
+        "wts-bad",
+        reason="metric regression",
+        today="2026-07-10",
+        log_path=log_p,
+        weights_path=weights_p,
+        snapshot_dir=snap_dir,
+    )
+    assert audit is not None
+    assert audit["sources"] == ["auto-rollback"]
+    assert audit["rolled_back_change_id"] == "wts-bad"
+    # Active weights restored.
+    assert json.loads(weights_p.read_text())["per_value"] == 5
+    # Original entry marked failed_rolled_back.
+    log_after = json.loads(log_p.read_text())
+    original = next(e for e in log_after if e["change_id"] == "wts-bad")
+    assert original["verify_status"] == "failed_rolled_back"
+    # New audit entry appended.
+    assert any(e["change_id"] == audit["change_id"] for e in log_after)
+
+
+def test_rollback_change_idempotent_on_already_finalised(tmp_path: Path) -> None:
+    weights_p = tmp_path / "weights.json"
+    log_p = tmp_path / "log.json"
+    _write_active(weights_p, {"per_value": 5})
+    log_p.write_text(
+        json.dumps(
+            [
+                {
+                    "change_id": "wts-already",
+                    "activated_at": "2026-06-13",
+                    "verify_status": "failed_rolled_back",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    result = rollback_change("wts-already", reason="x", log_path=log_p, weights_path=weights_p)
+    assert result is None
+    # Active config untouched.
+    assert json.loads(weights_p.read_text())["per_value"] == 5
+
+
+def test_auto_rollback_failed_changes_skips_inconclusive(tmp_path: Path) -> None:
+    """``inconclusive`` does NOT trigger rollback — the entry stays
+    pending for next cron's re-evaluation."""
+    weights_p = tmp_path / "weights.json"
+    log_p = tmp_path / "log.json"
+    snap_dir = tmp_path / "snapshots"
+    snap_dir.mkdir(parents=True)
+    _write_active(weights_p, {"per_value": 9})
+    log_p.write_text(
+        json.dumps(
+            [
+                {
+                    "change_id": "wts-recent",
+                    "activated_at": "2026-07-01",  # very recent
+                    "verify_status": "pending",
+                    "applied": {"per_value": 9},
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    # Only 3 post-trades → inconclusive due to min_resolved_trades=14
+    perf = {
+        "predictions": [
+            *(_resolved_trade(f"2026-06-{d:02d}", 1.0) for d in range(1, 16)),
+            *(_resolved_trade(f"2026-07-{d:02d}", -1.0, status="loss") for d in range(2, 5)),
+        ]
+    }
+    rolled = auto_rollback_failed_changes(perf, log_path=log_p, weights_path=weights_p, snapshot_dir=snap_dir)
+    assert rolled == []
+    # Status still pending.
+    assert json.loads(log_p.read_text())[0]["verify_status"] == "pending"
 
 
 def test_governor_status_block_summarises_latest_change() -> None:

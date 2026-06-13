@@ -818,6 +818,36 @@ def build_recent_failure_block(history: dict) -> str:
     except Exception:
         pass
 
+    # System filtering from the previous cron: which tickers the critic
+    # rejected / downgraded last time. Lets the AI see "this is what
+    # *your own critic* threw out yesterday — don't reissue these
+    # without an independent new catalyst." Reads critic_decisions.json
+    # if present (P3 wiring); legacy crons without that file get no
+    # extra line.
+    try:
+        from pathlib import Path as _P
+
+        decisions_path = _P(__file__).parent.parent / "data" / "critic_decisions.json"
+        if decisions_path.exists():
+            with open(decisions_path, encoding="utf-8") as f:
+                decisions = json.load(f)
+            if isinstance(decisions, dict):
+                rejected = [t for t, v in decisions.items() if v == "reject"]
+                downgraded = [t for t, v in decisions.items() if v == "downgrade"]
+                if rejected or downgraded:
+                    parts: list[str] = []
+                    if rejected:
+                        parts.append(f"reject={','.join(rejected[:8])}{'…' if len(rejected) > 8 else ''}")
+                    if downgraded:
+                        parts.append(f"downgrade={','.join(downgraded[:8])}{'…' if len(downgraded) > 8 else ''}")
+                    lines.append(
+                        "  - 前回 cron で critic が落とした銘柄 ("
+                        + " / ".join(parts)
+                        + ") — 新規 catalyst なしの再 pick 禁止"
+                    )
+    except Exception:
+        pass
+
     if not lines:
         return ""
     header = "=== 直近の失敗パターン (避けるべき条件) ==="

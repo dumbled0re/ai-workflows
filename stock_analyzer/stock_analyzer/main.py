@@ -148,6 +148,28 @@ def phase_prepare() -> None:
     # Phase 5 #46: Green zone 2 連続復帰 (= recovery_confirmed) で自動反映
     # を enable。drift 脱出が確認された後だけ proposed → active weights
     # に copy する。一気に反映しないよう、変化幅が大きい signal のみ移す。
+    # Auto-rollback: if any prior weight batch is still ``pending`` and the
+    # metric check now shows a clear regression, restore its snapshot
+    # before computing today's Bayesian proposal. Conservative — only
+    # explicit ``failure`` triggers rollback; ``inconclusive`` waits for
+    # next cron. The rollback writes a fresh change_log entry tagged
+    # ``auto-rollback`` so the audit trail stays linear.
+    try:
+        from stock_analyzer.strategy_governor import auto_rollback_failed_changes as _governor_auto_rollback
+
+        rolled_back_ids = _governor_auto_rollback(perf_history, today=now_jst.strftime("%Y-%m-%d"))
+        if rolled_back_ids:
+            # Reload weights post-rollback so the rest of this cron uses
+            # the restored values.
+            screening_weights = load_screening_weights()
+            logger.warning(
+                "strategy_governor auto-rolled back %d failed weight batches: %s",
+                len(rolled_back_ids),
+                ", ".join(rolled_back_ids),
+            )
+    except Exception:
+        logger.exception("auto-rollback failed (continuing without)")
+
     try:
         proposal = compute_bayesian_weight_proposal(perf_history, current_weights=screening_weights)
         if proposal.get("proposed"):
