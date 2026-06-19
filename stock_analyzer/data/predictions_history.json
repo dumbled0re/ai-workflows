@@ -5739,10 +5739,10 @@
       "ideal_entry_zone": "1850〜1920円（現値付近〜SMA25の1915円まで）",
       "source": "long_term",
       "status": "pending",
-      "actual_price": 1917.0,
-      "actual_return_pct": 2.02,
-      "reviewed_date": "2026-06-17",
-      "days_held": 37
+      "actual_price": 1900.5,
+      "actual_return_pct": 1.14,
+      "reviewed_date": "2026-06-19",
+      "days_held": 39
     },
     {
       "id": "2026-05-11_4768.T_long_term",
@@ -8871,10 +8871,10 @@
       "ideal_entry_zone": "1380〜1460円（現値付近から下への分割購入）",
       "source": "long_term",
       "status": "pending",
-      "actual_price": 1459.0,
-      "actual_return_pct": 1.35,
-      "reviewed_date": "2026-06-17",
-      "days_held": 29,
+      "actual_price": 1474.0,
+      "actual_return_pct": 2.4,
+      "reviewed_date": "2026-06-19",
+      "days_held": 31,
       "signal_components": {
         "rsi_oversold_recovery": true,
         "per_value": true,
@@ -12846,8 +12846,8 @@
       "ideal_entry_zone": "1,350〜1,420円（現在値1,394円近辺。BBロワー1,358.67円付近が理想的な押し目買い場。分散エントリー推奨）",
       "source": "long_term",
       "status": "pending",
-      "actual_price": 1396.0,
-      "actual_return_pct": 0.14,
+      "actual_price": 1377.0,
+      "actual_return_pct": -1.22,
       "reviewed_date": "2026-06-19",
       "days_held": 21,
       "signal_components": {
@@ -12900,10 +12900,10 @@
       "ideal_entry_zone": "1,850〜1,910円（現在値1,886円付近。BBミドル1,876円サポート確認後のエントリーが理想的）",
       "source": "long_term",
       "status": "pending",
-      "actual_price": 1917.0,
-      "actual_return_pct": 1.64,
-      "reviewed_date": "2026-06-17",
-      "days_held": 19,
+      "actual_price": 1900.5,
+      "actual_return_pct": 0.77,
+      "reviewed_date": "2026-06-19",
+      "days_held": 21,
       "signal_components": {
         "rsi_oversold_recovery": true,
         "sma25_breakout": true,
@@ -15102,9 +15102,9 @@
       "stop_loss": "719円（現在値757.7円から-5%）",
       "action": "保有継続（テクニカル改善+連続beat、損切り719円で厳格管理）",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": 750.2,
-      "actual_return_pct": -0.99,
+      "status": "loss",
+      "actual_price": 723.1,
+      "actual_return_pct": -4.57,
       "reviewed_date": "2026-06-19",
       "days_held": 11,
       "signal_components": {},
@@ -15122,8 +15122,8 @@
       "action": "トレーリングストップ526円維持（短期下降トレンド入りにつき利益保護を優先）",
       "source": "holdings",
       "status": "pending",
-      "actual_price": 580.0,
-      "actual_return_pct": -0.68,
+      "actual_price": 574.0,
+      "actual_return_pct": -1.71,
       "reviewed_date": "2026-06-19",
       "days_held": 11,
       "signal_components": {},
@@ -15311,8 +15311,8 @@
       "action": "保有継続（含み損-14.12%はギリギリ-15%閾値内、138円割れで即損切り）",
       "source": "holdings",
       "status": "pending",
-      "actual_price": 147.9,
-      "actual_return_pct": 1.3,
+      "actual_price": 144.4,
+      "actual_return_pct": -1.1,
       "reviewed_date": "2026-06-19",
       "days_held": 11,
       "signal_components": {},
@@ -15330,8 +15330,8 @@
       "action": "トレーリングストップ195円維持（短期下降トレンド入りで含み益+13.82%を保護）",
       "source": "holdings",
       "status": "pending",
-      "actual_price": 210.1,
-      "actual_return_pct": -0.76,
+      "actual_price": 210.6,
+      "actual_return_pct": -0.52,
       "reviewed_date": "2026-06-19",
       "days_held": 11,
       "signal_components": {},
@@ -15653,9 +15653,9 @@
       "stop_loss": "139円（現値146円から-4.8%、BB下限延長付近）",
       "action": "損切り推奨",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": 146.0,
-      "actual_return_pct": 0.0,
+      "status": "loss",
+      "actual_price": 155.0,
+      "actual_return_pct": 6.16,
       "reviewed_date": "2026-06-19",
       "days_held": 10,
       "signal_components": {},
@@ -15692,8 +15692,8 @@
       "action": "損切りライン144.5円到達前に撤退を検討",
       "source": "holdings",
       "status": "pending",
-      "actual_price": 147.9,
-      "actual_return_pct": 0.82,
+      "actual_price": 144.4,
+      "actual_return_pct": -1.57,
       "reviewed_date": "2026-06-19",
       "days_held": 10,
       "signal_components": {},
@@ -15786,9 +15786,9 @@
       "stop_loss": "112円（現在値121円から-7.4%、52週安値サポート割れ水準）",
       "action": "保有継続（112円以下で損切り、7/15決算動向に注目）",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": 119.0,
-      "actual_return_pct": -1.65,
+      "status": "win",
+      "actual_price": 115.0,
+      "actual_return_pct": -4.96,
       "reviewed_date": "2026-06-19",
       "days_held": 9,
       "signal_components": {},
@@ -15920,8 +15920,8 @@
       "action": "損切り",
       "source": "holdings",
       "status": "pending",
-      "actual_price": 750.2,
-      "actual_return_pct": 1.47,
+      "actual_price": 723.1,
+      "actual_return_pct": -2.19,
       "reviewed_date": "2026-06-19",
       "days_held": 9,
       "signal_components": {},
@@ -16033,9 +16033,9 @@
       "stop_loss": "即時損切り（現在値146円、含み損-25.89%で損切り基準大幅超過）",
       "action": "損切り",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": 146.0,
-      "actual_return_pct": 0.0,
+      "status": "loss",
+      "actual_price": 155.0,
+      "actual_return_pct": 6.16,
       "reviewed_date": "2026-06-19",
       "days_held": 9,
       "signal_components": {},
@@ -16053,8 +16053,8 @@
       "action": "損切り",
       "source": "holdings",
       "status": "pending",
-      "actual_price": 147.9,
-      "actual_return_pct": 0.82,
+      "actual_price": 144.4,
+      "actual_return_pct": -1.57,
       "reviewed_date": "2026-06-19",
       "days_held": 9,
       "signal_components": {},
@@ -16072,8 +16072,8 @@
       "action": "利確（トレーリングストップ195円設定、または即時利確推奨）",
       "source": "holdings",
       "status": "pending",
-      "actual_price": 210.1,
-      "actual_return_pct": -0.66,
+      "actual_price": 210.6,
+      "actual_return_pct": -0.43,
       "reviewed_date": "2026-06-19",
       "days_held": 9,
       "signal_components": {},
@@ -16250,8 +16250,8 @@
       "action": "損切り",
       "source": "holdings",
       "status": "pending",
-      "actual_price": 1341.0,
-      "actual_return_pct": 0.75,
+      "actual_price": 1337.0,
+      "actual_return_pct": 0.45,
       "reviewed_date": "2026-06-19",
       "days_held": 9,
       "signal_components": {},
@@ -16269,8 +16269,8 @@
       "action": "保有継続",
       "source": "holdings",
       "status": "pending",
-      "actual_price": 7166.0,
-      "actual_return_pct": -0.68,
+      "actual_price": 7076.0,
+      "actual_return_pct": -1.93,
       "reviewed_date": "2026-06-19",
       "days_held": 9,
       "signal_components": {
@@ -16400,9 +16400,9 @@
       "stop_loss": "113円（現値の-5%、取得単価127円からの-8%基準=117円を下回った場合は即損切り）",
       "action": "保有継続",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": 119.0,
-      "actual_return_pct": 0.0,
+      "status": "win",
+      "actual_price": 115.0,
+      "actual_return_pct": -3.36,
       "reviewed_date": "2026-06-19",
       "days_held": 8,
       "signal_components": {},
@@ -16515,8 +16515,8 @@
       "action": "保有継続",
       "source": "holdings",
       "status": "pending",
-      "actual_price": 2300.0,
-      "actual_return_pct": 0.33,
+      "actual_price": 2336.5,
+      "actual_return_pct": 1.92,
       "reviewed_date": "2026-06-19",
       "days_held": 8,
       "signal_components": {},
@@ -16628,8 +16628,8 @@
       "action": "損切り",
       "source": "holdings",
       "status": "pending",
-      "actual_price": 221.0,
-      "actual_return_pct": 2.31,
+      "actual_price": 210.0,
+      "actual_return_pct": -2.78,
       "reviewed_date": "2026-06-19",
       "days_held": 8,
       "signal_components": {},
@@ -16666,8 +16666,8 @@
       "action": "保有継続",
       "source": "holdings",
       "status": "pending",
-      "actual_price": 7166.0,
-      "actual_return_pct": -0.68,
+      "actual_price": 7076.0,
+      "actual_return_pct": -1.93,
       "reviewed_date": "2026-06-19",
       "days_held": 8,
       "signal_components": {
@@ -16722,9 +16722,9 @@
       "stop_loss": "140円（現値の-5%）",
       "action": "損切り",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": 146.0,
-      "actual_return_pct": -0.68,
+      "status": "loss",
+      "actual_price": 155.0,
+      "actual_return_pct": 5.44,
       "reviewed_date": "2026-06-19",
       "days_held": 8,
       "signal_components": {},
@@ -16779,9 +16779,9 @@
       "stop_loss": "144円（BB下限144.48円）",
       "action": "損切り",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": 147.9,
-      "actual_return_pct": -0.74,
+      "status": "win",
+      "actual_price": 144.4,
+      "actual_return_pct": -3.09,
       "reviewed_date": "2026-06-19",
       "days_held": 8,
       "signal_components": {},
@@ -16799,8 +16799,8 @@
       "action": "保有継続",
       "source": "holdings",
       "status": "pending",
-      "actual_price": 1616.0,
-      "actual_return_pct": -2.06,
+      "actual_price": 1608.0,
+      "actual_return_pct": -2.55,
       "reviewed_date": "2026-06-19",
       "days_held": 8,
       "signal_components": {},
@@ -16911,8 +16911,8 @@
       "action": "利確",
       "source": "holdings",
       "status": "pending",
-      "actual_price": 210.1,
-      "actual_return_pct": -2.28,
+      "actual_price": 210.6,
+      "actual_return_pct": -2.05,
       "reviewed_date": "2026-06-19",
       "days_held": 8,
       "signal_components": {},
@@ -16987,8 +16987,8 @@
       "action": "保有継続",
       "source": "holdings",
       "status": "pending",
-      "actual_price": 2300.0,
-      "actual_return_pct": -0.24,
+      "actual_price": 2336.5,
+      "actual_return_pct": 1.34,
       "reviewed_date": "2026-06-19",
       "days_held": 7,
       "signal_components": {},
@@ -17005,9 +17005,9 @@
       "stop_loss": "即損切り推奨（流動性リスクあり、早急な執行を）",
       "action": "損切り（流動性リスクあり早急に）",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": 245.0,
-      "actual_return_pct": -1.21,
+      "status": "win",
+      "actual_price": 235.0,
+      "actual_return_pct": -5.24,
       "reviewed_date": "2026-06-19",
       "days_held": 7,
       "signal_components": {},
@@ -17080,8 +17080,8 @@
       "action": "保有継続",
       "source": "holdings",
       "status": "pending",
-      "actual_price": 1341.0,
-      "actual_return_pct": 1.75,
+      "actual_price": 1337.0,
+      "actual_return_pct": 1.44,
       "reviewed_date": "2026-06-19",
       "days_held": 7,
       "signal_components": {},
@@ -17118,8 +17118,8 @@
       "action": "保有継続（買い増し検討: 含み損-10%以内かつMACDプラス転換の条件充足）",
       "source": "holdings",
       "status": "pending",
-      "actual_price": 7166.0,
-      "actual_return_pct": 0.31,
+      "actual_price": 7076.0,
+      "actual_return_pct": -0.95,
       "reviewed_date": "2026-06-19",
       "days_held": 7,
       "signal_components": {
@@ -17173,9 +17173,9 @@
       "stop_loss": "即損切り推奨（含み損ルール大幅超過）",
       "action": "損切り",
       "source": "holdings",
-      "status": "pending",
-      "actual_price": 146.0,
-      "actual_return_pct": 0.0,
+      "status": "loss",
+      "actual_price": 155.0,
+      "actual_return_pct": 6.16,
       "reviewed_date": "2026-06-19",
       "days_held": 7,
       "signal_components": {},
@@ -17233,8 +17233,8 @@
       "ideal_entry_zone": "6,800〜7,300円（現在値7,144円は概ね理想的な水準。6,800円以下の押し目があれば積極追加。日経平均の短期反発確認後の成り行きエントリーが安全）",
       "source": "long_term",
       "status": "pending",
-      "actual_price": 7166.0,
-      "actual_return_pct": 0.31,
+      "actual_price": 7076.0,
+      "actual_return_pct": -0.95,
       "reviewed_date": "2026-06-19",
       "days_held": 7,
       "signal_components": {
@@ -17327,8 +17327,8 @@
       "action": "損切り",
       "source": "holdings",
       "status": "pending",
-      "actual_price": 750.2,
-      "actual_return_pct": 1.45,
+      "actual_price": 723.1,
+      "actual_return_pct": -2.22,
       "reviewed_date": "2026-06-19",
       "days_held": 7,
       "signal_components": {},
@@ -19194,23 +19194,148 @@
       },
       "regime": "強気トレンド",
       "critic_verdict": "keep"
+    },
+    {
+      "id": "2026-06-19_4661.T_holdings",
+      "date": "2026-06-19",
+      "ticker": "4661.T",
+      "name": "OLC",
+      "prediction": "UP",
+      "confidence": "MEDIUM",
+      "entry_price": 2336.5,
+      "stop_loss": "2220円（直近サポート水準・含み損-20%ライン）",
+      "action": "保有継続",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {},
+      "pre_entry_metrics": {},
+      "regime": "強気トレンド",
+      "critic_verdict": "keep"
+    },
+    {
+      "id": "2026-06-19_4755.T_holdings",
+      "date": "2026-06-19",
+      "ticker": "4755.T",
+      "name": "楽天グループ",
+      "prediction": "DOWN",
+      "confidence": "MEDIUM",
+      "entry_price": 723.1,
+      "stop_loss": "687円（現在値から-5%）※含み損-19%はすでに損切り基準を超過",
+      "action": "損切り",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {},
+      "pre_entry_metrics": {},
+      "regime": "強気トレンド",
+      "critic_verdict": "keep"
+    },
+    {
+      "id": "2026-06-19_8173.T_holdings",
+      "date": "2026-06-19",
+      "ticker": "8173.T",
+      "name": "Joshin",
+      "prediction": "DOWN",
+      "confidence": "MEDIUM",
+      "entry_price": 3830.0,
+      "stop_loss": "3486円（提案トレーリングストップ）",
+      "action": "利確",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {},
+      "pre_entry_metrics": {},
+      "regime": "強気トレンド",
+      "critic_verdict": "keep"
+    },
+    {
+      "id": "2026-06-19_9432.T_holdings",
+      "date": "2026-06-19",
+      "ticker": "9432.T",
+      "name": "NTT",
+      "prediction": "DOWN",
+      "confidence": "MEDIUM",
+      "entry_price": 144.4,
+      "stop_loss": "137円（現在値から-5%）※含み損-15.06%はすでに損切り基準超過",
+      "action": "損切り",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {
+        "rsi_oversold_recovery": true,
+        "volume_spike": true,
+        "bollinger_lower": true,
+        "per_value": true,
+        "roe_profitable": true,
+        "dividend_yield": true,
+        "revenue_growth": true,
+        "analyst_target_upside": true,
+        "analyst_consensus_buy": true,
+        "margin_overhang": true,
+        "forward_estimate_cut": true
+      },
+      "pre_entry_metrics": {
+        "price_change_5d": -2.43,
+        "price_change_1m": -6.05,
+        "price_change_3m": 0.0,
+        "rsi_14": 37.55,
+        "distance_from_52w_high": -8.9,
+        "daily_atr_pct": 1.52,
+        "daily_effective_vol_pct": 1.52
+      },
+      "regime": "強気トレンド",
+      "critic_verdict": "keep"
+    },
+    {
+      "id": "2026-06-19_9633.T_holdings",
+      "date": "2026-06-19",
+      "ticker": "9633.T",
+      "name": "テアトル",
+      "prediction": "DOWN",
+      "confidence": "MEDIUM",
+      "entry_price": 1608.0,
+      "stop_loss": "1560円（直近サポート水準）",
+      "action": "利確",
+      "source": "holdings",
+      "status": "pending",
+      "actual_price": null,
+      "actual_return_pct": null,
+      "reviewed_date": null,
+      "days_held": null,
+      "signal_components": {},
+      "pre_entry_metrics": {},
+      "regime": "強気トレンド",
+      "critic_verdict": "keep"
     }
   ],
   "performance_stats": {
-    "total_predictions": 925,
-    "wins": 453,
-    "losses": 305,
-    "pending": 167,
-    "accuracy_pct": 59.8,
-    "avg_return_wins": 5.72,
-    "avg_return_losses": -5.06,
-    "mean_return_per_trade_pct": 1.38,
-    "return_stdev_pct": 6.89,
+    "total_predictions": 930,
+    "wins": 457,
+    "losses": 310,
+    "pending": 163,
+    "accuracy_pct": 59.6,
+    "avg_return_wins": 5.71,
+    "avg_return_losses": -5.07,
+    "mean_return_per_trade_pct": 1.35,
+    "return_stdev_pct": 6.88,
     "sharpe_like_per_trade": 0.2,
-    "expectancy_per_trade_pct": 1.38,
-    "profit_factor": 1.68,
+    "expectancy_per_trade_pct": 1.35,
+    "profit_factor": 1.66,
     "max_drawdown_pct": 172.07,
-    "current_drawdown_pct": 66.26,
+    "current_drawdown_pct": 78.1,
     "by_confidence": {
       "HIGH": {
         "total": 69,
@@ -19220,16 +19345,16 @@
         "predicted_prob": 0.75
       },
       "MEDIUM": {
-        "total": 595,
-        "wins": 374,
-        "accuracy_pct": 62.9,
+        "total": 603,
+        "wins": 378,
+        "accuracy_pct": 62.7,
         "brier_score": 0.234,
         "predicted_prob": 0.65
       },
       "LOW": {
-        "total": 94,
+        "total": 95,
         "wins": 44,
-        "accuracy_pct": 46.8,
+        "accuracy_pct": 46.3,
         "brier_score": 0.256,
         "predicted_prob": 0.55
       }
@@ -19245,16 +19370,16 @@
       {
         "confidence": "MEDIUM",
         "predicted_prob": 0.65,
-        "observed_acc": 0.629,
-        "gap_pp": -2.1,
-        "n": 595
+        "observed_acc": 0.627,
+        "gap_pp": -2.3,
+        "n": 603
       },
       {
         "confidence": "LOW",
         "predicted_prob": 0.55,
-        "observed_acc": 0.468,
-        "gap_pp": -8.2,
-        "n": 94
+        "observed_acc": 0.463,
+        "gap_pp": -8.7,
+        "n": 95
       }
     ],
     "confidence_signal_breakdown": {
@@ -19284,14 +19409,14 @@
         "accuracy_pct": 57.0
       },
       "MEDIUM_DOWN": {
-        "total": 311,
-        "wins": 212,
-        "accuracy_pct": 68.2
+        "total": 319,
+        "wins": 216,
+        "accuracy_pct": 67.7
       },
       "LOW_UP": {
-        "total": 54,
+        "total": 55,
         "wins": 22,
-        "accuracy_pct": 40.7
+        "accuracy_pct": 40.0
       },
       "LOW_DOWN": {
         "total": 40,
@@ -19299,10 +19424,10 @@
         "accuracy_pct": 55.0
       }
     },
-    "holdings_accuracy_pct": 64.1,
+    "holdings_accuracy_pct": 63.8,
     "short_term_accuracy_pct": 44.2,
     "long_term_accuracy_pct": 47.7,
-    "recent_accuracy_pct": 80.0,
+    "recent_accuracy_pct": 100.0,
     "recent_up_hit_rate": {
       "recent_n": 20,
       "wins": 10,
@@ -19311,48 +19436,45 @@
       "below_threshold": false
     },
     "drift_indicator": {
-      "recent_expectancy_pct": 0.92,
-      "baseline_expectancy_pct": 1.39,
-      "delta_pp": -0.47,
-      "p_value": 0.336,
-      "is_drift": false,
+      "recent_expectancy_pct": -1.76,
+      "baseline_expectancy_pct": 1.41,
+      "delta_pp": -3.17,
+      "p_value": 0.007,
+      "is_drift": true,
       "recent_n": 14,
-      "baseline_n": 744
+      "baseline_n": 753
     },
     "recent_direction_winrate": {
       "recent_n": 14,
-      "UP": {
-        "n": 8,
-        "wins": 5,
-        "winrate_pct": 62.5,
-        "mean_dir_return_pct": 1.84
-      },
+      "UP": null,
       "DOWN": {
-        "n": 6,
+        "n": 10,
         "wins": 3,
-        "winrate_pct": 50.0,
-        "mean_dir_return_pct": -0.29
+        "winrate_pct": 30.0,
+        "mean_dir_return_pct": -1.71
       }
     },
     "calibration_zone": {
       "zone": "red",
       "reasons": [
-        "calibration 逆転 (HIGH 50.7% / MEDIUM 62.9% = ratio 0.81 < 0.90)",
-        "Brier 逆転 (HIGH Brier 0.309 > MEDIUM 0.234 — 確率精度逆転)"
+        "calibration 逆転 (HIGH 50.7% / MEDIUM 62.7% = ratio 0.81 < 0.90)",
+        "Brier 逆転 (HIGH Brier 0.309 > MEDIUM 0.234 — 確率精度逆転)",
+        "drift + 実損 (recent EV -1.76%/trade、p=0.007)",
+        "rolling Sharpe -0.39 < 0 (recent 14 trades)"
       ],
       "recovery_confirmed": false,
       "high_n": 69,
-      "medium_n": 595,
+      "medium_n": 603,
       "high_acc_pct": 50.7,
-      "medium_acc_pct": 62.9,
-      "rolling_sharpe": 0.23
+      "medium_acc_pct": 62.7,
+      "rolling_sharpe": -0.39
     },
     "net_expectancy": {
-      "gross_expectancy_pct": 1.38,
+      "gross_expectancy_pct": 1.35,
       "transaction_cost_pct": 0.2,
       "round_trip_cost_pct": 0.4,
-      "net_expectancy_pct": 0.98,
-      "n": 758
+      "net_expectancy_pct": 0.95,
+      "n": 767
     },
     "signal_correlation_pairs": [
       {
@@ -19363,7 +19485,7 @@
         "correlation": -0.87,
         "n_both": 0,
         "n_a_only": 79,
-        "n_b_only": 76,
+        "n_b_only": 77,
         "n_neither": 12
       },
       {
@@ -19375,7 +19497,7 @@
         "n_both": 24,
         "n_a_only": 11,
         "n_b_only": 4,
-        "n_neither": 128
+        "n_neither": 129
       },
       {
         "pair": [
@@ -19386,7 +19508,7 @@
         "n_both": 1,
         "n_a_only": 0,
         "n_b_only": 1,
-        "n_neither": 165
+        "n_neither": 166
       },
       {
         "pair": [
@@ -19397,40 +19519,40 @@
         "n_both": 1,
         "n_a_only": 0,
         "n_b_only": 1,
-        "n_neither": 165
+        "n_neither": 166
       },
       {
         "pair": [
           "earnings_consistent_beat",
           "forward_estimate_cut"
         ],
-        "correlation": 0.63,
+        "correlation": 0.62,
         "n_both": 20,
         "n_a_only": 5,
-        "n_b_only": 13,
+        "n_b_only": 14,
         "n_neither": 129
-      },
-      {
-        "pair": [
-          "low_peg_ratio",
-          "revenue_growth"
-        ],
-        "correlation": 0.48,
-        "n_both": 104,
-        "n_a_only": 13,
-        "n_b_only": 22,
-        "n_neither": 28
       },
       {
         "pair": [
           "analyst_target_upside",
           "relative_strength"
         ],
-        "correlation": -0.47,
+        "correlation": -0.48,
         "n_both": 5,
-        "n_a_only": 128,
+        "n_a_only": 129,
         "n_b_only": 14,
         "n_neither": 20
+      },
+      {
+        "pair": [
+          "low_peg_ratio",
+          "revenue_growth"
+        ],
+        "correlation": 0.47,
+        "n_both": 104,
+        "n_a_only": 13,
+        "n_b_only": 23,
+        "n_neither": 28
       },
       {
         "pair": [
@@ -19439,7 +19561,7 @@
         ],
         "correlation": -0.43,
         "n_both": 6,
-        "n_a_only": 127,
+        "n_a_only": 128,
         "n_b_only": 13,
         "n_neither": 21
       },
@@ -19452,18 +19574,7 @@
         "n_both": 46,
         "n_a_only": 33,
         "n_b_only": 15,
-        "n_neither": 73
-      },
-      {
-        "pair": [
-          "low_peg_ratio",
-          "volume_trend_up"
-        ],
-        "correlation": -0.42,
-        "n_both": 38,
-        "n_a_only": 79,
-        "n_b_only": 39,
-        "n_neither": 11
+        "n_neither": 74
       },
       {
         "pair": [
@@ -19474,16 +19585,27 @@
         "n_both": 9,
         "n_a_only": 10,
         "n_b_only": 9,
-        "n_neither": 139
+        "n_neither": 140
+      },
+      {
+        "pair": [
+          "low_peg_ratio",
+          "volume_trend_up"
+        ],
+        "correlation": -0.41,
+        "n_both": 38,
+        "n_a_only": 79,
+        "n_b_only": 39,
+        "n_neither": 12
       },
       {
         "pair": [
           "volume_spike",
           "volume_trend_up"
         ],
-        "correlation": 0.42,
+        "correlation": 0.41,
         "n_both": 50,
-        "n_a_only": 21,
+        "n_a_only": 22,
         "n_b_only": 27,
         "n_neither": 69
       },
@@ -19495,8 +19617,19 @@
         "correlation": -0.4,
         "n_both": 11,
         "n_a_only": 17,
-        "n_b_only": 117,
+        "n_b_only": 118,
         "n_neither": 22
+      },
+      {
+        "pair": [
+          "low_peg_ratio",
+          "volume_spike"
+        ],
+        "correlation": -0.4,
+        "n_both": 35,
+        "n_a_only": 82,
+        "n_b_only": 37,
+        "n_neither": 14
       },
       {
         "pair": [
@@ -19505,20 +19638,9 @@
         ],
         "correlation": -0.39,
         "n_both": 0,
-        "n_a_only": 24,
+        "n_a_only": 25,
         "n_b_only": 79,
         "n_neither": 64
-      },
-      {
-        "pair": [
-          "low_peg_ratio",
-          "volume_spike"
-        ],
-        "correlation": -0.39,
-        "n_both": 35,
-        "n_a_only": 82,
-        "n_b_only": 36,
-        "n_neither": 14
       },
       {
         "pair": [
@@ -19526,7 +19648,7 @@
           "per_value"
         ],
         "correlation": 0.38,
-        "n_both": 66,
+        "n_both": 67,
         "n_a_only": 32,
         "n_b_only": 20,
         "n_neither": 49
@@ -19540,7 +19662,7 @@
         "n_both": 6,
         "n_a_only": 19,
         "n_b_only": 2,
-        "n_neither": 140
+        "n_neither": 141
       },
       {
         "pair": [
@@ -19551,7 +19673,7 @@
         "n_both": 5,
         "n_a_only": 3,
         "n_b_only": 13,
-        "n_neither": 146
+        "n_neither": 147
       },
       {
         "pair": [
@@ -19561,7 +19683,7 @@
         "correlation": -0.37,
         "n_both": 3,
         "n_a_only": 25,
-        "n_b_only": 83,
+        "n_b_only": 84,
         "n_neither": 56
       },
       {
@@ -19573,7 +19695,7 @@
         "n_both": 5,
         "n_a_only": 3,
         "n_b_only": 14,
-        "n_neither": 145
+        "n_neither": 146
       },
       {
         "pair": [
@@ -19581,7 +19703,7 @@
           "dividend_yield"
         ],
         "correlation": -0.35,
-        "n_both": 58,
+        "n_both": 59,
         "n_a_only": 63,
         "n_b_only": 40,
         "n_neither": 6
@@ -19592,7 +19714,7 @@
           "rsi_oversold_recovery"
         ],
         "correlation": 0.35,
-        "n_both": 21,
+        "n_both": 22,
         "n_a_only": 3,
         "n_b_only": 55,
         "n_neither": 88
@@ -19606,7 +19728,18 @@
         "n_both": 8,
         "n_a_only": 11,
         "n_b_only": 11,
-        "n_neither": 137
+        "n_neither": 138
+      },
+      {
+        "pair": [
+          "rsi_oversold_recovery",
+          "sma25_breakout"
+        ],
+        "correlation": -0.35,
+        "n_both": 14,
+        "n_a_only": 63,
+        "n_b_only": 47,
+        "n_neither": 44
       },
       {
         "pair": [
@@ -19614,51 +19747,18 @@
           "rsi_oversold_recovery"
         ],
         "correlation": 0.34,
-        "n_both": 72,
+        "n_both": 73,
         "n_a_only": 61,
         "n_b_only": 4,
         "n_neither": 30
       },
       {
         "pair": [
-          "bollinger_lower",
-          "volume_trend_up"
-        ],
-        "correlation": 0.34,
-        "n_both": 21,
-        "n_a_only": 3,
-        "n_b_only": 56,
-        "n_neither": 87
-      },
-      {
-        "pair": [
-          "rsi_oversold_recovery",
-          "sma25_breakout"
-        ],
-        "correlation": -0.34,
-        "n_both": 14,
-        "n_a_only": 62,
-        "n_b_only": 47,
-        "n_neither": 44
-      },
-      {
-        "pair": [
-          "relative_strength",
-          "rsi_oversold_recovery"
-        ],
-        "correlation": -0.33,
-        "n_both": 0,
-        "n_a_only": 19,
-        "n_b_only": 76,
-        "n_neither": 72
-      },
-      {
-        "pair": [
           "analyst_consensus_buy",
           "roe_profitable"
         ],
-        "correlation": 0.32,
-        "n_both": 103,
+        "correlation": 0.33,
+        "n_both": 104,
         "n_a_only": 18,
         "n_b_only": 25,
         "n_neither": 21
@@ -19668,22 +19768,44 @@
           "pbr_undervalued",
           "roe_profitable"
         ],
-        "correlation": -0.32,
+        "correlation": -0.33,
         "n_both": 25,
         "n_a_only": 21,
-        "n_b_only": 103,
+        "n_b_only": 104,
         "n_neither": 18
+      },
+      {
+        "pair": [
+          "relative_strength",
+          "rsi_oversold_recovery"
+        ],
+        "correlation": -0.33,
+        "n_both": 0,
+        "n_a_only": 19,
+        "n_b_only": 77,
+        "n_neither": 72
       },
       {
         "pair": [
           "bollinger_lower",
           "sma25_breakout"
         ],
-        "correlation": -0.31,
+        "correlation": -0.32,
         "n_both": 0,
-        "n_a_only": 24,
+        "n_a_only": 25,
         "n_b_only": 61,
         "n_neither": 82
+      },
+      {
+        "pair": [
+          "bollinger_lower",
+          "volume_trend_up"
+        ],
+        "correlation": 0.32,
+        "n_both": 21,
+        "n_a_only": 4,
+        "n_b_only": 56,
+        "n_neither": 87
       },
       {
         "pair": [
@@ -19693,7 +19815,7 @@
         "correlation": -0.31,
         "n_both": 18,
         "n_a_only": 17,
-        "n_b_only": 110,
+        "n_b_only": 111,
         "n_neither": 22
       },
       {
@@ -19701,22 +19823,11 @@
           "earnings_yoy_growth",
           "forward_estimate_cut"
         ],
-        "correlation": 0.31,
+        "correlation": 0.3,
         "n_both": 6,
         "n_a_only": 2,
-        "n_b_only": 27,
+        "n_b_only": 28,
         "n_neither": 132
-      },
-      {
-        "pair": [
-          "pbr_undervalued",
-          "per_value"
-        ],
-        "correlation": 0.3,
-        "n_both": 35,
-        "n_a_only": 11,
-        "n_b_only": 51,
-        "n_neither": 70
       }
     ],
     "overpriced_bias": {
