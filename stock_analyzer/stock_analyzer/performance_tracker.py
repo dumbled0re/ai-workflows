@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,37 @@ _NO_DIRECTION_PREDICTIONS = {"NO_TRADE", "NEUTRAL"}
 _UP_GATE_THRESHOLD_PCT = 50.0
 _UP_GATE_RECENT_N = 20
 _UP_GATE_MIN_SAMPLES = 12
+
+# confidence label → 確率 mapping (codex canonical, issue #46 Phase 2)。
+# Brier score 計算と reliability diagram で共有。
+_CONF_PROB_MAP = {"HIGH": 0.75, "MEDIUM": 0.65, "LOW": 0.55}
+
+
+def _compute_confidence_buckets(preds: list[dict]) -> dict[str, dict]:
+    """Accuracy + Brier per confidence tier over the given *resolved* preds.
+
+    Factored out so the calibration zone can judge the **recent** window
+    with the same math the lifetime ``by_confidence`` stat uses. The
+    lifetime bucket is frozen the moment a tier stops being emitted (e.g.
+    HIGH suppressed by a Red zone), so the zone must look at a rolling
+    window to ever detect recovery — see ``_compute_calibration_zone``.
+    """
+    out: dict[str, dict] = {}
+    for conf in ("HIGH", "MEDIUM", "LOW"):
+        conf_preds = [p for p in preds if p.get("confidence") == conf]
+        if not conf_preds:
+            continue
+        wins = sum(1 for p in conf_preds if p.get("status") == "win")
+        prob = _CONF_PROB_MAP[conf]
+        brier = sum((prob - (1.0 if p.get("status") == "win" else 0.0)) ** 2 for p in conf_preds) / len(conf_preds)
+        out[conf] = {
+            "total": len(conf_preds),
+            "wins": wins,
+            "accuracy_pct": round(wins / len(conf_preds) * 100, 1),
+            "brier_score": round(brier, 3),
+            "predicted_prob": prob,
+        }
+    return out
 
 
 def _directional_return(p: dict) -> float | None:
@@ -461,25 +492,7 @@ def compute_performance_stats(history: dict) -> dict:
     # Phase 3 で data 由来に置換可能)。outcome = 1 if win else 0。
     # Brier = (predicted_prob - outcome)^2 を bucket 内 average。
     # 0 が完璧、0.25 が coin flip 同等、>0.25 で「無関係」。
-    confidence_stats: dict[str, dict] = {}
-    _CONF_PROB_MAP = {"HIGH": 0.75, "MEDIUM": 0.65, "LOW": 0.55}
-    for conf in ("HIGH", "MEDIUM", "LOW"):
-        conf_preds = [p for p in resolved if p.get("confidence") == conf]
-        if conf_preds:
-            conf_wins = [p for p in conf_preds if p["status"] == "win"]
-            prob = _CONF_PROB_MAP[conf]
-            brier_squares = []
-            for p in conf_preds:
-                outcome = 1.0 if p["status"] == "win" else 0.0
-                brier_squares.append((prob - outcome) ** 2)
-            brier = sum(brier_squares) / len(brier_squares)
-            confidence_stats[conf] = {
-                "total": len(conf_preds),
-                "wins": len(conf_wins),
-                "accuracy_pct": round(len(conf_wins) / len(conf_preds) * 100, 1),
-                "brier_score": round(brier, 3),
-                "predicted_prob": prob,
-            }
+    confidence_stats = _compute_confidence_buckets(resolved)
     if confidence_stats:
         stats["by_confidence"] = confidence_stats
 
@@ -1530,30 +1543,128 @@ def _compute_recent_direction_winrate(
     return out if have_any else None
 
 
-# Calibration zone thresholds (codex 設計相談、issue #46)。
+# Calibration thresholds (codex 設計相談、issue #46; 2026-06-24 改修)。
 #
-# Red trigger:
-#   - HIGH/MEDIUM accuracy ratio < 0.9 (HIGH の方が MEDIUM より精度低い
-#     = 信頼度逆転、Claude の自信判定が予測精度と無相関化してる兆候)
-#   - OR is_drift=True かつ recent_expectancy<0 (drift で実損中)
-#   - HIGH と MEDIUM のそれぞれ min サンプル数を要求 (小サンプル断定回避)
+# 2026-06-24 の重要な設計変更: calibration を **2 軸に分離**した。
 #
-# Yellow trigger:
-#   - rolling Sharpe (recent window) < 0 (= 直近期待値マイナス)
-#   - OR is_drift=True (recent_expectancy 非考慮、p_value 駆動)
-#   - OR HIGH サンプル不足 (uncertainty 高)
+#   (1) zone (green/yellow/red) = 全体サーキットブレーカー。直近の総合
+#       performance (drift / 実損 / rolling Sharpe) だけで決まる。
+#       strategy_governor の weight 学習と discovery top_n を gate する。
+#   (2) high_status (ok/probation/suppressed) = HIGH ラベルの校正状態。
+#       HIGH 出力の可否だけを制御し、weight 学習や top_n は止めない。
 #
-# Recovery:
-#   - latest window + prev window 両方 Green = 2 連続改善で復帰
-#   - 部分改善 (latest だけ Green) では Yellow に留まる
+# 旧実装は「HIGH の *通算* accuracy 逆転」を zone red に直結させていた。
+# その結果: red → prompt が HIGH 禁止 → LLM が HIGH を出さなくなる →
+# 通算 HIGH バケットが永久凍結 → ratio 逆転のまま永久 red、という吸収
+# 状態 (absorbing state) のデッドロックに陥り、weight 学習と discovery
+# breadth が巻き添えで凍結していた (2026-06 発覚: 6月の HIGH 出力 0 件、
+# discovery 4.7→1.6 銘柄/日)。
 #
-# Threshold は codex 推奨値そのまま。後の Phase 2-3 で Brier score
-# 比較に置き換える可能性あり (ratio 0.9 は accuracy 比、Brier は確率比較
-# でより厳密)。
+# high_status は **直近 window** の HIGH バケットで判定し、HIGH が静かに
+# なって直近サンプルが枯れたら probation に落として「厳格基準で少数の
+# HIGH を再試験」する回復経路を必ず残す。これが唯一デッドロックを抜ける道。
 _CALIBRATION_RATIO_RED_THRESHOLD = 0.9
 _CALIBRATION_MIN_BUCKET_N = 15
 _ROLLING_SHARPE_WINDOW = 14
 _CALIBRATION_RECOVERY_WINDOWS = 2
+# high_status を判定する直近 window。HIGH が ~3 週間出力されなければ
+# (= かつて suppress された) recent HIGH が min サンプルを割って probation
+# に落ち、再試験経路が開く。健全期は HIGH ~1.5/日 なので 30 日で >=15 件
+# 貯まり「直近データで suppressed」も到達可能 (実データ検証 2026-06-24)。
+_CALIBRATION_RECENT_DAYS = 30
+
+
+def _recent_resolved_within_days(resolved: list[dict], days: int) -> list[dict]:
+    """Resolved trades whose ``reviewed_date`` falls within ``days`` of the
+    most recent reviewed trade. Anchored on the latest date *in the data*
+    (not wall-clock ``now``) so the result is deterministic and test-stable.
+    """
+    dated = [(p.get("reviewed_date") or p.get("date"), p) for p in resolved]
+    dated = [(d, p) for d, p in dated if d]
+    if not dated:
+        return []
+    anchor = max(d for d, _ in dated)
+    try:
+        cutoff = (datetime.fromisoformat(anchor) - timedelta(days=days)).strftime("%Y-%m-%d")
+    except ValueError:
+        return [p for _, p in dated]
+    return [p for d, p in dated if d >= cutoff]
+
+
+def _is_high_inverted(buckets: dict) -> tuple[bool, list[str], int]:
+    """Given confidence buckets, return (inverted, reasons, high_n).
+
+    Inverted = HIGH の accuracy が MEDIUM の ``_CALIBRATION_RATIO_RED_THRESHOLD``
+    倍を下回る、または HIGH Brier > MEDIUM Brier (確率精度が逆転)。
+    HIGH と MEDIUM の双方が ``_CALIBRATION_MIN_BUCKET_N`` 件以上ある場合のみ
+    判定する (小サンプル断定回避)。閾値割れしなければ (False, [], high_n)。
+    """
+    high = buckets.get("HIGH", {})
+    medium = buckets.get("MEDIUM", {})
+    high_n = high.get("total", 0)
+    if high_n < _CALIBRATION_MIN_BUCKET_N or medium.get("total", 0) < _CALIBRATION_MIN_BUCKET_N:
+        return False, [], high_n
+    reasons: list[str] = []
+    high_acc, medium_acc = high.get("accuracy_pct"), medium.get("accuracy_pct")
+    if high_acc is not None and medium_acc and medium_acc > 0:
+        ratio = high_acc / medium_acc
+        if ratio < _CALIBRATION_RATIO_RED_THRESHOLD:
+            reasons.append(f"HIGH {high_acc:.1f}% / MEDIUM {medium_acc:.1f}% = ratio {ratio:.2f} < 0.90")
+    high_brier, medium_brier = high.get("brier_score"), medium.get("brier_score")
+    if isinstance(high_brier, (int, float)) and isinstance(medium_brier, (int, float)) and high_brier > medium_brier:
+        reasons.append(f"Brier 逆転 (HIGH {high_brier:.3f} > MEDIUM {medium_brier:.3f})")
+    return bool(reasons), reasons, high_n
+
+
+def _compute_high_status(resolved: list[dict], lifetime_conf: dict) -> dict:
+    """HIGH ラベルの校正状態を **直近 window** 優先で判定する (zone とは別軸)。
+
+    - ``suppressed``: 直近 window の HIGH サンプルが十分 (>= min) かつ逆転。
+      fresh evidence で HIGH が壊れている → HIGH 禁止。
+    - ``probation``: HIGH が静か (直近 HIGH < min) かつ *通算* では逆転して
+      いた。厳格基準で少数の HIGH を再試験して証拠を再生成する回復状態。
+      旧デッドロックを抜ける唯一の経路。
+    - ``ok``: 直近 HIGH が校正 OK、または通算でも一度も問題が無かった。
+    """
+    recent = _recent_resolved_within_days(resolved, _CALIBRATION_RECENT_DAYS)
+    recent_buckets = _compute_confidence_buckets(recent)
+    recent_high = recent_buckets.get("HIGH", {})
+    recent_high_n = recent_high.get("total", 0)
+
+    recent_inverted, recent_reasons, _ = _is_high_inverted(recent_buckets)
+    if recent_high_n >= _CALIBRATION_MIN_BUCKET_N:
+        # 直近データで判定できる — それが正。
+        status = "suppressed" if recent_inverted else "ok"
+        reasons = [f"直近{_CALIBRATION_RECENT_DAYS}日: {r}" for r in recent_reasons]
+        return {
+            "high_status": status,
+            "high_reasons": reasons,
+            "high_recent_n": recent_high_n,
+            "high_recent_acc_pct": recent_high.get("accuracy_pct"),
+            "high_lifetime_n": lifetime_conf.get("HIGH", {}).get("total", 0),
+            "high_lifetime_acc_pct": lifetime_conf.get("HIGH", {}).get("accuracy_pct"),
+        }
+
+    # 直近 HIGH が枯れている — 通算で逆転実績があれば probation で再試験。
+    lifetime_inverted, lifetime_reasons, lifetime_high_n = _is_high_inverted(lifetime_conf)
+    if lifetime_inverted:
+        reasons = [
+            f"通算で HIGH 逆転 ({r})、ただし直近{_CALIBRATION_RECENT_DAYS}日の HIGH は "
+            f"{recent_high_n} 件 (< {_CALIBRATION_MIN_BUCKET_N}) → probation で再試験"
+            for r in lifetime_reasons[:1]
+        ]
+        status = "probation"
+    else:
+        reasons = []
+        status = "ok"
+    return {
+        "high_status": status,
+        "high_reasons": reasons,
+        "high_recent_n": recent_high_n,
+        "high_recent_acc_pct": recent_high.get("accuracy_pct"),
+        "high_lifetime_n": lifetime_high_n,
+        "high_lifetime_acc_pct": lifetime_conf.get("HIGH", {}).get("accuracy_pct"),
+    }
 
 
 def _compute_calibration_zone(
@@ -1561,61 +1672,21 @@ def _compute_calibration_zone(
     confidence_stats: dict,
     drift: dict | None,
 ) -> dict | None:
-    """Determine Red/Yellow/Green calibration zone for circuit-breaker control.
+    """2 軸の calibration verdict を返す (詳細は上部の設計コメント参照)。
 
-    Red = HIGH 出力を強制 downgrade すべき重度劣化。Claude prompt に
-    「HIGH 禁止、MEDIUM までに抑える」を注入する。
-    Yellow = 直近不調 / 信頼度判定が怪しい中度劣化。 prompt に
-    「HIGH は厳格基準のみ、boldness 控えめ」を注入。
-    Green = 通常運用。
+    - ``zone`` (green/yellow/red): 全体サーキットブレーカー。**直近の総合
+      performance** (drift / 実損 / rolling Sharpe) だけで決まる。weight 学習
+      と discovery top_n を gate する。HIGH ラベルの過去の傷では発火しない。
+    - ``high_status`` (ok/probation/suppressed): HIGH 出力の可否のみ制御。
 
-    Returns ``{"zone": "red"|"yellow"|"green", "reasons": [...]}``。サン
-    プル不足で確定判定できないときは None。
+    サンプル不足で何も判定できないときは None。
     """
     if not resolved:
         return None
     reasons_red: list[str] = []
     reasons_yellow: list[str] = []
 
-    # HIGH/MEDIUM calibration ratio + Brier score (codex 推奨の組合せ)
-    # accuracy_pct は離散 (win/loss) なので分布が粗い。Brier score は
-    # 確率予測の正解度なので「HIGH が "材料の多さ" で付与されてる」
-    # ような subtle な calibration 崩れも捉える。両方 fire で確信度
-    # 高め、Brier 単独でも Red に持っていける。
-    high = confidence_stats.get("HIGH", {})
-    medium = confidence_stats.get("MEDIUM", {})
-    high_n = high.get("total", 0)
-    medium_n = medium.get("total", 0)
-    high_acc = high.get("accuracy_pct")
-    medium_acc = medium.get("accuracy_pct")
-    high_brier = high.get("brier_score")
-    medium_brier = medium.get("brier_score")
-    if (
-        high_n >= _CALIBRATION_MIN_BUCKET_N
-        and medium_n >= _CALIBRATION_MIN_BUCKET_N
-        and high_acc is not None
-        and medium_acc is not None
-        and medium_acc > 0
-    ):
-        ratio = high_acc / medium_acc
-        if ratio < _CALIBRATION_RATIO_RED_THRESHOLD:
-            reasons_red.append(
-                f"calibration 逆転 (HIGH {high_acc:.1f}% / MEDIUM {medium_acc:.1f}% = ratio {ratio:.2f} < 0.90)"
-            )
-        # Brier 比較: HIGH Brier > MEDIUM Brier は「自信ありの予測の方が
-        # 確率精度が悪い」 = calibration 崩壊。これは accuracy ratio とは
-        # 独立に発火させる (overlap しても double-count しないので問題なし)。
-        if (
-            isinstance(high_brier, (int, float))
-            and isinstance(medium_brier, (int, float))
-            and high_brier > medium_brier
-        ):
-            reasons_red.append(f"Brier 逆転 (HIGH Brier {high_brier:.3f} > MEDIUM {medium_brier:.3f} — 確率精度逆転)")
-    elif high_n < _CALIBRATION_MIN_BUCKET_N and high_n > 0:
-        # 小サンプルで断定できないが、観測されてる場合は yellow に
-        reasons_yellow.append(f"HIGH サンプル不足 (n={high_n} < {_CALIBRATION_MIN_BUCKET_N})")
-
-    # Drift signal
+    # --- 全体サーキットブレーカー (直近 performance only) ---
     if drift is not None:
         is_drift = drift.get("is_drift", False)
         recent_exp = drift.get("recent_expectancy_pct", 0.0)
@@ -1624,12 +1695,10 @@ def _compute_calibration_zone(
         elif is_drift:
             reasons_yellow.append(f"drift 検知 (recent EV {recent_exp:.2f}%、p={drift.get('p_value')})")
 
-    # Rolling Sharpe (recent window) — Yellow trigger
     rolling = _rolling_sharpe(resolved, window=_ROLLING_SHARPE_WINDOW)
     if rolling is not None and rolling < 0:
         reasons_yellow.append(f"rolling Sharpe {rolling:.2f} < 0 (recent {_ROLLING_SHARPE_WINDOW} trades)")
 
-    # Zone 決定
     if reasons_red:
         zone = "red"
     elif reasons_yellow:
@@ -1637,19 +1706,18 @@ def _compute_calibration_zone(
     else:
         zone = "green"
 
-    # Recovery: latest + prev window が両方 green でないと「2 連続改善」
-    # 達成にならない。現状 zone=green でも一過性なら警告だけ残す。
+    # Recovery: latest + prev window が両方 green で「2 連続改善」復帰。
     recovery_ok = zone == "green" and _prev_window_was_green(resolved)
+
+    # --- HIGH ラベルの校正状態 (別軸、直近 window 優先) ---
+    high = _compute_high_status(resolved, confidence_stats)
 
     return {
         "zone": zone,
         "reasons": reasons_red + reasons_yellow,
         "recovery_confirmed": recovery_ok,
-        "high_n": high_n,
-        "medium_n": medium_n,
-        "high_acc_pct": high_acc,
-        "medium_acc_pct": medium_acc,
         "rolling_sharpe": round(rolling, 2) if rolling is not None else None,
+        **high,
     }
 
 
@@ -2112,27 +2180,44 @@ def format_performance_feedback(history: dict) -> str:
     if isinstance(zone_info, dict):
         zone = zone_info.get("zone", "green")
         reasons = zone_info.get("reasons") or []
+        # (1) 全体サーキットブレーカー (直近 performance: drift / 実損 / Sharpe)
         if zone == "red":
-            lines.append("🟥 Calibration Red zone — HIGH 出力は禁止します。すべて MEDIUM 以下に降格してください。")
+            lines.append(
+                "🟥 サーキットブレーカー Red — 直近で drift + 実損を検知。"
+                "新規 picks を厳格化し、short_term は通常の半分以下に絞ること。"
+            )
             for r in reasons:
                 lines.append(f"  - {r}")
-            lines.append(
-                "  指示: 全 picks の confidence を MEDIUM/LOW に。"
-                "UP HIGH は特に出さない (HIGH_UP は history 最弱)。"
-                " short_term picks は通常の半分以下に絞ること"
-            )
         elif zone == "yellow":
-            lines.append("🟨 Calibration Yellow zone — HIGH は厳格基準のみ。boldness を控えめに。")
+            lines.append(
+                "🟨 サーキットブレーカー Yellow — 直近不調の兆候。boldness 控えめ、short_term picks はやや絞る。"
+            )
             for r in reasons:
                 lines.append(f"  - {r}")
+        elif zone_info.get("recovery_confirmed"):
+            lines.append("✅ サーキットブレーカー Green (2 連続 window 改善で復帰) — 通常運用に戻して構いません")
+        # Green かつ recovery 未確認は静か (= 改善途上、特別指示なし)
+
+        # (2) HIGH ラベルの校正状態 (別軸 — weight 学習や top_n は止めない)
+        high_status = zone_info.get("high_status")
+        high_reasons = zone_info.get("high_reasons") or []
+        if high_status == "suppressed":
             lines.append(
-                "  指示: HIGH は『複数 signal が全部 conviction』 case 限定。迷ったら MEDIUM に格下げ。"
-                " short_term picks は控えめに"
+                "🟥 HIGH 校正不良 (直近データで逆転) — HIGH 出力は禁止します。"
+                "すべて MEDIUM 以下に降格してください。HIGH_UP は特に出さない。"
             )
-        else:
-            if zone_info.get("recovery_confirmed"):
-                lines.append("✅ Calibration Green zone (2 連続 window 改善で復帰) — 通常運用に戻して構いません")
-            # Green かつ recovery 未確認は静か (= 改善途上、特別指示なし)
+            for r in high_reasons:
+                lines.append(f"  - {r}")
+        elif high_status == "probation":
+            lines.append(
+                "🟨 HIGH probation — 過去に HIGH の校正不良があったため再試験中。"
+                "HIGH は『テクニカル(SMA/MACD/RSI)+ファンダ(成長 or 割安)+強いカタリスト』の "
+                "3 層すべてが同方向で揃った稀なケース限定で出してよい。"
+                "再校正のため適格な HIGH は歓迎するが乱発禁止、迷ったら MEDIUM。"
+                "UP 方向の HIGH は history 最弱なので特に慎重に。"
+            )
+            for r in high_reasons:
+                lines.append(f"  - {r}")
 
     # Direction-aware few-shot examples with signal fingerprints. The
     # previous in-line "成功パターン" sorted on raw return descending,

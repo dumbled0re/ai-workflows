@@ -920,8 +920,10 @@ def _bucket_pred(conf: str, status: str, ret: float, idx: int) -> dict:
     return p
 
 
-def test_calibration_zone_red_when_high_accuracy_below_medium_ratio() -> None:
-    """HIGH 51% / MEDIUM 67% → ratio 0.76 < 0.9 → red zone."""
+def test_high_status_suppressed_when_recent_high_below_medium_ratio() -> None:
+    """HIGH 50% / MEDIUM 66.7% (双方 直近 window 内・十分なサンプル) →
+    high_status=suppressed (HIGH 出力禁止)。circuit-breaker zone は HIGH
+    ラベルの傷では発火しない (2026-06-24 の 2 軸分離)。"""
     preds: list[dict] = []
     # HIGH: 30 件、win 15 (50%)
     for i in range(30):
@@ -932,12 +934,12 @@ def test_calibration_zone_red_when_high_accuracy_below_medium_ratio() -> None:
     stats = compute_performance_stats({"predictions": preds})
     zone = stats.get("calibration_zone")
     assert zone is not None
-    assert zone["zone"] == "red"
-    assert any("calibration 逆転" in r for r in zone["reasons"])
+    assert zone["high_status"] == "suppressed"
+    assert any("ratio" in r for r in zone["high_reasons"])
 
 
-def test_calibration_zone_green_when_high_outperforms_medium() -> None:
-    """HIGH 70% / MEDIUM 60% → ratio > 0.9 → green zone (normal)."""
+def test_high_status_ok_when_high_outperforms_medium() -> None:
+    """HIGH 70% / MEDIUM 60% → ratio > 0.9 → high_status=ok (通常運用)。"""
     preds: list[dict] = []
     for i in range(30):
         preds.append(_bucket_pred("HIGH", "win" if i < 21 else "loss", 5.0 if i < 21 else -5.0, i))
@@ -946,24 +948,24 @@ def test_calibration_zone_green_when_high_outperforms_medium() -> None:
     stats = compute_performance_stats({"predictions": preds})
     zone = stats.get("calibration_zone")
     assert zone is not None
-    assert zone["zone"] == "green"
+    assert zone["high_status"] == "ok"
 
 
-def test_calibration_zone_yellow_when_high_sample_insufficient() -> None:
-    """HIGH n=8 < min(15) → yellow downgrade (uncertainty 高い)。"""
+def test_high_status_ok_when_high_sample_insufficient_without_lifetime_inversion() -> None:
+    """HIGH n=8 < min(15) かつ通算でも逆転実績なし → high_status=ok。
+    旧実装は『サンプル不足 → yellow』で weight 学習まで凍結していたが、
+    証拠の無い不確実性で circuit breaker を止めるのは過剰。"""
     preds: list[dict] = []
-    # HIGH: 8 件のみ (min 15 未満)
+    # HIGH: 8 件のみ (min 15 未満)、50%
     for i in range(8):
         preds.append(_bucket_pred("HIGH", "win" if i < 4 else "loss", 5.0 if i < 4 else -5.0, i))
-    # MEDIUM: 25 件、healthy 65%
+    # MEDIUM: 25 件、healthy 64%
     for i in range(25):
         preds.append(_bucket_pred("MEDIUM", "win" if i < 16 else "loss", 5.0 if i < 16 else -5.0, i + 100))
     stats = compute_performance_stats({"predictions": preds})
     zone = stats.get("calibration_zone")
     assert zone is not None
-    assert zone["zone"] in {"yellow", "red"}  # サンプル不足は最低 yellow
-    # high_n が低いことが理由として記録されてる
-    assert any("HIGH サンプル不足" in r or "calibration" in r for r in zone["reasons"])
+    assert zone["high_status"] == "ok"
 
 
 def test_brier_score_computed_per_confidence_bucket() -> None:
@@ -1013,8 +1015,8 @@ def test_reliability_diagram_records_gap_per_bucket() -> None:
     assert abs(medium_bin["gap_pp"]) < 1.0
 
 
-def test_calibration_zone_red_on_brier_inversion() -> None:
-    """HIGH Brier > MEDIUM Brier だけでも Red (accuracy ratio が境界でも独立 fire)。"""
+def test_high_status_suppressed_on_brier_inversion() -> None:
+    """HIGH Brier > MEDIUM Brier だけでも suppressed (accuracy ratio が境界でも独立 fire)。"""
     preds: list[dict] = []
     # HIGH: 15 wins, 12 losses → 55.6% accuracy → ratio vs MEDIUM 61.5% = 0.90 ぎりぎり
     # でも Brier は HIGH=(0.75-outcomes mean)^2 で MEDIUM より悪い
@@ -1029,10 +1031,51 @@ def test_calibration_zone_red_on_brier_inversion() -> None:
         preds.append(_bucket_pred("MEDIUM", "loss", -5.0, i + 300))
     stats = compute_performance_stats({"predictions": preds})
     zone = stats["calibration_zone"]
-    # accuracy ratio 55.6/61.5 = 0.903 → ratio 単独では Red 未満 (boundary)
-    # でも Brier 0.305 vs 0.255 で HIGH > MEDIUM → Red
-    assert zone["zone"] == "red"
-    assert any("Brier 逆転" in r for r in zone["reasons"])
+    # accuracy ratio 55.6/61.5 = 0.903 → ratio 単独では境界未満
+    # でも Brier 0.285 vs 0.238 で HIGH > MEDIUM → suppressed
+    assert zone["high_status"] == "suppressed"
+    assert any("Brier" in r for r in zone["high_reasons"])
+
+
+def test_high_status_probation_breaks_absorbing_red_deadlock() -> None:
+    """回帰テスト (2026-06 デッドロック): 通算では HIGH 逆転だが直近 window
+    で HIGH が枯れている (= かつて red で抑制された) 場合、永久 red になら
+    ず high_status=probation で再試験経路を残す。circuit-breaker zone は
+    直近 performance が健全なので red にならない (weight 学習が復帰できる)。
+    """
+    preds: list[dict] = []
+    # 古い HIGH (90 日より前、2026-01): 8 win / 12 loss = 40% → 通算で逆転
+    for i in range(20):
+        preds.append(
+            _pred(
+                "win" if i < 8 else "loss",
+                "UP" if i < 8 else "DOWN",
+                5.0,
+                confidence="HIGH",
+                date="2026-01-05",
+                reviewed_date=f"2026-01-{(i % 28) + 1:02d}",
+            )
+        )
+    # 直近 MEDIUM (window 内、健全 ~67% / interleaved で recent Sharpe 正) —
+    # HIGH は一切出ていない (suppression 後の現実を再現)
+    for i in range(30):
+        win = i % 3 != 0  # 20 win / 10 loss、日付に対して均す
+        preds.append(
+            _pred(
+                "win" if win else "loss",
+                "UP" if win else "DOWN",
+                5.0,
+                confidence="MEDIUM",
+                date="2026-06-05",
+                reviewed_date=f"2026-06-{(i % 28) + 1:02d}",
+            )
+        )
+    stats = compute_performance_stats({"predictions": preds})
+    zone = stats["calibration_zone"]
+    assert zone["high_status"] == "probation"
+    assert zone["high_recent_n"] == 0  # 直近 window に HIGH は無い
+    assert zone["zone"] != "red"  # 通算 HIGH の傷で circuit breaker を止めない
+    assert any("probation" in r for r in zone["high_reasons"])
 
 
 def test_net_expectancy_subtracts_round_trip_cost() -> None:
@@ -1167,8 +1210,8 @@ def test_effective_vol_returns_max_of_atr_and_realized() -> None:
     assert effective == max(atr, realized)
 
 
-def test_format_feedback_emits_red_zone_block() -> None:
-    """Red zone は feedback に🟥 ブロック + 「HIGH 出力は禁止」 directive。"""
+def test_format_feedback_emits_high_suppressed_block() -> None:
+    """直近 HIGH 校正逆転 → feedback に🟥 HIGH 校正不良 + 「HIGH 出力は禁止」 directive。"""
     preds: list[dict] = []
     for i in range(30):
         preds.append(_bucket_pred("HIGH", "win" if i < 15 else "loss", 5.0 if i < 15 else -5.0, i))
@@ -1178,7 +1221,7 @@ def test_format_feedback_emits_red_zone_block() -> None:
     history["performance_stats"] = compute_performance_stats(history)
     feedback = format_performance_feedback(history)
     assert "🟥" in feedback
-    assert "Red zone" in feedback
+    assert "HIGH 校正不良" in feedback
     assert "HIGH 出力は禁止" in feedback
 
 
