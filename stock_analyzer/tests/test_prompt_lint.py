@@ -114,3 +114,18 @@ def test_patch_candidate_written_for_non_green_even_without_findings(tmp_path: P
     assert result is not None
     text = out.read_text()
     assert "yellow" in text
+
+
+def test_patch_candidate_written_for_high_status_even_when_zone_green(tmp_path: Path) -> None:
+    """2026-06-24 の 2 軸分離後: zone=green でも high_status が不調なら
+    HIGH 校正 advisory を出す (旧 zone-only 判定で取りこぼしていた)。"""
+    out = tmp_path / "patch.md"
+    result = generate_patch_candidate(
+        findings=[],
+        calibration_zone={"zone": "green", "high_status": "probation"},
+        output_path=out,
+    )
+    assert result is not None
+    text = out.read_text()
+    assert "high_status" in text and "probation" in text
+    assert "推奨アクション" in text

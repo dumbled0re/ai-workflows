@@ -199,7 +199,12 @@ def generate_patch_candidate(
     human reviewer.
     """
     zone = (calibration_zone or {}).get("zone", "unknown")
-    if not findings and zone == "green":
+    high_status = (calibration_zone or {}).get("high_status")
+    # 2026-06-24 の 2 軸分離以降、HIGH 校正不良は zone ではなく high_status
+    # に出る。prompt の方向誘導 example を見直す advisory は HIGH 側の
+    # 不調 (suppressed / probation) でも出す必要があるのでここで合流させる。
+    needs_attention = zone in ("red", "yellow") or high_status in ("suppressed", "probation")
+    if not findings and not needs_attention:
         # Nothing to suggest right now. Clean up stale file if present
         # so the maintainer's view stays accurate.
         if output_path is None:
@@ -217,7 +222,7 @@ def generate_patch_candidate(
     body_lines = [
         f"# Prompt Patch Candidate ({now})",
         "",
-        f"calibration_zone: **{zone}**",
+        f"calibration_zone: **{zone}**" + (f" / high_status: **{high_status}**" if high_status else ""),
         "",
         "本ファイルは prompt_lint が自動生成。**自動 commit 対象ではない** — ",
         "human reviewer が内容を確認して必要な箇所だけ template に反映してください。",
@@ -244,9 +249,14 @@ def generate_patch_candidate(
         body_lines.append("- (lint findings なし)")
         body_lines.append("")
 
-    if zone in ("red", "yellow"):
+    if needs_attention:
         body_lines.append("## 推奨アクション")
         body_lines.append("")
+        if high_status in ("suppressed", "probation"):
+            body_lines.append(
+                f"- high_status={high_status}: HIGH ラベルの校正が不調です。prompt の HIGH 付与基準と "
+                "UP 主体の few-shot example を見直してください (HIGH_UP は history 最弱)。"
+            )
         body_lines.append("- calibration_zone が green に戻るまで、prompt の方向誘導 example を見直してください。")
         body_lines.append(
             "- 直近の drift と direction-winrate に応じて、UP 主体の example を DOWN/NO_TRADE に置換することを検討。"
