@@ -9,7 +9,7 @@
   "macd_crossover": 1,
   "bollinger_lower": 5,
   "per_value": 1,
-  "pbr_undervalued": 11,
+  "pbr_undervalued": 12,
   "roe_profitable": 1,
   "dividend_yield": 5,
   "revenue_growth": 1,
@@ -24,10 +24,10 @@
   "margin_overhang": 4,
   "earnings_beat": 4,
   "analyst_consensus_buy": 4,
-  "near_52w_high": 4,
+  "near_52w_high": 5,
   "sector_rotation": 4,
   "analyst_target_upside": 4,
   "earnings_consistent_beat": 4,
   "analyst_upgrade_drift": 4,
-  "_last_applied": "wts-2026-07-01-f39af5dc"
+  "_last_applied": "wts-2026-07-01-7912bb66"
 }
