@@ -765,6 +765,14 @@ def compute_performance_stats(history: dict) -> dict:
     if net_ev is not None:
         stats["net_expectancy"] = net_ev
 
+    # 2026-07-04 監査 (#51): UP 買い建て (実現可能) / holdings DOWN
+    # (売り助言) / その他 DOWN (情報的) を分離した期待値。名目 EV は
+    # ショート不能な DOWN 的中で水増しされるため、収益性の自己評価は
+    # realizable_up を正とする。
+    realizable = compute_realizable_expectancy(history)
+    if realizable is not None:
+        stats["realizable_expectancy"] = realizable
+
     correlation_pairs = compute_signal_correlation_pairs(history)
     if correlation_pairs:
         stats["signal_correlation_pairs"] = correlation_pairs
@@ -1269,6 +1277,67 @@ def compute_signal_correlation_pairs(history: dict, min_samples: int = 10) -> li
             )
     pairs.sort(key=lambda x: abs(x["correlation"]), reverse=True)
     return pairs
+
+
+def compute_realizable_expectancy(history: dict, transaction_cost_pct: float = 0.2) -> dict | None:
+    """予測を「実際に取引で収益化できるか」で分離した期待値 (2026-07-04 監査)。
+
+    名目 expectancy は UP / DOWN の directional return を混ぜるが、この
+    システムに空売りは無い。つまり:
+
+    - **UP 予測** = 買い建て可能 → 唯一 P&L に変換できる「実現可能」枠。
+    - **holdings への DOWN 予測** = 保有株の売り助言。当たっても利益では
+      なく「損失回避」(むしろ保有中の含み損)。助言の質として別枠計測。
+    - **その他の DOWN 予測** (non-holdings) = ショートできない情報的
+      予測。方向感の学習には使えるが P&L には寄与しない。
+
+    監査時点で名目 expectancy +1.25% の 49% が holdings DOWN 由来で、
+    paper portfolio NAV (±0%) との乖離の主因だった。headline を
+    realizable 側に寄せるための計測基盤。
+    """
+    resolved = [
+        p
+        for p in history.get("predictions", [])
+        if p.get("status") in ("win", "loss") and p.get("actual_return_pct") is not None
+    ]
+    if not resolved:
+        return None
+    round_trip_cost = transaction_cost_pct * 2
+
+    def _bucket(preds: list[dict]) -> dict | None:
+        if not preds:
+            return None
+        returns = [r for r in (_directional_return(p) for p in preds) if r is not None]
+        if not returns:
+            return None
+        wins = sum(1 for p in preds if p.get("status") == "win")
+        gross = sum(returns) / len(returns)
+        return {
+            "n": len(preds),
+            "accuracy_pct": round(wins / len(preds) * 100, 1),
+            "gross_expectancy_pct": round(gross, 2),
+            "net_expectancy_pct": round(gross - round_trip_cost, 2),
+        }
+
+    ups = [p for p in resolved if p.get("prediction") == "UP"]
+    holdings_down = [p for p in resolved if p.get("prediction") == "DOWN" and p.get("source") == "holdings"]
+    other_down = [p for p in resolved if p.get("prediction") == "DOWN" and p.get("source") != "holdings"]
+
+    result: dict = {"round_trip_cost_pct": round_trip_cost}
+    realizable = _bucket(ups)
+    if realizable:
+        result["realizable_up"] = realizable
+    advice = _bucket(holdings_down)
+    if advice:
+        # 助言枠: dir return が正 = 「売っておけば回避できた下落幅」。
+        advice["avoided_loss_note"] = "期待値は損失回避幅であり実現利益ではない"
+        result["holdings_down_advice"] = advice
+    informational = _bucket(other_down)
+    if informational:
+        result["informational_down"] = informational
+    if "realizable_up" not in result and "holdings_down_advice" not in result:
+        return None
+    return result
 
 
 def compute_net_expectancy(history: dict, transaction_cost_pct: float = 0.2) -> dict | None:
@@ -2240,6 +2309,31 @@ def format_performance_feedback(history: dict) -> str:
         lines.append(f"💰 net EV: 名目 {gross:+.2f}%/trade、手数料 {cost:.1f}% 控除後 {net:+.2f}%/trade {marker}")
         if net < 0:
             lines.append("  ⚠ net で実損です。エントリー数を絞るか、勝率自体を上げる必要があります")
+
+    # 実現可能 EV (2026-07-04 監査 #51)。名目 EV は holdings への DOWN
+    # 的中 (ショート不能 = 実現不可) で水増しされる。収益性の自己評価は
+    # 「UP 買い建てのみ」の net EV を正とし、DOWN は助言/情報として別枠
+    # 表示する。
+    rz = stats.get("realizable_expectancy")
+    if isinstance(rz, dict):
+        up_b = rz.get("realizable_up")
+        if isinstance(up_b, dict):
+            up_marker = "⚠" if up_b["net_expectancy_pct"] <= 0 else "✓"
+            lines.append(
+                f"💴 実現可能 EV (UP 買い建てのみ, {up_b['n']}件): "
+                f"勝率 {up_b['accuracy_pct']}% / net {up_b['net_expectancy_pct']:+.2f}%/trade {up_marker}"
+            )
+            if up_b["net_expectancy_pct"] <= 0:
+                lines.append(
+                    "  ⚠ 買いで再現できる期待値がゼロ以下です。DOWN 的中は損益に変換できないため、"
+                    "収益化には UP 予測の質そのものを上げる必要があります"
+                )
+        adv = rz.get("holdings_down_advice")
+        if isinstance(adv, dict):
+            lines.append(
+                f"  参考 — holdings DOWN (売り助言, {adv['n']}件): 的中 {adv['accuracy_pct']}% / "
+                f"回避可能だった下落幅 {adv['gross_expectancy_pct']:+.2f}%/件 (実現利益ではない)"
+            )
 
     # Paper portfolio NAV one-liner (Phase 6 — DD 172% root cause: trade-level
     # DD inflates daily re-recommendations). 100万円 / 5%-sized / 5並列の

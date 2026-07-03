@@ -23263,6 +23263,28 @@
       "net_expectancy_pct": 0.78,
       "n": 995
     },
+    "realizable_expectancy": {
+      "round_trip_cost_pct": 0.4,
+      "realizable_up": {
+        "n": 442,
+        "accuracy_pct": 54.1,
+        "gross_expectancy_pct": 0.59,
+        "net_expectancy_pct": 0.19
+      },
+      "holdings_down_advice": {
+        "n": 544,
+        "accuracy_pct": 60.7,
+        "gross_expectancy_pct": 1.69,
+        "net_expectancy_pct": 1.29,
+        "avoided_loss_note": "期待値は損失回避幅であり実現利益ではない"
+      },
+      "informational_down": {
+        "n": 9,
+        "accuracy_pct": 44.4,
+        "gross_expectancy_pct": -0.55,
+        "net_expectancy_pct": -0.95
+      }
+    },
     "signal_correlation_pairs": [
       {
         "pair": [

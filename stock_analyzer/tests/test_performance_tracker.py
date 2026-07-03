@@ -17,6 +17,7 @@ from stock_analyzer.performance_tracker import (
     build_up_gate_directive,
     compute_critic_efficacy,
     compute_performance_stats,
+    compute_realizable_expectancy,
     compute_recent_up_hit_rate,
     extract_few_shot_examples,
     format_critic_efficacy,
@@ -635,6 +636,54 @@ def test_expired_predictions_excluded_from_accuracy() -> None:
     assert stats["losses"] == 1
     assert stats["pending"] == 0
     assert stats["accuracy_pct"] == 50.0
+
+
+# ---------- realizable expectancy --------------------------------------------
+
+
+def test_realizable_expectancy_separates_up_from_down_advice() -> None:
+    """UP 買い建てのみが「実現可能」枠。holdings DOWN の的中は売り助言と
+    して別枠になり、実現可能 EV を水増ししないこと (2026-07-04 監査:
+    名目 EV の 49% がショート不能な holdings DOWN 由来だった)。"""
+    ups = [
+        _pred("win", "UP", 5.0),
+        _pred("loss", "UP", -4.0),
+    ]
+    holdings_down = [
+        _pred("win", "DOWN", -30.0, source="holdings"),
+        _pred("win", "DOWN", -20.0, source="holdings"),
+    ]
+    other_down = [_pred("win", "DOWN", -10.0, source="short_term")]
+    history = {"predictions": ups + holdings_down + other_down}
+    rz = compute_realizable_expectancy(history)
+    assert rz is not None
+    # UP 枠: gross (5-4)/2 = +0.5、net = 0.5 - 0.4 = +0.1
+    up_b = rz["realizable_up"]
+    assert up_b["n"] == 2
+    assert up_b["gross_expectancy_pct"] == 0.5
+    assert up_b["net_expectancy_pct"] == 0.1
+    # holdings DOWN は advice 枠 (dir +30, +20 → +25) — realizable に混ざらない
+    adv = rz["holdings_down_advice"]
+    assert adv["n"] == 2
+    assert adv["gross_expectancy_pct"] == 25.0
+    # non-holdings DOWN は informational 枠
+    assert rz["informational_down"]["n"] == 1
+
+
+def test_realizable_expectancy_warning_in_feedback_when_up_ev_negative() -> None:
+    """UP の net EV が 0 以下なら feedback に明示警告を出す — 名目 EV が
+    DOWN 的中で正でも「買いで再現できない」ことを AI に見せる。"""
+    ups = [
+        _pred("win", "UP", 1.0),
+        _pred("loss", "UP", -3.0),
+    ]
+    downs = [_pred("win", "DOWN", -20.0, source="holdings") for _ in range(5)]
+    history = {"predictions": ups + downs}
+    history["performance_stats"] = compute_performance_stats(history)
+    feedback = format_performance_feedback(history)
+    assert "実現可能 EV" in feedback
+    assert "買いで再現できる期待値がゼロ以下" in feedback
+    assert "売り助言" in feedback
 
 
 # ---------- episode-level dedup ---------------------------------------------
