@@ -593,7 +593,33 @@ def phase_prepare() -> None:
         if s.get("current_price") is not None:
             current_prices[s["ticker"]] = s["current_price"]
 
-    perf_history = review_predictions(perf_history, current_prices, date_str)
+    # universe から外れた pending 銘柄の価格を補完する。これが無いと
+    # screening 対象落ちした銘柄の予測が永久 pending で滞留し、悪い結果
+    # ほど metrics から消える生存者バイアスになる (2026-07-04 監査で
+    # 4-5 月の 47 件を確認)。
+    try:
+        from stock_analyzer.data_fetcher import fetch_latest_close_batch
+
+        pending_missing = sorted(
+            {
+                p["ticker"]
+                for p in perf_history.get("predictions", [])
+                if p.get("status") == "pending" and p.get("ticker") and p["ticker"] not in current_prices
+            }
+        )
+        # 0 件でも必ず log する (pending-verify が code path の生存確認に
+        # この行を grep する)。
+        logger.info("Pending price backfill: %d off-universe tickers", len(pending_missing))
+        if pending_missing:
+            current_prices.update(fetch_latest_close_batch(pending_missing))
+    except Exception:
+        logger.exception("Pending price backfill failed (continuing with universe prices only)")
+
+    # split_factor_fn: 大型 move の予測は分割 / 併合を疑って entry_price を
+    # 補正してから判定する (8053.T「5日で-75%」型のゴミ return 防止)。
+    from stock_analyzer.data_fetcher import fetch_split_factor
+
+    perf_history = review_predictions(perf_history, current_prices, date_str, split_factor_fn=fetch_split_factor)
     performance_feedback = format_performance_feedback(perf_history)
 
     # Compact "what didn't work" block — codex 2026-06-13 P1: surface

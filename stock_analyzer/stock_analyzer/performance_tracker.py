@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -26,10 +27,31 @@ _REVIEW_WINDOW_DAYS_BY_SOURCE = {
     "long_term": 90,
 }
 _DEFAULT_REVIEW_WINDOW_DAYS = 14
+
+# |return_pct| がこの閾値以上のとき、株式分割 / 併合を疑って split factor を
+# 照会する。entry_price は予測時の生値で記録されるため、途中で分割が入ると
+# 「住友商事が 5 日で -75%」のようなゴミ return が win/loss・期待値・DD・
+# drift 判定すべてに混入する (2026-07-04 監査で 8053.T / 4452.T の実害を確認)。
+# 大型 move のみ照会するのは API 呼び出しを稀にするため — 1.25:1 以上の
+# 分割はこの閾値で必ず引っかかる。
+_SPLIT_CHECK_THRESHOLD_PCT = 20.0
+
+# universe から外れて価格が取れなくなった pending は、この猶予日数を
+# review window に加えた日数で強制 expire する。放置すると永久 pending
+# (= metrics から静かに消える生存者バイアス) になる。
+_PENDING_EXPIRY_GRACE_DAYS = 30
+
 # Minimum resolved trades before reporting a sub-bucket (HIGH/MEDIUM, by
 # source, by confidence × direction). Below this, accuracy_pct is too
 # noisy to drive Claude's self-improvement decisions.
 _MIN_BUCKET_N = 5
+
+# HIGH-ban drawdown discipline の判定窓。通算累積和の drawdown
+# (current_drawdown_pct) は全期間 peak 基準のため一度深く沈むと数百 trade
+# 分の利益がないと回復せず、「HIGH 恒久禁止」の吸収状態を作っていた
+# (2026-07-04 監査: current DD 199.7pp で probation 再試験が構造的に不可能)。
+# 直近 N trade の窓内 drawdown なら losing streak を検知しつつ自然回復する。
+_RECENT_DD_WINDOW = 30
 
 # Predictions whose ``prediction`` field equals one of these are
 # considered "no directional bet" — the AI explicitly declined to call
@@ -130,6 +152,7 @@ def review_predictions(
     history: dict,
     current_prices: dict[str, float],
     today: str | None = None,
+    split_factor_fn: Callable[[str, str], float] | None = None,
 ) -> dict:
     """Check past predictions against current prices, update statuses.
 
@@ -137,6 +160,10 @@ def review_predictions(
         history: The predictions history dict
         current_prices: Dict mapping ticker to current price
         today: Today's date string (YYYY-MM-DD), defaults to now
+        split_factor_fn: Optional ``(ticker, since_date) -> factor`` で、
+            since_date 以降の累積分割比を返す (4:1 分割 → 4.0、無し → 1.0)。
+            |return| が ``_SPLIT_CHECK_THRESHOLD_PCT`` 以上のときだけ照会し、
+            entry_price を分割後スケールに補正する。None なら従来挙動。
 
     Returns:
         Updated history dict
@@ -146,6 +173,7 @@ def review_predictions(
     today_dt = datetime.strptime(today, "%Y-%m-%d")
 
     reviewed_count = 0
+    expired_count = 0
     for pred in history.get("predictions", []):
         if pred["status"] != "pending":
             continue
@@ -156,9 +184,20 @@ def review_predictions(
         if days_elapsed < _MIN_REVIEW_DAYS:
             continue
 
+        review_window = _REVIEW_WINDOW_DAYS_BY_SOURCE.get(pred.get("source", ""), _DEFAULT_REVIEW_WINDOW_DAYS)
+
         ticker = pred["ticker"]
         current_price = current_prices.get(ticker)
         if current_price is None:
+            # 価格が取れない (universe から外れた / 上場廃止 等)。window +
+            # 猶予を過ぎたら expired として確定させ、永久 pending による
+            # 生存者バイアスを防ぐ。expired は win/loss どちらにも数えない。
+            if days_elapsed >= review_window + _PENDING_EXPIRY_GRACE_DAYS:
+                pred["status"] = "expired"
+                pred["reviewed_date"] = today
+                pred["days_held"] = days_elapsed
+                pred["expire_reason"] = "price_unavailable"
+                expired_count += 1
             continue
 
         entry_price = pred.get("entry_price")
@@ -166,12 +205,31 @@ def review_predictions(
             continue
 
         return_pct = ((current_price - entry_price) / entry_price) * 100
+
+        # 大型 move は分割 / 併合を疑う。事後調整された entry と現在価格の
+        # スケール不一致を補正してから win/loss を判定する。
+        if split_factor_fn is not None and abs(return_pct) >= _SPLIT_CHECK_THRESHOLD_PCT:
+            try:
+                factor = float(split_factor_fn(ticker, pred["date"]))
+            except Exception:
+                logger.warning("split factor lookup failed for %s — using raw prices", ticker, exc_info=True)
+                factor = 1.0
+            if factor > 0 and abs(factor - 1.0) > 1e-9:
+                entry_price = entry_price / factor
+                return_pct = ((current_price - entry_price) / entry_price) * 100
+                pred["split_factor"] = round(factor, 4)
+                pred["entry_price_split_adjusted"] = round(entry_price, 2)
+                logger.info(
+                    "Split-adjusted %s: factor=%.4f, adjusted return %.2f%%",
+                    ticker,
+                    factor,
+                    return_pct,
+                )
+
         pred["actual_price"] = round(current_price, 1)
         pred["actual_return_pct"] = round(return_pct, 2)
         pred["reviewed_date"] = today
         pred["days_held"] = days_elapsed
-
-        review_window = _REVIEW_WINDOW_DAYS_BY_SOURCE.get(pred.get("source", ""), _DEFAULT_REVIEW_WINDOW_DAYS)
 
         # Determine outcome
         prediction_direction = pred.get("prediction", "UP")
@@ -197,6 +255,8 @@ def review_predictions(
 
     if reviewed_count > 0:
         logger.info("Reviewed %d predictions", reviewed_count)
+    if expired_count > 0:
+        logger.info("Expired %d stale pending predictions (price unavailable)", expired_count)
 
     # Recompute stats
     history["performance_stats"] = compute_performance_stats(history)
@@ -388,6 +448,43 @@ def save_new_predictions(
     return history
 
 
+def _compute_episode_stats(resolved: list[dict]) -> dict | None:
+    """同一ポジションの連日再予測を 1 episode に集約した成績。
+
+    dedup key = (ticker, source, prediction, actual_price)。同じ銘柄の
+    同じ方向の予測が同じ価格で解決された = 同一の値動きを複数回数えて
+    いるとみなし、date 最古の 1 件を代表にする。actual_price が None の
+    ものは key が潰れないよう素通しする。
+    """
+    if not resolved:
+        return None
+    seen: set[tuple] = set()
+    episodes: list[dict] = []
+    for p in sorted(resolved, key=lambda x: x.get("date", "")):
+        actual = p.get("actual_price")
+        if actual is None:
+            episodes.append(p)
+            continue
+        key = (p.get("ticker"), p.get("source"), p.get("prediction"), actual)
+        if key in seen:
+            continue
+        seen.add(key)
+        episodes.append(p)
+    n = len(episodes)
+    if n == 0:
+        return None
+    wins = sum(1 for p in episodes if p.get("status") == "win")
+    dir_returns = [r for r in (_directional_return(p) for p in episodes) if r is not None]
+    result: dict = {
+        "n_episodes": n,
+        "n_raw": len(resolved),
+        "accuracy_pct": round(wins / n * 100, 1),
+    }
+    if dir_returns:
+        result["mean_dir_return_pct"] = round(sum(dir_returns) / len(dir_returns), 2)
+    return result
+
+
 def compute_performance_stats(history: dict) -> dict:
     """Compute accuracy + risk-adjusted P&L metrics from historical predictions.
 
@@ -405,7 +502,13 @@ def compute_performance_stats(history: dict) -> dict:
     wins = [p for p in predictions if p["status"] == "win"]
     losses = [p for p in predictions if p["status"] == "loss"]
     pending = [p for p in predictions if p["status"] == "pending"]
-    resolved = wins + losses
+    expired = [p for p in predictions if p["status"] == "expired"]
+    # NOTE: ``wins + losses`` の連結にすると、後段の reviewed_date 安定
+    # ソートで同日 tie 内が必ず「勝ち→負け」順になり、同日大量レビュー日
+    # の DD / rolling Sharpe / 直近窓系 metric が systematically 歪む
+    # (2026-07-04 監査: recent DD 217pp vs 実際 97pp)。ファイル順 (= 保存
+    # 順) を保持する filter で構築する。
+    resolved = [p for p in predictions if p["status"] in ("win", "loss")]
 
     stats: dict = {
         "total_predictions": total,
@@ -414,6 +517,10 @@ def compute_performance_stats(history: dict) -> dict:
         "pending": len(pending),
         "accuracy_pct": round(len(wins) / len(resolved) * 100, 1) if resolved else None,
     }
+    if expired:
+        # 価格が取れず強制クローズした件数。多い場合は universe 変動で
+        # 予測が観測不能になっている = accuracy に生存者バイアスの疑い。
+        stats["expired"] = len(expired)
 
     # Direction-aware average returns (a DOWN-win with raw -10% → +10
     # directional return, so DOWN-wins are correctly aggregated alongside
@@ -462,11 +569,12 @@ def compute_performance_stats(history: dict) -> dict:
     # losing trades shows up as a single drawdown number. Sensitive
     # only to ordering and magnitudes, not annualised.
     #
-    # Track current drawdown (peak-to-latest) separately from max DD:
-    # max tells the historical worst-case, current tells the operator
-    # whether *right now* the equity curve is well below its peak. A
-    # current DD >= 15% triggers a "no new HIGH picks" directive in
-    # the prompt — a hard rule that runs even if calibration looks OK.
+    # Track current drawdown (peak-to-latest) separately from max DD.
+    # NOTE: これらは通算累積和ベースで、一度深く沈むと全期間 peak を
+    # 更新するまで回復しない (2026-07-04 監査時点で 199.7pp)。そのため
+    # HIGH-ban の hard rule には使わず、直近 _RECENT_DD_WINDOW trade の
+    # 窓内 drawdown (recent_drawdown_pct) を別途計算して使う。窓内なら
+    # losing streak を検知しつつ、streak が終われば自然に回復する。
     if all_dir_returns:
         chrono_resolved = sorted(resolved, key=lambda p: p.get("reviewed_date") or p.get("date", ""))
         chrono_returns = [r for r in (_directional_return(p) for p in chrono_resolved) if r is not None]
@@ -480,6 +588,25 @@ def compute_performance_stats(history: dict) -> dict:
             max_dd = max(max_dd, drawdown)
         stats["max_drawdown_pct"] = round(max_dd, 2)
         stats["current_drawdown_pct"] = round(peak - cumulative, 2)
+
+        recent_window = chrono_returns[-_RECENT_DD_WINDOW:]
+        cumulative = 0.0
+        peak = 0.0
+        for r in recent_window:
+            cumulative += r
+            peak = max(peak, cumulative)
+        stats["recent_drawdown_pct"] = round(peak - cumulative, 2)
+        stats["recent_drawdown_window"] = len(recent_window)
+
+    # Episode-level stats (擬似反復補正)。holdings は同じ建玉が毎日
+    # 再予測されるため、resolved の名目 n は独立サンプル数を大きく
+    # 水増しする (2026-07-04 監査: 6月の holdings 300 件の実体は 25 銘柄)。
+    # 同一 (ticker, source, prediction, actual_price) = 同じポジションの
+    # 同じ帰結とみなし最初の 1 件だけ数えた「episode 単位」の成績を併記
+    # する。headline との乖離が大きいときは名目 n を信用してはいけない。
+    episode_stats = _compute_episode_stats(resolved)
+    if episode_stats:
+        stats["episode_stats"] = episode_stats
 
     # Confidence breakdown (the single most important diagnostic — if
     # HIGH < MEDIUM, the AI is over-using HIGH and needs to tighten its
@@ -723,12 +850,20 @@ def compute_recent_up_hit_rate(history: dict, recent_n: int = _UP_GATE_RECENT_N)
         return None
     wins = sum(1 for p in sample if p["status"] == "win")
     hit_rate = wins / len(sample) * 100
+    # 期待値条件 (2026-07-04 監査): UP は勝率 50% ちょうどでも期待値が
+    # 負 (勝ち幅 < 負け幅) の期間が続いた。hit rate だけだと閾値上に
+    # 張り付いて gate が開いたままになるため、EV <= 0 でも発火させる。
+    dir_returns = [r for r in (_directional_return(p) for p in sample) if r is not None]
+    mean_dir_ret = round(sum(dir_returns) / len(dir_returns), 2) if dir_returns else None
+    ev_negative = mean_dir_ret is not None and mean_dir_ret <= 0.0
     return {
         "recent_n": len(sample),
         "wins": wins,
         "hit_rate_pct": round(hit_rate, 1),
         "threshold_pct": _UP_GATE_THRESHOLD_PCT,
-        "below_threshold": hit_rate < _UP_GATE_THRESHOLD_PCT,
+        "mean_dir_return_pct": mean_dir_ret,
+        "ev_negative": ev_negative,
+        "below_threshold": hit_rate < _UP_GATE_THRESHOLD_PCT or ev_negative,
     }
 
 
@@ -890,10 +1025,20 @@ def build_up_gate_directive(stats: dict) -> str:
     up_stat = stats.get("recent_up_hit_rate") if isinstance(stats, dict) else None
     if not isinstance(up_stat, dict) or not up_stat.get("below_threshold"):
         return ""
+    if up_stat.get("ev_negative") and up_stat["hit_rate_pct"] >= up_stat["threshold_pct"]:
+        trigger_text = (
+            f"直近 {up_stat['recent_n']} 件の UP 予測は勝率 {up_stat['hit_rate_pct']}% ですが"
+            f"期待値が {up_stat.get('mean_dir_return_pct', 0):+.2f}%/件 と負です "
+            "(勝ち幅 < 負け幅)。"
+        )
+    else:
+        trigger_text = (
+            f"直近 {up_stat['recent_n']} 件の UP 予測勝率が "
+            f"{up_stat['hit_rate_pct']}% (< {up_stat['threshold_pct']:.0f}%) です。"
+        )
     return (
         "=== UP予測ゲート (本日有効) ===\n"
-        f"直近 {up_stat['recent_n']} 件の UP 予測勝率が "
-        f"{up_stat['hit_rate_pct']}% (< {up_stat['threshold_pct']:.0f}%) です。"
+        f"{trigger_text}"
         "楽観バイアスの兆候があるため、今回の cron では以下のルールが強制適用されます:\n"
         "1. **discovery short_term_picks の UP 推奨は原則禁止** — "
         "テクニカル(SMA/MACD/RSI 全部) + ファンダ(成長 or 割安) + 強いカタリスト の "
@@ -1946,16 +2091,20 @@ def format_performance_feedback(history: dict) -> str:
         if pf is not None and pf < 1.0:
             lines.append("  ⚠ プロフィットファクター < 1 = 累積 P&L マイナス。損切り徹底 + 利益拡大を意識")
 
-    # Drawdown stop — hard directive when the equity curve is sitting
-    # well below its peak right now. Independent of expectancy /
+    # Drawdown stop — hard directive when the *recent* equity curve is
+    # sitting well below its window peak. Independent of expectancy /
     # calibration: drawdown discipline limits damage from a regime
     # change the rest of the metrics haven't priced in yet.
-    current_dd = stats.get("current_drawdown_pct")
-    if current_dd is not None and current_dd >= 15.0:
+    # 判定は直近 _RECENT_DD_WINDOW trade の窓内 DD。通算累積和 DD
+    # (current_drawdown_pct) を使うと一度沈んだら二度と回復せず HIGH が
+    # 恒久禁止になる (2026-07-04 監査で修正、probation 再試験の前提)。
+    recent_dd = stats.get("recent_drawdown_pct")
+    if recent_dd is not None and recent_dd >= 15.0:
+        window_n = stats.get("recent_drawdown_window", _RECENT_DD_WINDOW)
         lines.append(
-            f"  ⚠ 累計DDが {current_dd:.1f}% で 15% 閾値超過。"
+            f"  ⚠ 直近 {window_n} trade の drawdown が {recent_dd:.1f}pp で 15pp 閾値超過。"
             "今回は新規 HIGH 信頼度の付与を停止し、MEDIUM 以下のみ推奨してください。"
-            "リカバリーまで HIGH 復活させない"
+            "直近成績が回復するまで HIGH 復活させない"
         )
 
     # Confidence breakdown — same data as before, but now we surface
@@ -2018,6 +2167,21 @@ def format_performance_feedback(history: dict) -> str:
             # loses money — risk-reward asymmetry needs widening.
             lines.append("  ⚠ 勝ち幅 < 負け幅 (リスクリワード逆転)。損切りを早めるか、利確を遅らせてください")
 
+    # Episode 単位の成績 (擬似反復補正)。holdings の連日再予測が名目 n を
+    # 水増しするため、独立サンプルに近い episode 単位を常に併記して
+    # headline との乖離を AI に見せる。乖離 3pp 超は明示警告。
+    ep = stats.get("episode_stats")
+    if isinstance(ep, dict) and ep.get("n_episodes"):
+        ep_ev = ep.get("mean_dir_return_pct")
+        ev_text = f" / 期待値 {ep_ev:+.2f}%/件" if ep_ev is not None else ""
+        lines.append(
+            f"重複補正後 (同一ポジション連日再予測を1件に集約): "
+            f"{ep['n_episodes']}件 (名目 {ep['n_raw']}件) / 勝率 {ep['accuracy_pct']}%{ev_text}"
+        )
+        headline_acc = stats.get("accuracy_pct")
+        if headline_acc is not None and headline_acc - ep["accuracy_pct"] > 3.0:
+            lines.append("  ⚠ 名目勝率が重複計上で上振れしています。自己評価は重複補正後の値を基準にしてください")
+
     # Recent trend
     recent_acc = stats.get("recent_accuracy_pct")
     overall_acc = stats.get("accuracy_pct")
@@ -2035,9 +2199,11 @@ def format_performance_feedback(history: dict) -> str:
     up_stat = stats.get("recent_up_hit_rate")
     if isinstance(up_stat, dict):
         marker = " ⚠" if up_stat.get("below_threshold") else ""
+        up_ev = up_stat.get("mean_dir_return_pct")
+        ev_text = f", 期待値 {up_ev:+.2f}%/件" if up_ev is not None else ""
         lines.append(
             f"直近 UP 予測勝率: {up_stat['hit_rate_pct']}% "
-            f"({up_stat['wins']}/{up_stat['recent_n']}件, 閾値 {up_stat['threshold_pct']:.0f}%){marker}"
+            f"({up_stat['wins']}/{up_stat['recent_n']}件, 閾値 {up_stat['threshold_pct']:.0f}%{ev_text}){marker}"
         )
 
     # Strategy-drift early warning. Expectancy (not accuracy) is the

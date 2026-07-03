@@ -11,6 +11,8 @@ on:
 permissions:
   contents: write
   id-token: write
+  # strategy_governor の weight 変更 verify issue 作成に必要
+  issues: write
 
 jobs:
   analyze:
@@ -35,10 +37,13 @@ jobs:
         run: uv sync --frozen
 
       # Phase 1: Fetch stock data & compute indicators → save prompts to data/
+      # GH_TOKEN: strategy_governor が weight 変更を適用した際に
+      # pending-verify issue を自動作成するのに必要 (無いと silent skip)。
       - name: Prepare analysis data
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_STOCK: ${{ secrets.SLACK_CHANNEL_STOCK }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: uv run python -m stock_analyzer.main prepare
 
       # Phase 2: Claude Code Action reads prompts and generates analysis
@@ -128,6 +133,8 @@ jobs:
 
       - name: Apply strategy review results
         if: github.event.schedule == '0 7 * * 1-5' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: uv run python -m stock_analyzer.main apply-review
 
       # Phase 5: Commit all tracking & strategy data back to repo
@@ -140,7 +147,13 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config pull.rebase true
           git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git
-          git add -f data/predictions_history.json data/strategy_notes.json data/screening_weights.json 2>/dev/null || true
+          # governor の監査ログ / proposal / rollback snapshot / verify YAML も
+          # 必ず commit する。これらが runner ごと消えると one-batch-at-a-time
+          # gate と auto-rollback が機能しない (2026-07-04 監査で発覚)。
+          git add -f data/predictions_history.json data/strategy_notes.json data/screening_weights.json \
+            data/strategy_change_log.json data/strategy_change_proposals.json \
+            data/proposed_screening_weights.json 2>/dev/null || true
+          git add ../verify/stock_analyzer/ 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No data changes to commit"
             echo "push_status=skipped" >> "$GITHUB_OUTPUT"

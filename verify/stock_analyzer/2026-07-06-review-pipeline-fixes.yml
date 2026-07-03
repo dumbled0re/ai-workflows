@@ -1,0 +1,37 @@
+verify_id: stock_analyzer/2026-07-06-review-pipeline-fixes
+verify_after: 2026-07-06T09:30:00+09:00
+project: stock_analyzer
+description: |
+  2026-07-04 監査で入れた review パイプライン修正の production 発火確認。
+
+  修正内容 (コード側):
+  - review_predictions に株式分割補正 (split_factor_fn) を追加。
+    |return| >= 20% で splits 照会 → entry_price 補正。8053.T が 4:1
+    分割で「5日 -75.56% の DOWN 的中」扱いになっていた類のゴミ return
+    を防ぐ。
+  - universe 落ち銘柄の pending 価格を fetch_latest_close_batch で
+    backfill。旧実装では 47 件が永久 pending (生存者バイアス)。
+  - 価格が取れないまま window + 30 日経過した pending は
+    status=expired で強制クローズ。
+
+  確認内容: 月曜朝 cron (7/6 08:00 JST) の phase_prepare で
+  "Pending price backfill: N off-universe tickers" が log に出るか。
+  この行は該当 0 件でも必ず出力される設計なので、出ていなければ
+  新コードがデプロイされていない / 例外で握り潰されている。
+
+  inconclusive 時は次の pending-verify cron で retry (max 3 日)。
+kind: recent_run_log_grep
+args:
+  workflows:
+    - stock-analysis.yml
+  pattern: "Pending price backfill"
+  lookback: 4
+max_attempts: 3
+retry_after_hours: 24
+relates_to: 2026-07-04 audit fixes
+success_message: |
+  ✅ stock_analyzer: 分割補正 + pending backfill 入りの review パイプ
+  ラインが production cron で実行されたことを確認。
+  次の観察ポイント: (1) 今後 |ret|>25% の新規レコードに split_factor
+  が付くか、(2) pending が滞留しないか (stats.pending が予測発行数と
+  釣り合う範囲で推移)、(3) stats.expired の増加ペース。

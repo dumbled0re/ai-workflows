@@ -88,6 +88,55 @@ def fetch_batch(
     return results, failed, fundamentals
 
 
+def fetch_split_factor(ticker: str, since_date: str) -> float:
+    """``since_date`` (YYYY-MM-DD) より後に発生した株式分割 / 併合の累積比率を返す。
+
+    4:1 分割 → 4.0、2 株を 1 株に併合 → 0.5、イベント無し / 取得失敗 → 1.0。
+    predictions_history の entry_price は予測時の生値で固定されるため、途中で
+    分割が入ると現在価格とのスケールがずれる。review_predictions が大型 move
+    の予測に対してこの関数で entry_price を補正する。
+    """
+    try:
+        splits = yf.Ticker(ticker).splits
+        if splits is None or len(splits) == 0:
+            return 1.0
+        factor = 1.0
+        for ts, ratio in splits.items():
+            try:
+                if ts.strftime("%Y-%m-%d") > since_date and float(ratio) > 0:
+                    factor *= float(ratio)
+            except Exception:
+                continue
+        return factor
+    except Exception:
+        logger.warning("Failed to fetch splits for %s — assuming no split", ticker)
+        return 1.0
+
+
+def fetch_latest_close_batch(tickers: list[str]) -> dict[str, float]:
+    """当日の universe に含まれない ticker の最新終値をまとめて取得する。
+
+    screening 対象から外れた銘柄の pending 予測は価格が渡らず永久に
+    解決されない (= 生存者バイアス)。review の前にこの関数で補完する。
+    取得できなかった ticker は結果 dict に含めない。
+    """
+    prices: dict[str, float] = {}
+    for i, ticker in enumerate(tickers):
+        if i > 0:
+            time.sleep(random.uniform(_SLEEP_MIN, _SLEEP_MAX))
+        try:
+            df = yf.Ticker(ticker).history(period="5d", auto_adjust=True)
+            if df is not None and not df.empty and "Close" in df.columns:
+                close = df["Close"].dropna()
+                if len(close) > 0:
+                    prices[ticker] = float(close.iloc[-1])
+        except Exception:
+            logger.warning("Failed to fetch latest close for %s", ticker)
+    if tickers:
+        logger.info("Fetched latest close for %d/%d off-universe tickers", len(prices), len(tickers))
+    return prices
+
+
 def _download_ticker(ticker: str, period: str, fetch_fundamentals: bool) -> tuple[pd.DataFrame | None, dict | None]:
     """Download a single ticker from Yahoo Finance via yfinance."""
     for attempt in range(_MAX_RETRIES):

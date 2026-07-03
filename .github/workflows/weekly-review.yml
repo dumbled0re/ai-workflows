@@ -9,6 +9,8 @@ on:
 permissions:
   contents: write
   id-token: write
+  # strategy_governor の weight 変更 verify issue 作成に必要
+  issues: write
 
 jobs:
   review:
@@ -50,7 +52,10 @@ jobs:
             JSONのみを出力し、他のテキストは含めないでください。
 
       # Phase 3: Apply review results to strategy notes and screening weights
+      # GH_TOKEN: governor 適用時の pending-verify issue 自動作成用
       - name: Apply review results
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: uv run python -m stock_analyzer.main apply-review
 
       # Phase 4: Commit updated strategy files back to repo
@@ -62,7 +67,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git
-          git add data/strategy_notes.json data/screening_weights.json data/predictions_history.json
+          # governor 成果物 (監査ログ / proposal / snapshot / verify YAML) も
+          # 必ず commit — runner 上に置き去りにすると検証ループが回らない。
+          git add -f data/strategy_notes.json data/screening_weights.json data/predictions_history.json \
+            data/strategy_change_log.json data/strategy_change_proposals.json \
+            data/proposed_screening_weights.json 2>/dev/null || true
+          git add ../verify/stock_analyzer/ 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else

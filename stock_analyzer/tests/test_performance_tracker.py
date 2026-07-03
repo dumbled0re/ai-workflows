@@ -459,10 +459,12 @@ def test_current_drawdown_zero_when_at_new_peak() -> None:
     assert stats["max_drawdown_pct"] == 3.0
 
 
-def test_drawdown_stop_directive_emitted_above_15pct() -> None:
+def test_drawdown_stop_directive_emitted_above_15pp() -> None:
     """The format block must include the hard 'no new HIGH' directive
-    once current DD crosses 15% — the AI cannot miss this in scanning."""
+    once the recent-window DD crosses 15pp — the AI cannot miss this
+    in scanning."""
     # Build a clear DD: +10, +10, -20, -10 → peak 20, current -10, DD 30
+    # (4 trades — all inside the recent window)
     history = {
         "predictions": [
             _pred("win", "UP", 10.0, reviewed_date="2026-01-01"),
@@ -473,13 +475,13 @@ def test_drawdown_stop_directive_emitted_above_15pct() -> None:
     }
     history["performance_stats"] = compute_performance_stats(history)
     feedback = format_performance_feedback(history)
-    assert "累計DD" in feedback
-    assert "15% 閾値" in feedback
+    assert "drawdown" in feedback
+    assert "15pp 閾値" in feedback
     assert "HIGH" in feedback
 
 
 def test_drawdown_stop_silent_below_threshold() -> None:
-    """Below 15% the directive must not appear — operator should see
+    """Below 15pp the directive must not appear — operator should see
     'normal expectancy text' only, no false alarm."""
     history = {
         "predictions": [
@@ -489,7 +491,191 @@ def test_drawdown_stop_silent_below_threshold() -> None:
     }
     history["performance_stats"] = compute_performance_stats(history)
     feedback = format_performance_feedback(history)
-    assert "15% 閾値" not in feedback
+    assert "15pp 閾値" not in feedback
+
+
+def test_drawdown_preserves_file_order_within_same_day_ties() -> None:
+    """Records reviewed the same day must keep their file order in the
+    equity walk. The old ``wins + losses`` concatenation sorted every
+    same-day tie as wins-first / losses-last, which fabricated a
+    peak-then-crash pattern and inflated DD (audit 2026-07-04: 217pp
+    reported vs 97pp actual)."""
+    # File order alternates loss/win, all reviewed the same day.
+    preds = [
+        _pred("loss", "UP", -5.0, reviewed_date="2026-01-10"),
+        _pred("win", "UP", 5.0, reviewed_date="2026-01-10"),
+        _pred("loss", "UP", -5.0, reviewed_date="2026-01-10"),
+        _pred("win", "UP", 5.0, reviewed_date="2026-01-10"),
+    ]
+    stats = compute_performance_stats({"predictions": preds})
+    # Alternating walk: -5, 0, -5, 0 → max DD 5, ends back at the peak
+    # (current DD 0). The wins-first ordering would walk +5, +10, +5, 0
+    # → max DD 10 / current DD 10.
+    assert stats["max_drawdown_pct"] == 5.0
+    assert stats["current_drawdown_pct"] == 0.0
+
+
+def test_drawdown_ban_recovers_after_losses_age_out_of_window() -> None:
+    """An old crash must NOT ban HIGH forever. The all-time cumulative DD
+    (current_drawdown_pct) stays huge after a deep loss, but once the
+    last 30 trades are healthy the recent-window DD is ~0 and the
+    directive must disappear. This pins the 2026-07-04 deadlock fix:
+    with the old all-time rule, HIGH was permanently banned (DD 199.7pp)
+    and the probation re-test could never start."""
+    preds = [
+        _pred("win", "UP", 10.0, reviewed_date="2026-01-01"),
+        _pred("win", "UP", 10.0, reviewed_date="2026-01-02"),
+        _pred("loss", "UP", -60.0, reviewed_date="2026-01-03"),  # crash
+    ]
+    # 30 modest wins afterwards — fill the entire recent window.
+    for i in range(30):
+        preds.append(_pred("win", "UP", 0.5, reviewed_date=f"2026-02-{i + 1:02d}"))
+    history = {"predictions": preds}
+    history["performance_stats"] = compute_performance_stats(history)
+    stats = history["performance_stats"]
+    # All-time DD is still way above 15pp (peak +20 → 20-(-40+15)=45pp)…
+    assert stats["current_drawdown_pct"] >= 15.0
+    # …but the recent window is a clean climb → no ban.
+    assert stats["recent_drawdown_pct"] < 15.0
+    feedback = format_performance_feedback(history)
+    assert "15pp 閾値超過" not in feedback
+
+
+# ---------- split adjustment ------------------------------------------------
+
+
+def test_review_split_adjusts_entry_price_on_large_move() -> None:
+    """A 4:1 split makes a flat stock look like -75%. With a
+    split_factor_fn reporting the split, the entry is rescaled and the
+    outcome is judged on the true economic move."""
+    p = _pending_pred("short_term", "UP", 6000.0, "2026-01-01")
+    history = {"predictions": [p]}
+    review_predictions(
+        history,
+        current_prices={"X.T": 1550.0},
+        today="2026-01-10",
+        split_factor_fn=lambda ticker, since: 4.0,
+    )
+    # Adjusted entry 6000/4 = 1500 → +3.33% → clean UP win.
+    assert p["status"] == "win"
+    assert p["split_factor"] == 4.0
+    assert p["entry_price_split_adjusted"] == 1500.0
+    assert abs(p["actual_return_pct"] - 3.33) < 0.01
+
+
+def test_review_split_lookup_skipped_for_small_moves() -> None:
+    """The split lookup is an external call — it must not fire for
+    ordinary moves below the 20% threshold."""
+
+    def _explode(ticker: str, since: str) -> float:
+        raise AssertionError("split_factor_fn must not be called for small moves")
+
+    p = _pending_pred("short_term", "UP", 1000.0, "2026-01-01")
+    history = {"predictions": [p]}
+    review_predictions(history, current_prices={"X.T": 1050.0}, today="2026-01-10", split_factor_fn=_explode)
+    assert p["status"] == "win"
+    assert "split_factor" not in p
+
+
+def test_review_split_fn_failure_falls_back_to_raw_prices() -> None:
+    """A lookup failure must never block the review — fall back to the
+    raw comparison (pre-fix behaviour) instead of crashing the cron."""
+
+    def _broken(ticker: str, since: str) -> float:
+        raise RuntimeError("yahoo down")
+
+    p = _pending_pred("short_term", "DOWN", 1000.0, "2026-01-01")
+    history = {"predictions": [p]}
+    review_predictions(history, current_prices={"X.T": 700.0}, today="2026-01-10", split_factor_fn=_broken)
+    assert p["status"] == "win"  # raw -30% → DOWN win
+    assert p["actual_return_pct"] == -30.0
+    assert "split_factor" not in p
+
+
+# ---------- stale-pending expiry --------------------------------------------
+
+
+def test_stale_pending_expires_when_price_unavailable() -> None:
+    """A pending prediction whose ticker no longer gets a price must be
+    force-closed after window + grace — otherwise it sits pending
+    forever and silently drops out of every metric (survivorship
+    bias)."""
+    p = _pending_pred("short_term", "UP", 1000.0, "2026-01-01")
+    history = {"predictions": [p]}
+    # 50 days > 14 (window) + 30 (grace), no price for X.T
+    review_predictions(history, current_prices={}, today="2026-02-20")
+    assert p["status"] == "expired"
+    assert p["expire_reason"] == "price_unavailable"
+    assert p["actual_return_pct"] is None
+
+
+def test_stale_pending_waits_out_the_grace_period() -> None:
+    """Within window + grace the prediction stays pending — the ticker
+    may just be temporarily missing from the fetch."""
+    p = _pending_pred("short_term", "UP", 1000.0, "2026-01-01")
+    history = {"predictions": [p]}
+    review_predictions(history, current_prices={}, today="2026-02-01")  # 31 days < 44
+    assert p["status"] == "pending"
+
+
+def test_expired_predictions_excluded_from_accuracy() -> None:
+    """Expired records count in stats['expired'] but never as win/loss/
+    pending — they must not move accuracy in either direction."""
+    expired = _pred("expired", "UP", None, reviewed_date="2026-02-20")
+    history = {
+        "predictions": [
+            _pred("win", "UP", 5.0),
+            _pred("loss", "UP", -5.0),
+            expired,
+        ],
+    }
+    stats = compute_performance_stats(history)
+    assert stats["expired"] == 1
+    assert stats["wins"] == 1
+    assert stats["losses"] == 1
+    assert stats["pending"] == 0
+    assert stats["accuracy_pct"] == 50.0
+
+
+# ---------- episode-level dedup ---------------------------------------------
+
+
+def test_episode_stats_collapse_daily_repredictions() -> None:
+    """holdings re-predicted daily resolve to the same outcome many
+    times. Episode stats must count that position once."""
+    dup1 = _pred("win", "DOWN", -30.0, date="2026-06-22")
+    dup2 = _pred("win", "DOWN", -30.0, date="2026-06-23")
+    dup3 = _pred("win", "DOWN", -30.0, date="2026-06-24")
+    for d in (dup1, dup2, dup3):
+        d["ticker"] = "3133.T"
+        d["actual_price"] = 71.0
+    other = _pred("loss", "UP", -5.0, date="2026-06-22")
+    other["ticker"] = "9999.T"
+    other["actual_price"] = 95.0
+    history = {"predictions": [dup1, dup2, dup3, other]}
+    stats = compute_performance_stats(history)
+    ep = stats["episode_stats"]
+    assert ep["n_raw"] == 4
+    assert ep["n_episodes"] == 2  # 3133.T collapsed to one episode
+    assert ep["accuracy_pct"] == 50.0  # 1 win episode / 2 episodes
+    # feedback surfaces the inflation warning (75% nominal vs 50% episode)
+    history["performance_stats"] = stats
+    feedback = format_performance_feedback(history)
+    assert "重複補正後" in feedback
+    assert "名目勝率が重複計上で上振れ" in feedback
+
+
+def test_episode_stats_keep_distinct_outcomes_separate() -> None:
+    """Same ticker resolving at a *different* actual price is a new
+    episode — dedup must key on the outcome, not just the ticker."""
+    a = _pred("win", "DOWN", -10.0, date="2026-06-01")
+    b = _pred("win", "DOWN", -20.0, date="2026-06-10")
+    a["ticker"] = b["ticker"] = "3133.T"
+    a["actual_price"] = 90.0
+    b["actual_price"] = 80.0
+    history = {"predictions": [a, b]}
+    stats = compute_performance_stats(history)
+    assert stats["episode_stats"]["n_episodes"] == 2
 
 
 # ---------- drift indicator ------------------------------------------------
@@ -1328,6 +1514,41 @@ def test_compute_recent_up_hit_rate_takes_most_recent_only() -> None:
     assert stat is not None
     assert stat["recent_n"] == 20
     assert stat["wins"] == 8
+
+
+def test_compute_recent_up_hit_rate_flags_negative_ev_at_50pct() -> None:
+    """勝率がちょうど閾値 (50%) でも期待値が負なら gate は発火する。
+    2026-07-04 監査: UP は 50% に張り付いたまま EV 負で gate が開いて
+    いたのが実害だった。"""
+    preds = [_up_pred("win", f"2026-02-{i:02d}", 1.0) for i in range(1, 11)]
+    preds += [_up_pred("loss", f"2026-02-{i:02d}", -3.0) for i in range(11, 21)]
+    history = {"predictions": preds}
+    stat = compute_recent_up_hit_rate(history)
+    assert stat is not None
+    assert stat["hit_rate_pct"] == 50.0
+    assert stat["mean_dir_return_pct"] == -1.0
+    assert stat["ev_negative"] is True
+    assert stat["below_threshold"] is True
+
+
+def test_build_up_gate_directive_mentions_ev_when_ev_triggered() -> None:
+    """EV 起因で発火した場合、hit rate は閾値以上なので「勝率が低い」
+    ではなく期待値の説明を出す。"""
+    stats = {
+        "recent_up_hit_rate": {
+            "recent_n": 20,
+            "wins": 10,
+            "hit_rate_pct": 50.0,
+            "threshold_pct": 50.0,
+            "mean_dir_return_pct": -1.0,
+            "ev_negative": True,
+            "below_threshold": True,
+        }
+    }
+    text = build_up_gate_directive(stats)
+    assert "期待値" in text
+    assert "-1.00%" in text
+    assert "short_term_picks の UP 推奨は原則禁止" in text
 
 
 def test_build_up_gate_directive_silent_when_above_threshold() -> None:
