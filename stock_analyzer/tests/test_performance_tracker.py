@@ -12,7 +12,9 @@ fix and the new metric calculations.
 from __future__ import annotations
 
 from stock_analyzer.performance_tracker import (
+    _benchmark_dir_excess,
     _directional_return,
+    _lookup_close,
     build_recent_failure_block,
     build_up_gate_directive,
     compute_critic_efficacy,
@@ -636,6 +638,79 @@ def test_expired_predictions_excluded_from_accuracy() -> None:
     assert stats["losses"] == 1
     assert stats["pending"] == 0
     assert stats["accuracy_pct"] == 50.0
+
+
+# ---------- benchmark-relative scoring ---------------------------------------
+
+
+def test_lookup_close_falls_back_to_previous_trading_day() -> None:
+    """土日 / 祝日の日付は直近の前営業日 close に fallback する。"""
+    prices = {"2026-01-09": 100.0}  # Friday
+    assert _lookup_close(prices, "2026-01-11") == 100.0  # Sunday → Friday
+    assert _lookup_close(prices, "2026-01-09") == 100.0
+    assert _lookup_close(prices, "2026-01-30") is None  # beyond 7-day lookback
+
+
+def test_review_records_benchmark_return() -> None:
+    """解決時に同一期間の市場 return が benchmark_return_pct に記録される。"""
+    p = _pending_pred("short_term", "UP", 1000.0, "2026-01-01")
+    history = {"predictions": [p]}
+    bench = {"2026-01-01": 200.0, "2026-01-10": 204.0}  # market +2%
+    review_predictions(
+        history,
+        current_prices={"X.T": 1050.0},
+        today="2026-01-10",
+        benchmark_prices=bench,
+    )
+    assert p["status"] == "win"
+    assert p["benchmark_return_pct"] == 2.0
+
+
+def test_benchmark_dir_excess_separates_skill_from_beta() -> None:
+    """UP: 銘柄 +5% / 市場 +2% → 超過 +3。DOWN: 銘柄 -10% / 市場 -8% →
+    dir +10 だが市場ごと下がった 8pp は β なので超過は +2 だけ。"""
+    up = _pred("win", "UP", 5.0)
+    up["benchmark_return_pct"] = 2.0
+    assert _benchmark_dir_excess(up) == 3.0
+    down = _pred("win", "DOWN", -10.0)
+    down["benchmark_return_pct"] = -8.0
+    assert _benchmark_dir_excess(down) == 2.0
+    # ベンチ未記録は None (集計から除外)
+    assert _benchmark_dir_excess(_pred("win", "UP", 5.0)) is None
+
+
+def test_benchmark_relative_stats_and_up_warning_in_feedback() -> None:
+    """市場に負けている UP 群 → benchmark_relative が集計され、feedback に
+    「指数を買うだけに負けている」警告が出る。"""
+    preds = []
+    for _ in range(5):
+        p = _pred("win", "UP", 1.0)  # 銘柄 +1% だが…
+        p["benchmark_return_pct"] = 3.0  # 市場は +3% → 超過 -2
+        preds.append(p)
+    for _ in range(5):
+        p = _pred("win", "DOWN", -10.0)
+        p["benchmark_return_pct"] = -8.0  # 大半は β
+        preds.append(p)
+    history = {"predictions": preds}
+    stats = compute_performance_stats(history)
+    br = stats["benchmark_relative"]
+    assert br["overall"]["n"] == 10
+    assert br["up"]["mean_dir_excess_pct"] == -2.0
+    assert br["up"]["beat_benchmark_pct"] == 0.0
+    assert br["down"]["mean_dir_excess_pct"] == 2.0
+    history["performance_stats"] = stats
+    feedback = format_performance_feedback(history)
+    assert "市場相対" in feedback
+    assert "指数を買うだけ" in feedback
+
+
+def test_benchmark_relative_absent_below_min_sample() -> None:
+    """benchmark_return_pct 持ちが 5 件未満なら block 自体を出さない
+    (小サンプルで「市場に勝った/負けた」を断定しない)。"""
+    p = _pred("win", "UP", 5.0)
+    p["benchmark_return_pct"] = 1.0
+    stats = compute_performance_stats({"predictions": [p, _pred("win", "UP", 4.0)]})
+    assert "benchmark_relative" not in stats
 
 
 # ---------- realizable expectancy --------------------------------------------

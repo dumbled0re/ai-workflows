@@ -617,9 +617,23 @@ def phase_prepare() -> None:
 
     # split_factor_fn: 大型 move の予測は分割 / 併合を疑って entry_price を
     # 補正してから判定する (8053.T「5日で-75%」型のゴミ return 防止)。
-    from stock_analyzer.data_fetcher import fetch_split_factor
+    from stock_analyzer.data_fetcher import fetch_benchmark_closes, fetch_split_factor
 
-    perf_history = review_predictions(perf_history, current_prices, date_str, split_factor_fn=fetch_split_factor)
+    # 市場相対採点用のベンチマーク終値。失敗しても review は続行
+    # (その run の解決分に benchmark_return_pct が付かないだけ)。
+    benchmark_prices: dict[str, float] = {}
+    try:
+        benchmark_prices = fetch_benchmark_closes()
+    except Exception:
+        logger.exception("Benchmark fetch failed (market-relative scoring skipped this run)")
+
+    perf_history = review_predictions(
+        perf_history,
+        current_prices,
+        date_str,
+        split_factor_fn=fetch_split_factor,
+        benchmark_prices=benchmark_prices or None,
+    )
     performance_feedback = format_performance_feedback(perf_history)
 
     # Compact "what didn't work" block — codex 2026-06-13 P1: surface

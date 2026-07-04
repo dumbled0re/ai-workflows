@@ -77,6 +77,12 @@ _UP_GATE_MIN_SAMPLES = 12
 # Brier score 計算と reliability diagram で共有。
 _CONF_PROB_MAP = {"HIGH": 0.75, "MEDIUM": 0.65, "LOW": 0.55}
 
+# 市場相対採点のベンチマーク (2026-07-04 監査 follow-up)。TOPIX 連動 ETF。
+# 「予測が当たった」だけでは利益にならない — 同じ期間に指数を買うだけで
+# 得られた return を超えた分 (dir excess) だけが銘柄選択の付加価値。
+# 絶対 return 採点だと下落相場の DOWN 的中 (= β) をスキルと誤認する。
+_BENCHMARK_TICKER = "1306.T"
+
 
 def _compute_confidence_buckets(preds: list[dict]) -> dict[str, dict]:
     """Accuracy + Brier per confidence tier over the given *resolved* preds.
@@ -126,6 +132,29 @@ def _directional_return(p: dict) -> float | None:
     return None
 
 
+def _lookup_close(prices: dict[str, float], date_str: str, max_lookback_days: int = 7) -> float | None:
+    """``date_str`` 以前で最も近い営業日の終値を返す (休日 / 祝日 fallback)。"""
+    try:
+        d = datetime.strptime(date_str, "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return None
+    for i in range(max_lookback_days + 1):
+        key = (d - timedelta(days=i)).strftime("%Y-%m-%d")
+        close = prices.get(key)
+        if close:
+            return close
+    return None
+
+
+def _benchmark_window_return(prices: dict[str, float], start_date: str, end_date: str) -> float | None:
+    """ベンチマークの start→end 期間 return (%)。どちらか欠損なら None。"""
+    start = _lookup_close(prices, start_date)
+    end = _lookup_close(prices, end_date)
+    if start and end and start > 0:
+        return (end - start) / start * 100
+    return None
+
+
 def load_history(path: str = _HISTORY_FILE) -> dict:
     """Load predictions history from JSON file."""
     p = Path(path)
@@ -153,6 +182,7 @@ def review_predictions(
     current_prices: dict[str, float],
     today: str | None = None,
     split_factor_fn: Callable[[str, str], float] | None = None,
+    benchmark_prices: dict[str, float] | None = None,
 ) -> dict:
     """Check past predictions against current prices, update statuses.
 
@@ -164,6 +194,10 @@ def review_predictions(
             since_date 以降の累積分割比を返す (4:1 分割 → 4.0、無し → 1.0)。
             |return| が ``_SPLIT_CHECK_THRESHOLD_PCT`` 以上のときだけ照会し、
             entry_price を分割後スケールに補正する。None なら従来挙動。
+        benchmark_prices: Optional ``{YYYY-MM-DD: close}`` のベンチマーク
+            (TOPIX ETF) 日次終値。解決時に同一期間の市場 return を
+            ``benchmark_return_pct`` として記録し、市場相対採点
+            (スキル vs β の分離) を可能にする。
 
     Returns:
         Updated history dict
@@ -230,6 +264,14 @@ def review_predictions(
         pred["actual_return_pct"] = round(return_pct, 2)
         pred["reviewed_date"] = today
         pred["days_held"] = days_elapsed
+
+        # 同一期間の市場 return を記録 (市場相対採点用)。win/loss 判定には
+        # 使わない — 判定基準を変えると過去との比較可能性が壊れるため、
+        # excess は stats 側で別軸として計算する。
+        if benchmark_prices:
+            bench_ret = _benchmark_window_return(benchmark_prices, pred["date"], today)
+            if bench_ret is not None:
+                pred["benchmark_return_pct"] = round(bench_ret, 2)
 
         # Determine outcome
         prediction_direction = pred.get("prediction", "UP")
@@ -773,6 +815,12 @@ def compute_performance_stats(history: dict) -> dict:
     if realizable is not None:
         stats["realizable_expectancy"] = realizable
 
+    # 市場相対採点 (skill vs β 分離)。benchmark_return_pct を持つ予測が
+    # _MIN_BUCKET_N 件未満の間は None (backfill / 今後の review で蓄積)。
+    benchmark_rel = _compute_benchmark_relative(resolved)
+    if benchmark_rel is not None:
+        stats["benchmark_relative"] = benchmark_rel
+
     correlation_pairs = compute_signal_correlation_pairs(history)
     if correlation_pairs:
         stats["signal_correlation_pairs"] = correlation_pairs
@@ -1277,6 +1325,65 @@ def compute_signal_correlation_pairs(history: dict, min_samples: int = 10) -> li
             )
     pairs.sort(key=lambda x: abs(x["correlation"]), reverse=True)
     return pairs
+
+
+def _benchmark_dir_excess(p: dict) -> float | None:
+    """方向調整後の市場超過リターン。
+
+    UP: 銘柄 return - 市場 return (指数を買う代わりにこの銘柄を買った差分)。
+    DOWN: (-銘柄 return) - (-市場 return) = 市場より余計に下がった分だけが
+    「相対的弱さを当てた」価値。下落相場で市場と同じだけ下がる DOWN 的中は
+    excess ゼロ = β であってスキルではない。
+    """
+    bench = p.get("benchmark_return_pct")
+    dir_ret = _directional_return(p)
+    if bench is None or dir_ret is None:
+        return None
+    direction = p.get("prediction")
+    dir_bench = float(bench) if direction == "UP" else -float(bench)
+    return dir_ret - dir_bench
+
+
+def _compute_benchmark_relative(resolved: list[dict]) -> dict | None:
+    """市場相対 (vs TOPIX ETF) の成績。benchmark_return_pct を持つ解決済み
+    予測のみ対象 (retro backfill + 今後の review で記録される)。
+
+    「スキル vs β」を分離する監査 follow-up の中核 metric。overall / 方向別 /
+    source 別に mean dir excess と「ベンチ超え率」を出す。
+    """
+    covered = [p for p in resolved if _benchmark_dir_excess(p) is not None]
+    if len(covered) < _MIN_BUCKET_N:
+        return None
+
+    def _bucket(preds: list[dict]) -> dict | None:
+        excesses = [e for e in (_benchmark_dir_excess(p) for p in preds) if e is not None]
+        if len(excesses) < _MIN_BUCKET_N:
+            return None
+        beat = sum(1 for e in excesses if e > 0)
+        return {
+            "n": len(excesses),
+            "mean_dir_excess_pct": round(sum(excesses) / len(excesses), 2),
+            "beat_benchmark_pct": round(beat / len(excesses) * 100, 1),
+        }
+
+    result: dict = {
+        "benchmark": _BENCHMARK_TICKER,
+        "overall": _bucket(covered),
+    }
+    up_b = _bucket([p for p in covered if p.get("prediction") == "UP"])
+    if up_b:
+        result["up"] = up_b
+    down_b = _bucket([p for p in covered if p.get("prediction") == "DOWN"])
+    if down_b:
+        result["down"] = down_b
+    by_source: dict[str, dict] = {}
+    for src in ("holdings", "short_term", "long_term", "discovery"):
+        b = _bucket([p for p in covered if p.get("source") == src])
+        if b:
+            by_source[src] = b
+    if by_source:
+        result["by_source"] = by_source
+    return result if result.get("overall") else None
 
 
 def compute_realizable_expectancy(history: dict, transaction_cost_pct: float = 0.2) -> dict | None:
@@ -2333,6 +2440,35 @@ def format_performance_feedback(history: dict) -> str:
             lines.append(
                 f"  参考 — holdings DOWN (売り助言, {adv['n']}件): 的中 {adv['accuracy_pct']}% / "
                 f"回避可能だった下落幅 {adv['gross_expectancy_pct']:+.2f}%/件 (実現利益ではない)"
+            )
+
+    # 市場相対採点 (skill vs β)。当たっても市場と同じ動きなら excess は
+    # ゼロ = 指数を買えば同じ。UP の excess <= 0 は「銘柄選択がインデックス
+    # 投資に負けている」ことを意味する — 利益目的なら最重要の警告。
+    br = stats.get("benchmark_relative")
+    if isinstance(br, dict) and isinstance(br.get("overall"), dict):
+        o = br["overall"]
+        lines.append(
+            f"📐 市場相対 (vs {br['benchmark']}): 方向調整後の超過リターン "
+            f"{o['mean_dir_excess_pct']:+.2f}%/件 / ベンチ超え {o['beat_benchmark_pct']}% (n={o['n']})"
+        )
+        up_br = br.get("up")
+        if isinstance(up_br, dict):
+            marker = " ⚠" if up_br["mean_dir_excess_pct"] <= 0 else ""
+            lines.append(
+                f"  UP: 超過 {up_br['mean_dir_excess_pct']:+.2f}%/件 (ベンチ超え {up_br['beat_benchmark_pct']}%)"
+                f"{marker}"
+            )
+            if up_br["mean_dir_excess_pct"] <= 0:
+                lines.append(
+                    "  ⚠ UP 予測は「指数を買うだけ」に負けています。銘柄選択が市場超過価値を"
+                    "生んでいないので、確信の薄い UP を出すくらいなら NO_TRADE を選んでください"
+                )
+        down_br = br.get("down")
+        if isinstance(down_br, dict):
+            lines.append(
+                f"  DOWN: 超過 {down_br['mean_dir_excess_pct']:+.2f}%/件 — "
+                "市場ごと下がった分 (β) は除外済み。この値が小さいなら DOWN 的中の大半は地合いです"
             )
 
     # Paper portfolio NAV one-liner (Phase 6 — DD 172% root cause: trade-level

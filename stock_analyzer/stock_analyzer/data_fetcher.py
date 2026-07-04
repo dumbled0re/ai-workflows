@@ -113,6 +113,25 @@ def fetch_split_factor(ticker: str, since_date: str) -> float:
         return 1.0
 
 
+def fetch_benchmark_closes(ticker: str = "1306.T", period: str = "1y") -> dict[str, float]:
+    """ベンチマーク (TOPIX 連動 ETF 1306.T) の日次終値を {YYYY-MM-DD: close} で返す。
+
+    市場相対採点用: 予測と同一期間の市場 return を review 時に記録し、
+    「当たった」のうち市場ごと動いた分 (β) を分離する。取得失敗は空 dict
+    (その run は相対採点なしで続行、review 自体は止めない)。
+    """
+    try:
+        df = yf.Ticker(ticker).history(period=period, auto_adjust=True)
+        if df is None or df.empty or "Close" not in df.columns:
+            logger.warning("No benchmark data returned for %s", ticker)
+            return {}
+        close = df["Close"].dropna()
+        return {ts.strftime("%Y-%m-%d"): float(v) for ts, v in close.items()}
+    except Exception:
+        logger.warning("Failed to fetch benchmark closes for %s", ticker)
+        return {}
+
+
 def fetch_latest_close_batch(tickers: list[str]) -> dict[str, float]:
     """当日の universe に含まれない ticker の最新終値をまとめて取得する。
 
