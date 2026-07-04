@@ -305,6 +305,26 @@ def review_predictions(
     return history
 
 
+def _has_open_thesis(history: dict, ticker: str, source: str, prediction: str) -> bool:
+    """同一 (ticker, source, direction) の pending が既に存在するか。
+
+    存在する間は新しい予測を記録しない = **thesis 単位の記録** (2026-07-04
+    監査 follow-up)。旧実装は同じ建玉に毎日同方向の予測を貼り直しており、
+    解決も同じ価格で同時に起きるため、学習ループに強相関サンプルが流れて
+    名目 n を水増ししていた (6 月の holdings 300 件の実体は 25 銘柄)。
+
+    方向が変わった場合は「新しい thesis」として記録される (旧 pending は
+    自然に解決を待つ)。解決済みになった後の再予測も新 thesis として扱う。
+    """
+    return any(
+        p.get("status") == "pending"
+        and p.get("ticker") == ticker
+        and p.get("source") == source
+        and p.get("prediction") == prediction
+        for p in history.get("predictions", [])
+    )
+
+
 def save_new_predictions(
     history: dict,
     holdings_result: dict,
@@ -339,6 +359,7 @@ def save_new_predictions(
     pem_lookup = pre_entry_metrics or {}
 
     new_count = 0
+    skipped_open_thesis = 0
 
     # Extract from holdings analysis
     for h in holdings_result.get("holdings_analysis", []):
@@ -362,6 +383,10 @@ def save_new_predictions(
         pred_id = f"{today}_{ticker}_holdings"
         # Skip if already recorded today
         if any(p["id"] == pred_id for p in history.get("predictions", [])):
+            continue
+        # 同方向の pending が生きている間は再記録しない (thesis 単位)。
+        if _has_open_thesis(history, ticker, "holdings", prediction):
+            skipped_open_thesis += 1
             continue
 
         history.setdefault("predictions", []).append(
@@ -410,6 +435,9 @@ def save_new_predictions(
         pred_id = f"{today}_{ticker}_short_term"
         if any(p["id"] == pred_id for p in history.get("predictions", [])):
             continue
+        if _has_open_thesis(history, ticker, "short_term", prediction):
+            skipped_open_thesis += 1
+            continue
 
         history.setdefault("predictions", []).append(
             {
@@ -456,6 +484,9 @@ def save_new_predictions(
         pred_id = f"{today}_{ticker}_long_term"
         if any(p["id"] == pred_id for p in history.get("predictions", [])):
             continue
+        if _has_open_thesis(history, ticker, "long_term", prediction):
+            skipped_open_thesis += 1
+            continue
 
         history.setdefault("predictions", []).append(
             {
@@ -483,7 +514,11 @@ def save_new_predictions(
         )
         new_count += 1
 
-    logger.info("Saved %d new predictions", new_count)
+    logger.info(
+        "Saved %d new predictions (%d skipped: open thesis already pending)",
+        new_count,
+        skipped_open_thesis,
+    )
 
     # Recompute stats
     history["performance_stats"] = compute_performance_stats(history)
@@ -2236,6 +2271,109 @@ def format_performance_feedback(history: dict) -> str:
         return ""
 
     lines = ["=== あなたの過去の予測パフォーマンス ==="]
+
+    # ---- 利益基準ブロック (最適化目標) ----------------------------------
+    # user の目的は「予測を当てること」ではなく「利益を出すこと」。採点は
+    # 市場超過リターン基準で行い、的中率系の統計は参考値として後段に置く
+    # (2026-07-04 目的最適化 pivot, #51)。
+    lines.append(
+        "【最適化目標 = 市場超過リターン】成績は「的中したか」ではなく"
+        "「同じ期間に TOPIX ETF を買うより儲かったか」で採点されます。"
+        "以下の利益基準 metric の改善が目的で、的中率は参考値にすぎません。"
+    )
+
+    # 市場相対採点 (skill vs β)。当たっても市場と同じ動きなら excess は
+    # ゼロ = 指数を買えば同じ。UP の excess <= 0 は「銘柄選択がインデックス
+    # 投資に負けている」ことを意味する — 利益目的なら最重要の警告。
+    br = stats.get("benchmark_relative")
+    if isinstance(br, dict) and isinstance(br.get("overall"), dict):
+        o = br["overall"]
+        lines.append(
+            f"📐 市場相対 (vs {br['benchmark']}): 方向調整後の超過リターン "
+            f"{o['mean_dir_excess_pct']:+.2f}%/件 / ベンチ超え {o['beat_benchmark_pct']}% (n={o['n']})"
+        )
+        up_br = br.get("up")
+        if isinstance(up_br, dict):
+            marker = " ⚠" if up_br["mean_dir_excess_pct"] <= 0 else ""
+            lines.append(
+                f"  UP: 超過 {up_br['mean_dir_excess_pct']:+.2f}%/件 (ベンチ超え {up_br['beat_benchmark_pct']}%)"
+                f"{marker}"
+            )
+            if up_br["mean_dir_excess_pct"] <= 0:
+                lines.append(
+                    "  ⚠ UP 予測は「指数を買うだけ」に負けています。銘柄選択が市場超過価値を"
+                    "生んでいないので、確信の薄い UP を出すくらいなら NO_TRADE を選んでください"
+                )
+        down_br = br.get("down")
+        if isinstance(down_br, dict):
+            lines.append(
+                f"  DOWN: 超過 {down_br['mean_dir_excess_pct']:+.2f}%/件 — "
+                "市場ごと下がった分 (β) は除外済み。この値が小さいなら DOWN 的中の大半は地合いです"
+            )
+
+    # 実現可能 EV (2026-07-04 監査 #51)。名目 EV は holdings への DOWN
+    # 的中 (ショート不能 = 実現不可) で水増しされる。収益性の自己評価は
+    # 「UP 買い建てのみ」の net EV を正とし、DOWN は助言/情報として別枠
+    # 表示する。
+    rz = stats.get("realizable_expectancy")
+    if isinstance(rz, dict):
+        up_b = rz.get("realizable_up")
+        if isinstance(up_b, dict):
+            up_marker = "⚠" if up_b["net_expectancy_pct"] <= 0 else "✓"
+            lines.append(
+                f"💴 実現可能 EV (UP 買い建てのみ, {up_b['n']}件): "
+                f"勝率 {up_b['accuracy_pct']}% / net {up_b['net_expectancy_pct']:+.2f}%/trade {up_marker}"
+            )
+            if up_b["net_expectancy_pct"] <= 0:
+                lines.append(
+                    "  ⚠ 買いで再現できる期待値がゼロ以下です。DOWN 的中は損益に変換できないため、"
+                    "収益化には UP 予測の質そのものを上げる必要があります"
+                )
+        adv = rz.get("holdings_down_advice")
+        if isinstance(adv, dict):
+            lines.append(
+                f"  参考 — holdings DOWN (売り助言, {adv['n']}件): 的中 {adv['accuracy_pct']}% / "
+                f"回避可能だった下落幅 {adv['gross_expectancy_pct']:+.2f}%/件 (実現利益ではない)"
+            )
+
+    # Net expectancy (Phase 4 #46): 手数料込み EV。gross が正でも net が
+    # 負なら実損 → 慎重判断を促す signal。
+    net_ev = stats.get("net_expectancy")
+    if isinstance(net_ev, dict):
+        gross = net_ev["gross_expectancy_pct"]
+        net = net_ev["net_expectancy_pct"]
+        cost = net_ev["round_trip_cost_pct"]
+        marker = "⚠" if net < 0 else "✓"
+        lines.append(f"💰 net EV: 名目 {gross:+.2f}%/trade、手数料 {cost:.1f}% 控除後 {net:+.2f}%/trade {marker}")
+        if net < 0:
+            lines.append("  ⚠ net で実損です。エントリー数を絞るか、勝率自体を上げる必要があります")
+
+    # Paper portfolio NAV one-liner (Phase 6 — DD 172% root cause: trade-level
+    # DD inflates daily re-recommendations). 100万円 / 5%-sized / 5並列の
+    # NAV ベース DD は trade-level DD と桁違いに小さい。real-money decision
+    # は NAV DD で考えるべきなので、日次 feedback に常時表示する。
+    try:
+        from stock_analyzer.backtest import _DEFAULT_TC_ROUND_TRIP_PCT, simulate_paper_portfolio
+
+        paper = simulate_paper_portfolio(
+            history,
+            initial_nav=1_000_000.0,
+            position_size_pct=5.0,
+            max_concurrent=5,
+            tc_round_trip_pct=_DEFAULT_TC_ROUND_TRIP_PCT,
+        )
+        if paper.positions > 0:
+            ret_pct = (paper.final_nav - paper.initial_nav) / paper.initial_nav * 100
+            lines.append(
+                f"📊 paper portfolio (100万 / 5%×5並列): NAV {paper.final_nav:,.0f}円 "
+                f"({ret_pct:+.1f}%) / max DD {paper.max_drawdown_pct:.2f}% / "
+                f"{paper.positions} ポジ"
+            )
+    except Exception:
+        pass
+
+    # ---- 参考統計 (的中率ベース) ----------------------------------------
+    lines.append("--- 以下は参考統計 (的中率ベース、最適化対象ではない) ---")
     lines.append(
         f"通算成績: {stats['wins']}勝 {stats['losses']}敗 "
         f"(勝率{stats.get('accuracy_pct', 0)}%) "
@@ -2404,96 +2542,6 @@ def format_performance_feedback(history: dict) -> str:
                 "  ⚠ 統計的に有意な期待値低下を検出 (p<0.10)。最近の判断バイアスが効いている可能性。"
                 "今回は新規 HIGH の付与をさらに厳格にし、迷ったら MEDIUM に下げてください"
             )
-
-    # Net expectancy (Phase 4 #46): 手数料込み EV。gross が正でも net が
-    # 負なら実損 → 慎重判断を促す signal。
-    net_ev = stats.get("net_expectancy")
-    if isinstance(net_ev, dict):
-        gross = net_ev["gross_expectancy_pct"]
-        net = net_ev["net_expectancy_pct"]
-        cost = net_ev["round_trip_cost_pct"]
-        marker = "⚠" if net < 0 else "✓"
-        lines.append(f"💰 net EV: 名目 {gross:+.2f}%/trade、手数料 {cost:.1f}% 控除後 {net:+.2f}%/trade {marker}")
-        if net < 0:
-            lines.append("  ⚠ net で実損です。エントリー数を絞るか、勝率自体を上げる必要があります")
-
-    # 実現可能 EV (2026-07-04 監査 #51)。名目 EV は holdings への DOWN
-    # 的中 (ショート不能 = 実現不可) で水増しされる。収益性の自己評価は
-    # 「UP 買い建てのみ」の net EV を正とし、DOWN は助言/情報として別枠
-    # 表示する。
-    rz = stats.get("realizable_expectancy")
-    if isinstance(rz, dict):
-        up_b = rz.get("realizable_up")
-        if isinstance(up_b, dict):
-            up_marker = "⚠" if up_b["net_expectancy_pct"] <= 0 else "✓"
-            lines.append(
-                f"💴 実現可能 EV (UP 買い建てのみ, {up_b['n']}件): "
-                f"勝率 {up_b['accuracy_pct']}% / net {up_b['net_expectancy_pct']:+.2f}%/trade {up_marker}"
-            )
-            if up_b["net_expectancy_pct"] <= 0:
-                lines.append(
-                    "  ⚠ 買いで再現できる期待値がゼロ以下です。DOWN 的中は損益に変換できないため、"
-                    "収益化には UP 予測の質そのものを上げる必要があります"
-                )
-        adv = rz.get("holdings_down_advice")
-        if isinstance(adv, dict):
-            lines.append(
-                f"  参考 — holdings DOWN (売り助言, {adv['n']}件): 的中 {adv['accuracy_pct']}% / "
-                f"回避可能だった下落幅 {adv['gross_expectancy_pct']:+.2f}%/件 (実現利益ではない)"
-            )
-
-    # 市場相対採点 (skill vs β)。当たっても市場と同じ動きなら excess は
-    # ゼロ = 指数を買えば同じ。UP の excess <= 0 は「銘柄選択がインデックス
-    # 投資に負けている」ことを意味する — 利益目的なら最重要の警告。
-    br = stats.get("benchmark_relative")
-    if isinstance(br, dict) and isinstance(br.get("overall"), dict):
-        o = br["overall"]
-        lines.append(
-            f"📐 市場相対 (vs {br['benchmark']}): 方向調整後の超過リターン "
-            f"{o['mean_dir_excess_pct']:+.2f}%/件 / ベンチ超え {o['beat_benchmark_pct']}% (n={o['n']})"
-        )
-        up_br = br.get("up")
-        if isinstance(up_br, dict):
-            marker = " ⚠" if up_br["mean_dir_excess_pct"] <= 0 else ""
-            lines.append(
-                f"  UP: 超過 {up_br['mean_dir_excess_pct']:+.2f}%/件 (ベンチ超え {up_br['beat_benchmark_pct']}%)"
-                f"{marker}"
-            )
-            if up_br["mean_dir_excess_pct"] <= 0:
-                lines.append(
-                    "  ⚠ UP 予測は「指数を買うだけ」に負けています。銘柄選択が市場超過価値を"
-                    "生んでいないので、確信の薄い UP を出すくらいなら NO_TRADE を選んでください"
-                )
-        down_br = br.get("down")
-        if isinstance(down_br, dict):
-            lines.append(
-                f"  DOWN: 超過 {down_br['mean_dir_excess_pct']:+.2f}%/件 — "
-                "市場ごと下がった分 (β) は除外済み。この値が小さいなら DOWN 的中の大半は地合いです"
-            )
-
-    # Paper portfolio NAV one-liner (Phase 6 — DD 172% root cause: trade-level
-    # DD inflates daily re-recommendations). 100万円 / 5%-sized / 5並列の
-    # NAV ベース DD は trade-level DD と桁違いに小さい。real-money decision
-    # は NAV DD で考えるべきなので、日次 feedback に常時表示する。
-    try:
-        from stock_analyzer.backtest import _DEFAULT_TC_ROUND_TRIP_PCT, simulate_paper_portfolio
-
-        paper = simulate_paper_portfolio(
-            history,
-            initial_nav=1_000_000.0,
-            position_size_pct=5.0,
-            max_concurrent=5,
-            tc_round_trip_pct=_DEFAULT_TC_ROUND_TRIP_PCT,
-        )
-        if paper.positions > 0:
-            ret_pct = (paper.final_nav - paper.initial_nav) / paper.initial_nav * 100
-            lines.append(
-                f"📊 paper portfolio (100万 / 5%×5並列): NAV {paper.final_nav:,.0f}円 "
-                f"({ret_pct:+.1f}%) / max DD {paper.max_drawdown_pct:.2f}% / "
-                f"{paper.positions} ポジ"
-            )
-    except Exception:
-        pass
 
     # Overpriced bias 検証 (Phase 5 #46): HIGH bucket の事前 5/21/63d
     # return が MEDIUM/LOW より大幅高なら "buying high" bias の証拠。

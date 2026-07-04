@@ -353,9 +353,42 @@ def build_weekly_review_prompt(predictions_history: dict, strategy_notes: dict) 
 あなたは株式投資戦略のリサーチャーです。
 過去の予測結果を深く分析し、戦略を改善するための具体的な教訓を抽出してください。
 
+**最適化目標は市場超過リターンです (的中率ではない)。** 予測は同一期間の
+TOPIX ETF (1306.T) リターンと比較して採点されます。「当たっているが市場と
+同じだけしか動かない」枠は付加価値ゼロであり、改善提案 (strategy note /
+weight 調整 / confidence_calibration) はすべて超過リターンの改善を目的に
+してください。
+
 === 全体パフォーマンス ===
 通算: {stats.get("wins", 0)}勝 {stats.get("losses", 0)}敗 (勝率{stats.get("accuracy_pct", "N/A")}%)
 """
+
+    # 市場相対 (最適化目標) — 冒頭の指示と対になる実測値。超過が 0 以下の
+    # 枠を名指しで見せることで、レビューの焦点を的中率から利益に移す。
+    br = stats.get("benchmark_relative")
+    if isinstance(br, dict) and isinstance(br.get("overall"), dict):
+        o = br["overall"]
+        prompt += (
+            f"市場相対 (vs {br.get('benchmark', 'TOPIX')}、これが最適化目標):\n"
+            f"  全体: 超過 {o['mean_dir_excess_pct']:+.2f}%/件 (ベンチ超え {o['beat_benchmark_pct']}%, n={o['n']})\n"
+        )
+        for label, key in (("UP (買い建て = 収益化可能)", "up"), ("DOWN (売り助言/情報)", "down")):
+            b = br.get(key)
+            if isinstance(b, dict):
+                prompt += (
+                    f"  {label}: 超過 {b['mean_dir_excess_pct']:+.2f}%/件 (ベンチ超え {b['beat_benchmark_pct']}%)\n"
+                )
+        for src, b in (br.get("by_source") or {}).items():
+            prompt += f"  {src}: 超過 {b['mean_dir_excess_pct']:+.2f}%/件 (n={b['n']})\n"
+        negatives = [
+            key for key in ("up", "down") if isinstance(br.get(key), dict) and br[key]["mean_dir_excess_pct"] <= 0
+        ]
+        if negatives:
+            prompt += (
+                "⚠️ 超過リターンが 0 以下の枠は「指数を買うだけ」に負けています。"
+                "今回のレビューではこの枠の改善 (推奨基準の厳格化 / NO_TRADE への"
+                "退避 / thesis の質) を最優先で扱ってください。\n"
+            )
 
     # Risk-adjusted P&L — accuracy alone is insufficient. A 60%
     # win-rate with -3% avg-win and +5% avg-loss is still net negative.
@@ -419,13 +452,23 @@ def build_weekly_review_prompt(predictions_history: dict, strategy_notes: dict) 
     if src_lines:
         prompt += "ソース別的中率:\n" + "\n".join(src_lines) + "\n"
 
+    def _excess_note(p: dict) -> str:
+        """市場超過を併記 (「的中でも指数並みなら価値ゼロ」を可視化)。"""
+        bench = p.get("benchmark_return_pct")
+        ret = p.get("actual_return_pct")
+        if bench is None or ret is None:
+            return ""
+        dir_ret = ret if p.get("prediction") == "UP" else -ret
+        dir_bench = bench if p.get("prediction") == "UP" else -bench
+        return f" (市場超過 {dir_ret - dir_bench:+.1f}pp)"
+
     # Recent wins
     if wins:
         prompt += "\n=== 直近の成功予測 ===\n"
         for p in wins:
             prompt += (
                 f"- {p.get('name', '')} ({p['ticker']}): "
-                f"{p['prediction']}予測 → {p.get('actual_return_pct', 0):+.1f}% "
+                f"{p['prediction']}予測 → {p.get('actual_return_pct', 0):+.1f}%{_excess_note(p)} "
                 f"信頼度:{p.get('confidence', '?')} "
                 f"[{p['date']}]\n"
             )
@@ -436,7 +479,7 @@ def build_weekly_review_prompt(predictions_history: dict, strategy_notes: dict) 
         for p in losses:
             prompt += (
                 f"- {p.get('name', '')} ({p['ticker']}): "
-                f"{p['prediction']}予測 → {p.get('actual_return_pct', 0):+.1f}% "
+                f"{p['prediction']}予測 → {p.get('actual_return_pct', 0):+.1f}%{_excess_note(p)} "
                 f"信頼度:{p.get('confidence', '?')} "
                 f"[{p['date']}]\n"
             )

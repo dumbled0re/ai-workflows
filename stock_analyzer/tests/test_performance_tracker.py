@@ -640,6 +640,62 @@ def test_expired_predictions_excluded_from_accuracy() -> None:
     assert stats["accuracy_pct"] == 50.0
 
 
+# ---------- thesis-unit recording ---------------------------------------
+
+
+def _holdings_result(ticker: str, prediction: str) -> dict:
+    return {
+        "holdings_analysis": [
+            {"ticker": ticker, "name": "T", "prediction": prediction, "confidence": "MEDIUM"},
+        ],
+    }
+
+
+def test_save_skips_repredicting_open_thesis() -> None:
+    """同 (ticker, source, direction) の pending が生きている間は再記録しない。
+    毎日の再予測が学習ループの名目 n を水増しする擬似反復の発生源だった
+    (2026-07-04 監査)。"""
+    history: dict = {"predictions": []}
+    save_new_predictions(history, _holdings_result("7203.T", "DOWN"), {}, {"7203.T": 100.0}, today="2026-06-01")
+    save_new_predictions(history, _holdings_result("7203.T", "DOWN"), {}, {"7203.T": 99.0}, today="2026-06-02")
+    assert len(history["predictions"]) == 1  # 2 日目は skip
+
+
+def test_save_records_new_thesis_on_direction_flip() -> None:
+    """方向が変われば新しい thesis として記録する (旧 pending は解決を待つ)。"""
+    history: dict = {"predictions": []}
+    save_new_predictions(history, _holdings_result("7203.T", "DOWN"), {}, {"7203.T": 100.0}, today="2026-06-01")
+    save_new_predictions(history, _holdings_result("7203.T", "UP"), {}, {"7203.T": 99.0}, today="2026-06-02")
+    assert len(history["predictions"]) == 2
+
+
+def test_save_records_again_after_thesis_resolves() -> None:
+    """旧予測が解決済みなら同方向でも新 thesis として記録できる。"""
+    history: dict = {"predictions": []}
+    save_new_predictions(history, _holdings_result("7203.T", "DOWN"), {}, {"7203.T": 100.0}, today="2026-06-01")
+    history["predictions"][0]["status"] = "win"
+    save_new_predictions(history, _holdings_result("7203.T", "DOWN"), {}, {"7203.T": 90.0}, today="2026-06-10")
+    assert len(history["predictions"]) == 2
+
+
+def test_feedback_leads_with_profit_metrics_before_accuracy() -> None:
+    """feedback prompt は利益基準 (市場相対/実現可能 EV) が先頭、的中率は
+    「参考統計」に格下げされていること (目的 = 利益への最適化 pivot)。"""
+    preds = []
+    for _ in range(6):
+        p = _pred("win", "UP", 5.0)
+        p["benchmark_return_pct"] = 2.0
+        preds.append(p)
+    history = {"predictions": preds}
+    history["performance_stats"] = compute_performance_stats(history)
+    feedback = format_performance_feedback(history)
+    assert "最適化目標 = 市場超過リターン" in feedback
+    assert "参考統計" in feedback
+    # 順序: 目標宣言 → 市場相対 → 参考統計 (通算成績)
+    assert feedback.index("最適化目標") < feedback.index("市場相対")
+    assert feedback.index("市場相対") < feedback.index("通算成績")
+
+
 # ---------- benchmark-relative scoring ---------------------------------------
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from stock_analyzer.strategy_learner import (
+    build_weekly_review_prompt,
     compute_bayesian_weight_proposal,
     format_weight_proposal_for_prompt,
 )
@@ -82,6 +83,51 @@ def test_proposal_returns_empty_when_no_signals_data() -> None:
     history = {"predictions": [{"status": "win", "signal_components": {}}]}
     proposal = compute_bayesian_weight_proposal(history)
     assert proposal["proposed"] == {}
+
+
+def test_weekly_review_prompt_leads_with_market_relative_objective() -> None:
+    """週次レビューの最適化目標は市場超過リターン。benchmark_relative が
+    stats にあれば冒頭指示 + 実測値 + 負け枠の最優先指示が入ること
+    (2026-07-04 目的最適化 pivot)。"""
+    history = {
+        "predictions": [],
+        "performance_stats": {
+            "wins": 10,
+            "losses": 5,
+            "accuracy_pct": 66.7,
+            "benchmark_relative": {
+                "benchmark": "1306.T",
+                "overall": {"n": 15, "mean_dir_excess_pct": 0.5, "beat_benchmark_pct": 55.0},
+                "up": {"n": 8, "mean_dir_excess_pct": -1.2, "beat_benchmark_pct": 40.0},
+                "down": {"n": 7, "mean_dir_excess_pct": 2.5, "beat_benchmark_pct": 70.0},
+            },
+        },
+    }
+    prompt = build_weekly_review_prompt(history, {"notes": []})
+    assert "最適化目標は市場超過リターン" in prompt
+    assert "市場相対 (vs 1306.T" in prompt
+    # UP 枠が指数に負けている → 最優先で扱う指示
+    assert "指数を買うだけ」に負けています" in prompt
+    # 目標の宣言が実測値より先に出ること (プロンプトは top-down で読まれる)
+    assert prompt.index("最適化目標は市場超過リターン") < prompt.index("市場相対 (vs 1306.T")
+
+
+def test_weekly_review_win_loss_lines_include_market_excess() -> None:
+    """成功/失敗リストに市場超過 (pp) を併記 — 「的中だが指数並み」を
+    レビュー AI が識別できるようにする。"""
+    pred = {
+        "status": "win",
+        "ticker": "7203.T",
+        "name": "トヨタ",
+        "prediction": "UP",
+        "confidence": "MEDIUM",
+        "date": "2026-06-01",
+        "reviewed_date": "2026-06-10",
+        "actual_return_pct": 5.0,
+        "benchmark_return_pct": 2.0,
+    }
+    prompt = build_weekly_review_prompt({"predictions": [pred], "performance_stats": {"wins": 1}}, {"notes": []})
+    assert "市場超過 +3.0pp" in prompt
 
 
 def test_format_proposal_for_prompt_renders_top_changes() -> None:
