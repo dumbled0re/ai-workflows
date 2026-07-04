@@ -568,9 +568,13 @@ def enforce_calibration_gate(
             picks = discovery_result.get(key)
             if isinstance(picks, list):
                 discovery_result[key] = filter_picks(picks, source_kind="discovery")
-    # Apply to holdings
+    # Apply to holdings.
+    # "holdings_analysis" が本番 pipeline の実キー (ai_analyzer の出力
+    # スキーマ / save_new_predictions の読み取りキーと同じ)。旧 3 キーは
+    # 過去スキーマ互換のため残す (codex 2026-07-04 指摘: 実キー欠落で
+    # 保有銘柄に校正ゲートが一度も効いていなかった)。
     if holdings_result is not None:
-        for key in ("holdings", "holdings_review", "recommendations"):
+        for key in ("holdings_analysis", "holdings", "holdings_review", "recommendations"):
             picks = holdings_result.get(key)
             if isinstance(picks, list):
                 holdings_result[key] = filter_picks(picks, source_kind="holdings")

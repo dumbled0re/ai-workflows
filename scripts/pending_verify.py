@@ -403,7 +403,10 @@ def kind_strategy_change_metric_check(args: dict) -> VerifyResult:
         for p in history.get("predictions", [])
         if p.get("status") in ("win", "loss") and p.get("reviewed_date")
     ]
-    post = [p for p in resolved if (p.get("reviewed_date") or "") >= activation_iso]
+    # pre/post は予測の生成日 (date) 基準。変更前に出た予測が変更後に
+    # 解決されても旧 weight の成果 (strategy_governor.evaluate_change_metric
+    # と同一ロジック — 両者は合意して同じ verdict を出す必要がある)。
+    post = [p for p in resolved if (p.get("date") or "") >= activation_iso]
     if len(post) < min_trades:
         return VerifyResult(
             "inconclusive",
@@ -420,7 +423,7 @@ def kind_strategy_change_metric_check(args: dict) -> VerifyResult:
             return VerifyResult("success", f"calibration_zone=green confirmed ({len(post)} post-trades)")
         return VerifyResult("inconclusive", f"calibration_zone={zone}; awaiting green recovery_confirmed")
 
-    pre = [p for p in resolved if (p.get("reviewed_date") or "") < activation_iso]
+    pre = [p for p in resolved if (p.get("date") or "") < activation_iso]
     if len(pre) < min_trades:
         return VerifyResult(
             "inconclusive",

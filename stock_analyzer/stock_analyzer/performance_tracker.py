@@ -1156,15 +1156,22 @@ def evaluate_weights_walkforward_cv(
     purged k-fold CV を時系列向け walk-forward 版で実装。
 
     手順:
-      1. resolved 予測を reviewed_date 順に並べる
+      1. resolved 予測を date 順に並べる
       2. n_folds に分割
       3. 各 fold k について:
          a. test = fold k
          b. embargo_days で test の前後を train から除外 (leakage 防止)
          c. train = test 前のみ (walk-forward: 未来データ使わない)
-         d. score = sum(weight × signal_components) を train で計算
+         d. **train slice だけで weight を学習** (DEFAULT_WEIGHTS 起点に
+            Bayesian 提案を fold ごとに計算)。旧実装は現在の active
+            weights を全 fold に流用しており、その weights 自体が test
+            期間を含む全履歴で調整されているため後知恵 (look-ahead) を
+            含んでいた (codex 2026-07-04 指摘で修正)
          e. test の上位 N (= top quantile) の predicted vs actual accuracy
       4. fold 別 accuracy の平均と stdev を返す
+
+    NOTE: 引数 ``weights`` (現在の active weights) は採点に使わなくなった。
+    signature 互換のため残しているが、渡された値は無視される。
 
     Returns:
       {
@@ -1219,9 +1226,25 @@ def evaluate_weights_walkforward_cv(
             train = [p for p in chrono[:test_start] if p["date"] < cutoff_str]
         if len(train) < min_test_n:
             continue
-        # test の各予測に score 付与 (= sum of weights for fired signals)
+        # train slice だけで fold 専用 weights を学習 (真の OOS 評価)。
+        # 起点は static な DEFAULT_WEIGHTS — 現在の active weights を起点に
+        # すると、それ自体が未来データ込みで調整済みなので leakage になる。
+        from stock_analyzer.strategy_learner import DEFAULT_WEIGHTS, compute_bayesian_weight_proposal
+
+        fold_weights: dict[str, float] = dict(DEFAULT_WEIGHTS)
+        try:
+            proposal = compute_bayesian_weight_proposal({"predictions": train}, current_weights=dict(DEFAULT_WEIGHTS))
+            for sig, d in (proposal.get("proposed") or {}).items():
+                if isinstance(d, dict) and "proposed_weight" in d:
+                    fold_weights[sig] = d["proposed_weight"]
+        except Exception:
+            logger.warning("walkforward: train-slice weight fit failed for fold %d — using defaults", k, exc_info=True)
+
+        # test の各予測に score 付与 (= sum of fold weights for fired signals)
         # 上位 quantile (top 30%) を選んで accuracy
-        scored = [(sum(weights.get(sig, 0) for sig, fired in p["signal_components"].items() if fired), p) for p in test]
+        scored = [
+            (sum(fold_weights.get(sig, 0) for sig, fired in p["signal_components"].items() if fired), p) for p in test
+        ]
         scored.sort(key=lambda x: x[0], reverse=True)
         top_n = max(3, int(len(scored) * 0.30))
         top = scored[:top_n]

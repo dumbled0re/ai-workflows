@@ -348,6 +348,26 @@ def test_sanitize_unicode_strips_lone_surrogates_from_prompt() -> None:
     assert "tail" in prompt
 
 
+def test_calibration_gate_processes_holdings_analysis_key() -> None:
+    """本番の holdings 出力キーは "holdings_analysis"。このキーの picks に
+    校正ゲートが適用されること (codex 2026-07-04 指摘: 旧実装は legacy
+    キーしか見ておらず、保有銘柄にゲートが一度も効いていなかった)。"""
+    holdings = {
+        "holdings_analysis": [_pick("HOLD.T", prediction="UP", confidence="HIGH")],
+    }
+    summary: dict[str, list[str]] = {"kept": [], "downgraded": [], "rejected": []}
+    perf_stats = {
+        "by_confidence_direction": {
+            "HIGH_UP": {"total": 13, "wins": 5, "accuracy_pct": 38.5},
+        }
+    }
+    h2, _ = enforce_calibration_gate(holdings, None, summary, perf_stats)
+    assert h2 is not None
+    pick = h2["holdings_analysis"][0]
+    assert pick["confidence"] == "MEDIUM"
+    assert pick["confidence_pre_calibration_gate"] == "HIGH"
+
+
 def test_calibration_gate_long_run_high_up_downgrades_to_medium() -> None:
     """Existing per-bucket trigger: HIGH_UP < 50% & n>=10 → HIGH→MEDIUM."""
     discovery = {

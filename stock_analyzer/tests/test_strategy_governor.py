@@ -285,13 +285,24 @@ def test_attempt_apply_writes_verify_yaml_and_snapshot(tmp_path: Path, monkeypat
     assert snap["applied"]["per_value"] == 9
 
 
-def _resolved_trade(date_iso: str, ret_pct: float, prediction: str = "UP", status: str | None = None) -> dict:
-    """Tiny helper for evaluator/auto-rollback tests."""
+def _resolved_trade(
+    date_iso: str,
+    ret_pct: float,
+    prediction: str = "UP",
+    status: str | None = None,
+    reviewed_date: str | None = None,
+) -> dict:
+    """Tiny helper for evaluator/auto-rollback tests.
+
+    ``date_iso`` は予測の生成日 (pre/post 割り当てはこれ基準)。
+    ``reviewed_date`` は省略時 date_iso と同日扱い。
+    """
     return {
         "status": status or ("win" if ret_pct > 0 else "loss"),
         "prediction": prediction,
         "actual_return_pct": ret_pct,
-        "reviewed_date": date_iso,
+        "date": date_iso,
+        "reviewed_date": reviewed_date or date_iso,
     }
 
 
@@ -326,6 +337,36 @@ def test_evaluate_change_metric_failure_when_post_worse() -> None:
     perf = {"predictions": pre + post}
     verdict, _ = evaluate_change_metric("wts-y", perf, log=log)
     assert verdict == "failure"
+
+
+def test_evaluate_change_metric_attributes_by_prediction_date_not_review_date() -> None:
+    """変更前に出た予測が変更後に解決されても、それは旧 weight の成果で
+    あり post に数えてはいけない (codex 2026-07-04 指摘の regression)。
+
+    pre 予測 (date < activation) が activation 後に大負けで解決するが、
+    post 予測 (date >= activation) は好調 → date 基準なら success、
+    reviewed_date 基準なら pre の大負けが post に混入して failure に
+    誤判定される構図。"""
+    log = [
+        {
+            "change_id": "wts-attr",
+            "activated_at": "2026-06-13",
+            "verify_status": "pending",
+        }
+    ]
+    # 変更前に出た予測 15 件: 成績 +1%、活性化前に解決済み
+    pre = [_resolved_trade(f"2026-05-{d:02d}", 1.0) for d in range(1, 16)]
+    # 変更前に出たが変更後に解決した予測 15 件: 大負け -9%
+    stale = [
+        _resolved_trade(f"2026-06-{d:02d}", -9.0, status="loss", reviewed_date=f"2026-06-{d + 14:02d}")
+        for d in range(1, 13)
+    ]
+    # 変更後に出た予測 15 件: 好調 +4%
+    post = [_resolved_trade(f"2026-06-{d + 13:02d}", 4.0) for d in range(1, 16)]
+    perf = {"predictions": pre + stale + post}
+    verdict, detail = evaluate_change_metric("wts-attr", perf, log=log)
+    # stale の大負けは pre 側に落ち、post は +4% 群のみ → success
+    assert verdict == "success", detail
 
 
 def test_evaluate_change_metric_secondary_contradicts_downgrades_to_inconclusive() -> None:

@@ -701,10 +701,16 @@ def evaluate_change_metric(
     resolved = [
         p for p in perf_history.get("predictions", []) if p.get("status") in ("win", "loss") and p.get("reviewed_date")
     ]
-    post = [p for p in resolved if (p.get("reviewed_date") or "") >= activation_iso]
+    # pre/post の割り当ては **予測が作られた日 (date)** 基準。weight 変更が
+    # 影響するのは「変更後にどの予測が生成されるか」であって、変更前に出た
+    # 予測が変更後に解決されてもそれは旧 weight の成果 (codex 2026-07-04
+    # 指摘: reviewed_date 基準だと変更前の予測が post に混入して pass/fail
+    # と auto-rollback を誤判定する)。reviewed_date は「結果確定済み」の
+    # フィルタ (上の resolved) にだけ使う。
+    post = [p for p in resolved if (p.get("date") or "") >= activation_iso]
     if len(post) < min_resolved_trades:
         return ("inconclusive", f"post-activation resolved trades = {len(post)} (< min {min_resolved_trades})")
-    pre = [p for p in resolved if (p.get("reviewed_date") or "") < activation_iso]
+    pre = [p for p in resolved if (p.get("date") or "") < activation_iso]
     if len(pre) < min_resolved_trades:
         return ("inconclusive", f"pre-activation sample = {len(pre)} (< min {min_resolved_trades})")
 

@@ -346,8 +346,8 @@ def phase_prepare() -> None:
 
     # Screen stocks (Nikkei 225 + JPX400)
     logger.info("Starting stock screening (Nikkei 225 + JPX400)")
-    screened_candidates, screened_total, screened_failed, all_fundamentals, all_ticker_info = screen_stocks(
-        config.settings, screening_weights=screening_weights
+    screened_candidates, screened_total, screened_failed, all_fundamentals, all_ticker_info, candidate_data = (
+        screen_stocks(config.settings, screening_weights=screening_weights)
     )
     data_quality["success"] += screened_total
     data_quality["failed"] += screened_failed
@@ -812,11 +812,10 @@ def phase_prepare() -> None:
     all_dfs: dict[str, object] = {}
     if config.holdings:
         all_dfs.update(holdings_data)  # type: ignore[possibly-undefined]
-    # Also grab DataFrames from screening — screen_stocks didn't return
-    # them directly, but the screened_candidates list carries per-ticker
-    # closes via current_price only. Re-build from holdings_data alone
-    # is fine: a real close history is the typical screening data path,
-    # and a candidate without history can still be checked for sector.
+    # screening 候補の価格 DataFrame も合流させる。これが無いと新規推奨
+    # 銘柄に close_history が付かず、pairwise correlation (近重複 pick の
+    # 検知) が新 pick を silently skip していた (codex 2026-07-04 指摘)。
+    all_dfs.update(candidate_data)
     for ticker, df in all_dfs.items():
         try:
             close = df["Close"]  # type: ignore[index]

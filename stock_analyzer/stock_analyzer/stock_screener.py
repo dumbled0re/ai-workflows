@@ -109,7 +109,7 @@ def _build_merged_universe() -> tuple[list[str], dict[str, dict]]:
 def screen_stocks(
     settings: Settings,
     screening_weights: dict | None = None,
-) -> tuple[list[dict], int, int, dict[str, dict], dict[str, dict]]:
+) -> tuple[list[dict], int, int, dict[str, dict], dict[str, dict], dict[str, object]]:
     """Screen Nikkei 225 + JPX400 stocks and return top candidates.
 
     Two-phase approach:
@@ -118,7 +118,8 @@ def screen_stocks(
 
     Returns:
         tuple of (candidate summaries, total screened count, failed count,
-                  fundamentals dict, ticker_info dict)
+                  fundamentals dict, ticker_info dict,
+                  candidate price DataFrames {ticker: df} — 相関チェック用)
     """
     all_tickers, ticker_info = _build_merged_universe()
     logger.info("Starting stock screening (%d tickers: Nikkei225 + JPX400)", len(all_tickers))
@@ -185,6 +186,7 @@ def screen_stocks(
 
     # Phase 2: Compute full indicators for top candidates
     candidates: list[dict] = []
+    candidate_data: dict[str, object] = {}
     for ticker, score, components in top_candidates:
         df = data_dict.get(ticker)
         if df is None:
@@ -201,8 +203,13 @@ def screen_stocks(
             summary["signal_components"] = components
             summary["sector"] = info.get("sector", "不明")
             candidates.append(summary)
+            # 候補の価格 DataFrame も返す — portfolio_risk の pairwise
+            # correlation が新規推奨銘柄同士を比較するのに必要 (codex
+            # 2026-07-04 指摘: close_history が holdings 由来のみで新規
+            # pick が silently skip されていた)。
+            candidate_data[ticker] = df
         except Exception:
             logger.warning("Full indicator computation failed for %s", ticker, exc_info=True)
 
     logger.info("Screening complete: %d candidates with full indicators", len(candidates))
-    return candidates, total_screened, failed_count, fundamentals, ticker_info
+    return candidates, total_screened, failed_count, fundamentals, ticker_info, candidate_data
