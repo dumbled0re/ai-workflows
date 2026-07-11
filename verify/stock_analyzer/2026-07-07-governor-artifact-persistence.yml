@@ -1,5 +1,5 @@
 verify_id: stock_analyzer/2026-07-07-governor-artifact-persistence
-verify_after: 2026-07-07T12:00:00+09:00
+verify_after: 2026-07-13T09:00:00+09:00
 project: stock_analyzer
 description: |
   2026-07-04 監査の最重要修正 — strategy_governor 成果物の CI 永続化 —
@@ -9,30 +9,36 @@ description: |
   data 3 ファイルしか git add しておらず、governor の
   strategy_change_log.json / strategy_change_proposals.json /
   rollback snapshot / verify YAML が runner ごと毎回消えていた。
-  結果: one-batch-at-a-time gate は常に素通り (7/1 に 9 時間差で
-  2 batch 適用)、weight 変更の効果検証は一度も実行されず、
-  auto-rollback も snapshot 不在で不可能だった。
 
-  修正: 両 workflow の git add に governor 成果物を追加 +
-  prepare / apply-review ステップに GH_TOKEN を渡して verify issue
-  自動作成を有効化 (permissions に issues: write も追加)。
+  ⚠️ 2026-07-11 追記: dab36a3 の修正自体が新たな regression を生んで
+  いた。add リストに追加した strategy_change_log.json /
+  strategy_change_proposals.json は governor が weight 変更を適用する
+  まで runner 上に存在せず、git add は unmatched pathspec が 1 つでも
+  あると fatal で全体 abort する (2>/dev/null || true で握り潰し)。
+  結果 2026-07-06〜07-10 の全予測データが commit されず消失。
+  fcb3666 で 1 ファイルずつ add するループに修正済み。
 
-  確認内容 (手動 / Stage 2 Claude 向け手順):
-  1. `git log --oneline --since=2026-07-06 -- stock_analyzer/data/strategy_change_proposals.json`
-     に月曜 7/6 以降の cron commit が含まれること (bayesian proposal は
-     毎 cron 提出されるので、月曜朝 cron 後には必ず commit されるはず)
-  2. 次に calibration_zone が green になって weight 変更が適用された
-     とき: verify/stock_analyzer/wts-*.yml + snapshots/wts-*.json が
-     repo に commit され、pending-verify label の issue が自動作成
-     されること (これは zone 次第で時期未定のため、1. だけで
-     まず合格判定してよい)
-kind: manual
-args: {}
-max_attempts: 5
-retry_after_hours: 48
-relates_to: 2026-07-04 audit fixes
+  この YAML は当初 kind: manual で空回りしていたため、機械検証
+  (recent_run_log_grep) に変更: 直近の stock cron run のログに
+  実 commit の出力 `[master <hash>] Update prediction tracking` が
+  現れることを確認する。これが出れば予測データ + governor 成果物の
+  永続化が回復した証拠。
+
+  (残タスク: 次に calibration_zone が green になって weight 変更が
+  適用されたとき、verify/stock_analyzer/wts-*.yml + snapshot +
+  pending-verify issue が自動生成されることは別途観察)
+kind: recent_run_log_grep
+args:
+  workflows:
+    - stock-analysis.yml
+  pattern: '\[master [0-9a-f]{7,}\] Update prediction tracking'
+  lookback: 4
+max_attempts: 10
+retry_after_hours: 24
+relates_to: dab36a3 / fcb3666
 success_message: |
-  ✅ stock_analyzer: governor 成果物が CI から repo に永続化されている
-  ことを確認。one-batch-at-a-time gate と auto-rollback が state を
-  持てるようになった。次の green zone 移行時に wts-*.yml + issue の
-  自動生成まで確認できれば検証ループは完全に閉じる。
+  ✅ stock_analyzer: cron が予測データ + governor 成果物を実際に
+  commit していることをログで確認 (fcb3666 の git add ループ修正が
+  有効)。効果測定 (#53) のクリーンデータ蓄積が 2026-07-13 から開始。
+  次の green zone 移行時に wts-*.yml + issue の自動生成まで確認
+  できれば検証ループは完全に閉じる。
