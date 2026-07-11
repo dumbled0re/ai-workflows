@@ -150,9 +150,14 @@ jobs:
           # governor の監査ログ / proposal / rollback snapshot / verify YAML も
           # 必ず commit する。これらが runner ごと消えると one-batch-at-a-time
           # gate と auto-rollback が機能しない (2026-07-04 監査で発覚)。
-          git add -f data/predictions_history.json data/strategy_notes.json data/screening_weights.json \
-            data/strategy_change_log.json data/strategy_change_proposals.json \
-            data/proposed_screening_weights.json 2>/dev/null || true
+          # 1 ファイルずつ add する: まだ生成されていないファイルが 1 つでも
+          # あると git add 全体が fatal になり、何も stage されないまま
+          # 「No data changes」で予測データが消える (2026-07-06〜10 で実発生)。
+          for f in data/predictions_history.json data/strategy_notes.json data/screening_weights.json \
+                   data/strategy_change_log.json data/strategy_change_proposals.json \
+                   data/proposed_screening_weights.json; do
+            git add -f "$f" 2>/dev/null || echo "skip $f (not present)"
+          done
           git add ../verify/stock_analyzer/ 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No data changes to commit"

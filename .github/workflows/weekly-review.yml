@@ -69,9 +69,13 @@ jobs:
           git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git
           # governor 成果物 (監査ログ / proposal / snapshot / verify YAML) も
           # 必ず commit — runner 上に置き去りにすると検証ループが回らない。
-          git add -f data/strategy_notes.json data/screening_weights.json data/predictions_history.json \
-            data/strategy_change_log.json data/strategy_change_proposals.json \
-            data/proposed_screening_weights.json 2>/dev/null || true
+          # 1 ファイルずつ add する: 未生成ファイルが混ざると git add 全体が
+          # fatal になり何も stage されない (stock-analysis.yml と同じ罠)。
+          for f in data/strategy_notes.json data/screening_weights.json data/predictions_history.json \
+                   data/strategy_change_log.json data/strategy_change_proposals.json \
+                   data/proposed_screening_weights.json; do
+            git add -f "$f" 2>/dev/null || echo "skip $f (not present)"
+          done
           git add ../verify/stock_analyzer/ 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No changes to commit"
