@@ -85,6 +85,41 @@ def send_market_closed_to_slack(bot_token: str, channel: str, date_str: str) -> 
     return _post_message(bot_token, channel, blocks, fallback_text=f"本日休場 - {date_str}")
 
 
+def send_stale_tracking_to_slack(bot_token: str, channel: str, latest_date: str, age_days: int) -> bool:
+    """Notify Slack when the committed prediction-tracking data has gone stale.
+
+    Fired by the run-start freshness canary (``main check-freshness``):
+    the checked-out predictions_history.json — i.e. what actually
+    reached origin/master — has no prediction newer than
+    ``latest_date``. Catches the "run is green but data is silently
+    not persisted" failure class (2026-07-06〜10 の git add fatal 消失
+    で実発生), which per-run success checks cannot see.
+    """
+    blocks = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": ":rotating_light: 予測データが更新されていません"},
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"repo に commit 済みの予測履歴の最新日付が *{latest_date}* ({age_days} 日前) のままです。\n"
+                    "cron 自体は成功していても、データが repo に永続化されていない可能性があります。\n\n"
+                    "*確認手順:*\n"
+                    "1. `gh run list --workflow stock-analysis.yml` で直近 run を特定\n"
+                    "2. run ログ末尾の Save ステップで `No data changes to commit` / "
+                    "`skip ... (not present)` / push 失敗の有無を確認\n"
+                    "3. `git log origin/master --oneline -- stock_analyzer/data/predictions_history.json` "
+                    "で最終データ commit を確認"
+                ),
+            },
+        },
+    ]
+    return _post_message(bot_token, channel, blocks, fallback_text="予測データ更新停止の可能性")
+
+
 def send_save_failure_to_slack(bot_token: str, channel: str) -> bool:
     """Notify Slack when prediction-tracking data fails to commit/push."""
     blocks = [

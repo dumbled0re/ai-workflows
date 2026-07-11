@@ -36,6 +36,17 @@ jobs:
       - name: Sync deps
         run: uv sync --frozen
 
+      # Phase 0: 常設 canary — checkout 直後 (= origin/master の状態) の
+      # predictions_history.json が古すぎたら Slack 警告。「run は green
+      # なのにデータが永続化されていない」故障 (2026-07-06〜10 実発生) を
+      # 恒久検知する。検知のみで分析は止めない (continue-on-error)。
+      - name: Tracking data freshness canary
+        continue-on-error: true
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_STOCK: ${{ secrets.SLACK_CHANNEL_STOCK }}
+        run: uv run python -m stock_analyzer.main check-freshness
+
       # Phase 1: Fetch stock data & compute indicators → save prompts to data/
       # GH_TOKEN: strategy_governor が weight 変更を適用した際に
       # pending-verify issue を自動作成するのに必要 (無いと silent skip)。

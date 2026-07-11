@@ -1639,6 +1639,45 @@ def phase_notify_save_failure() -> None:
         sys.exit(1)
 
 
+def phase_check_freshness() -> None:
+    """Run-start canary: alert when the committed tracking data has gone stale.
+
+    Inspects the checked-out (= origin/master) predictions_history.json
+    BEFORE any local writes — the failure class this guards against is
+    "tracker writes locally every run but nothing reaches the repo"
+    (2026-07-06〜10 に git add fatal で実発生)。per-run の成功判定では
+    見えないため、蓄積結果そのものを毎 run 検査する。検知のみで分析は
+    止めない (Slack 通知して正常終了)。
+
+    Threshold via ``STOCK_FRESHNESS_MAX_AGE_DAYS`` (default 6: GW の
+    最長 6 日ギャップで false positive を出さない下限)。
+    """
+    import json
+
+    from stock_analyzer.slack_notifier import send_stale_tracking_to_slack
+
+    threshold = int(os.environ.get("STOCK_FRESHNESS_MAX_AGE_DAYS", "6"))
+    history_path = _DATA_DIR / "predictions_history.json"
+    try:
+        history = json.loads(history_path.read_text())
+        latest = max(p["date"] for p in history.get("predictions", []) if p.get("date"))
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        logger.error("freshness canary skipped (cannot read history): %s", exc)
+        return
+    today = datetime.now(JST).date()
+    age_days = (today - datetime.fromisoformat(latest).date()).days
+    if age_days <= threshold:
+        logger.info("tracking data fresh: latest=%s (%d days old, threshold %d)", latest, age_days, threshold)
+        return
+    logger.error("tracking data STALE: latest=%s is %d days old (threshold %d)", latest, age_days, threshold)
+    token = os.environ.get("SLACK_BOT_TOKEN")
+    channel = os.environ.get("SLACK_CHANNEL_STOCK")
+    if not token or not channel:
+        logger.error("SLACK_BOT_TOKEN / SLACK_CHANNEL_STOCK not set — stale-data alert not delivered")
+        return
+    send_stale_tracking_to_slack(token, channel, latest, age_days)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="JP Stock Analyzer")
     parser.add_argument(
@@ -1651,6 +1690,7 @@ def main() -> None:
             "review",
             "apply-review",
             "notify-save-failure",
+            "check-freshness",
         ],
         help=(
             "Phase to run: 'prepare' (fetch data & build prompts), "
@@ -1659,7 +1699,8 @@ def main() -> None:
             "'notify' (send results to Slack), "
             "'review' (build weekly review prompt), "
             "'apply-review' (apply review results), "
-            "'notify-save-failure' (notify Slack about a tracking-data push failure)"
+            "'notify-save-failure' (notify Slack about a tracking-data push failure), "
+            "'check-freshness' (run-start canary: alert when committed tracking data is stale)"
         ),
     )
     args = parser.parse_args()
@@ -1678,6 +1719,8 @@ def main() -> None:
         phase_apply_review()
     elif args.phase == "notify-save-failure":
         phase_notify_save_failure()
+    elif args.phase == "check-freshness":
+        phase_check_freshness()
 
 
 if __name__ == "__main__":
