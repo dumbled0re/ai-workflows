@@ -1,0 +1,31 @@
+{
+  "weekly_review": {
+    "proposed": {
+      "pbr_undervalued": 28.0,
+      "near_52w_high": 24.0,
+      "earnings_miss": 16.0,
+      "margin_overhang": 15.0,
+      "sector_rotation": 8.0,
+      "earnings_yoy_growth": 8.0,
+      "wide_spread_liquidity": 5.0,
+      "dividend_yield": 5.0,
+      "bollinger_lower": 5.0,
+      "rsi_oversold_recovery": 5.0,
+      "volume_spike": 5.0,
+      "per_value": 4.0,
+      "low_peg_ratio": 4.0,
+      "rsi_healthy_momentum": 2.0,
+      "revenue_growth": 2.0,
+      "analyst_target_upside": 2.0,
+      "analyst_consensus_buy": 2.0,
+      "forward_estimate_cut": 2.0,
+      "sma25_breakout": 1.0,
+      "roe_profitable": 1.0,
+      "volume_surge": 1.0,
+      "macd_crossover": 1.0,
+      "analyst_downgrade_drift": 1.0
+    },
+    "reason": "Weekly review screening_weight_adjustments (23 signals)",
+    "submitted_at": "2026-07-11"
+  }
+}
