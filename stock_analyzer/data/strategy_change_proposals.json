@@ -27,5 +27,41 @@
     },
     "reason": "Weekly review screening_weight_adjustments (23 signals)",
     "submitted_at": "2026-07-11"
+  },
+  "bayesian": {
+    "proposed": {
+      "analyst_consensus_buy": 4.0,
+      "analyst_downgrade_drift": 10.0,
+      "analyst_target_upside": 4.0,
+      "analyst_upgrade_drift": 4.0,
+      "bollinger_lower": 5.0,
+      "dividend_yield": 5.0,
+      "earnings_beat": 4.0,
+      "earnings_consistent_beat": 4.0,
+      "earnings_miss": 11.0,
+      "earnings_yoy_growth": 4.0,
+      "forward_estimate_cut": 4.0,
+      "forward_estimate_raise": 4.0,
+      "low_peg_ratio": 4.0,
+      "macd_crossover": 1.0,
+      "margin_low_pressure": 4.0,
+      "margin_overhang": 4.0,
+      "near_52w_high": 5.0,
+      "pbr_undervalued": 14.0,
+      "per_value": 1.0,
+      "relative_strength": 4.0,
+      "revenue_growth": 1.0,
+      "roe_profitable": 1.0,
+      "rsi_healthy_momentum": 1.0,
+      "rsi_oversold_recovery": 20.0,
+      "sector_rotation": 4.0,
+      "sma25_breakout": 1.0,
+      "volume_spike": 10.0,
+      "volume_surge": 35.0,
+      "volume_trend_up": 4.0,
+      "wide_spread_liquidity": 10.0
+    },
+    "reason": "Bayesian shrinkage proposal (30 signals); calibration_zone=red, recovery_confirmed=False",
+    "submitted_at": "2026-07-13"
   }
 }
