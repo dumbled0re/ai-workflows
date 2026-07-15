@@ -1,0 +1,21 @@
+verify_id: stock_analyzer/wts-2026-07-15-51724a44
+verify_after: 2026-08-05T00:00:00+09:00
+project: stock_analyzer
+description: |
+  strategy_governor が 2026-07-15 に適用した weight 変更 batch wts-2026-07-15-51724a44
+  sources: weekly_review, bayesian
+  変更内容: relative_strength: 4.0 → 8; earnings_miss: 0.0 → 4; wide_spread_liquidity: 0.0 → 4; margin_overhang: 4.0 → 8; pbr_undervalued: 12.0 → 16; low_peg_ratio: 4.0 → 6; bollinger_lower: 5.0 → 6; rsi_healthy_momentum: 1.0 → 3; earnings_yoy_growth: 4.0 → 8; revenue_growth: 1.0 → 3; analyst_upgrade_drift: 4.0 → 7; rsi_oversold_recovery: 20.0 → 16; dividend_yield: 5.0 → 8; roe_profitable: 1.0 → 3; volume_surge: 35.0 → 31; sector_rotation: 4.0 → 8; near_52w_high: 5.0 → 9; sma25_breakout: 1.0 → 2; per_value: 1.0 → 4; forward_estimate_raise: 4.0 → 6; earnings_consistent_beat: 4.0 → 5; volume_spike: 10.0 → 8; analyst_downgrade_drift: 0.0 → 4
+  効果検証: net_expectancy_pct が pre-change baseline と比較して改善方向に ある場合 success、悪化方向なら failure、有意差なしなら inconclusive。
+kind: strategy_change_metric_check
+args:
+  change_id: wts-2026-07-15-51724a44
+  primary_metric: net_expectancy.net_expectancy_pct
+  improvement_direction: increase
+  min_resolved_trades: 14
+  secondary_metrics:
+    - accuracy_pct
+    - up_winrate_pct
+  rollback_snapshot: verify/stock_analyzer/snapshots/wts-2026-07-15-51724a44.json
+max_attempts: 6
+retry_after_hours: 72
+relates_to: wts-2026-07-15-51724a44
