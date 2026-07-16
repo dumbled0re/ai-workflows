@@ -1,1 +1,38 @@
-{}
+{
+  "bayesian": {
+    "proposed": {
+      "analyst_consensus_buy": 4.0,
+      "analyst_downgrade_drift": 4.0,
+      "analyst_target_upside": 4.0,
+      "analyst_upgrade_drift": 7.0,
+      "bollinger_lower": 6.0,
+      "dividend_yield": 8.0,
+      "earnings_beat": 4.0,
+      "earnings_consistent_beat": 5.0,
+      "earnings_miss": 5.0,
+      "earnings_yoy_growth": 8.0,
+      "forward_estimate_cut": 4.0,
+      "forward_estimate_raise": 6.0,
+      "low_peg_ratio": 6.0,
+      "macd_crossover": 1.0,
+      "margin_low_pressure": 4.0,
+      "margin_overhang": 8.0,
+      "near_52w_high": 10.0,
+      "pbr_undervalued": 19.0,
+      "per_value": 4.0,
+      "relative_strength": 8.0,
+      "revenue_growth": 3.0,
+      "roe_profitable": 3.0,
+      "rsi_healthy_momentum": 3.0,
+      "rsi_oversold_recovery": 16.0,
+      "sector_rotation": 8.0,
+      "sma25_breakout": 2.0,
+      "volume_spike": 8.0,
+      "volume_surge": 31.0,
+      "volume_trend_up": 4.0,
+      "wide_spread_liquidity": 4.0
+    },
+    "reason": "Bayesian shrinkage proposal (30 signals); calibration_zone=green, recovery_confirmed=False",
+    "submitted_at": "2026-07-16"
+  }
+}
