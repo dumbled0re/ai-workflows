@@ -1051,9 +1051,10 @@
       "evidence": "LOW_UP: 37.5%(3/8件) 全バケット最低 / LOW_DOWN: 77.8%(7/9件) 全バケット最高 / LOW全体: 58.8%(10/17件)",
       "confidence": "MEDIUM",
       "category": "risk_management",
-      "still_valid": true,
+      "still_valid": false,
       "date_added": "2026-05-13",
-      "last_validated": "2026-05-13"
+      "last_validated": "2026-05-13",
+      "deprecated_date": "2026-07-17"
     },
     {
       "insight": "direction=DOWN予測はTC控除後net+43.9%・EV+0.81%・PF 1.51と全フィルター最高。UP予測はTC控除後net-36.4%・EV-0.11%・PF 0.95と価値破壊。DOWN予測を戦略の絶対主軸とし、UPエントリーは市場回復局面（異なる3セクター以上で同日UP同時成功の翌営業日以降）のみに限定する",
@@ -2176,9 +2177,10 @@
       "evidence": "LOW_DOWN: 83.3%(10/12件) > MEDIUM_DOWN: 64.3%(90/140件) > HIGH_DOWN: 53.6%(30/56件)。ただしN=12のためN≥15達成後に統計的再評価が必須",
       "confidence": "LOW",
       "category": "market_regime",
-      "still_valid": true,
+      "still_valid": false,
       "date_added": "2026-05-25",
-      "last_validated": "2026-05-25"
+      "last_validated": "2026-05-25",
+      "deprecated_date": "2026-07-17"
     },
     {
       "insight": "source=long_termはPBR≤0.9＋配当利回り≥3.5%＋売上成長率≥15%＋PER≤15の4条件全満足銘柄のみを対象とし最優先シグナルとして維持する。4条件のうち1条件でも欠ければ除外する",
@@ -2461,9 +2463,10 @@
       "evidence": "forward_estimate_cut: with 71.4%(7件) vs without 63.9%(216件) → lift +7.5%（全19シグナル中1位）",
       "confidence": "MEDIUM",
       "category": "fundamental_insight",
-      "still_valid": true,
+      "still_valid": false,
       "date_added": "2026-06-02",
-      "last_validated": "2026-06-02"
+      "last_validated": "2026-06-02",
+      "deprecated_date": "2026-07-17"
     },
     {
       "insight": "pbr_undervalued（PBR1倍以下）は全シグナル中2位のlift +7.0%を持つ有効なバリュエーションシグナル。long_term複合条件の核として最大活用し、単独でも補助的使用可",
@@ -2706,9 +2709,10 @@
       "evidence": "relative_strength: with 80.0%(5件) vs without 64.5%(251件) → lift +15.5%。sector_rotation: with 80.0%(5件) vs without 64.5%(251件) → lift +15.5%。全23シグナル中最高lift",
       "confidence": "MEDIUM",
       "category": "technical_pattern",
-      "still_valid": true,
+      "still_valid": false,
       "date_added": "2026-06-04",
-      "last_validated": "2026-06-04"
+      "last_validated": "2026-06-04",
+      "deprecated_date": "2026-07-17"
     },
     {
       "insight": "macd_crossover(-41.1%)・sma25_breakout(-26.2%)・forward_estimate_raise(-24.3%)・analyst_upgrade_drift(-25.3%)は最悪の有害シグナル群。スクリーニング重みを最低値に設定し単独エントリー根拠として使用完全禁止",
@@ -6027,13 +6031,94 @@
       "still_valid": true,
       "date_added": "2026-07-16",
       "last_validated": "2026-07-16"
+    },
+    {
+      "insight": "HIGH信頼度はMEDIUMを下回るキャリブレーション逆転が継続しており、特にHIGH_UP(50.0%)はHIGH_DOWN(53.6%)よりも劣化が深刻。HIGH新規付与はテクニカル・ファンダメンタル・需給の全シグナルが同方向に揃い除外フラグが皆無の場合のみに限定し、UP方向へのHIGH付与は原則禁止(MEDIUM上限)とする。1%でも迷えば必ずMEDIUMへ格下げする。",
+      "evidence": "HIGH 52.8%(38/72件) < MEDIUM 58.3%(484/830件)。HIGH_UP 50.0%(8/16件) vs MEDIUM_UP 56.2%(203/361件)。HIGH_DOWN 53.6%(30/56件) vs MEDIUM_DOWN 59.9%(281/469件)。",
+      "confidence": "HIGH",
+      "category": "risk_management",
+      "still_valid": true,
+      "date_added": "2026-07-17",
+      "last_validated": "2026-07-17"
+    },
+    {
+      "insight": "UP方向(買い建て)は市場相対で恒常的にマイナス(-1.00%/件、ベンチ超え46.7%)である一方DOWN方向は+2.25%/件・ベンチ超え64.9%と明確に優位。現在の市場レジームが下降トレンド(日経1ヶ月-8.24%、VIX18.54)であることも踏まえ、新規UP推奨はnear_52w_high・pbr_undervaluedなど正lift確認済みシグナルが複数同時成立し、かつ市場が上昇/中立局面と確認できる場合に限定する。",
+      "evidence": "市場相対: UP -1.00%/件(n=469,ベンチ超え46.7%) vs DOWN +2.25%/件(n=598,ベンチ超え64.9%)。反実仮想: direction=UP EV+0.72%/PF1.31 vs direction=DOWN EV+0.98%/PF1.37。現在レジーム: 弱気トレンド(nikkei_1m -8.24%, VIX18.54)。",
+      "confidence": "HIGH",
+      "category": "market_regime",
+      "still_valid": true,
+      "date_added": "2026-07-17",
+      "last_validated": "2026-07-17"
+    },
+    {
+      "insight": "source=short_termは取引コスト(0.40%/往復)控除後のnetが唯一マイナス(-10.2%)に転落する枠。short_term発の予測件数を削減し、holdings・DOWN方向へリソースを再配分する。",
+      "evidence": "source=short_term: 136件 EV+0.33%/Sharpe+0.04/PF1.10、gross+44.2%→net-10.2%(TC drag54.4%)。他の主要フィルターは全てnetプラス(holdings net+425.9%、baseline net+497.7%)。",
+      "confidence": "HIGH",
+      "category": "risk_management",
+      "still_valid": true,
+      "date_added": "2026-07-17",
+      "last_validated": "2026-07-17"
+    },
+    {
+      "insight": "discoveryソースは的中率20.0%(n=5)・市場相対-8.66%/件と全ソース中最悪であり、複数セッションにわたり一貫して最低水準。discovery発の新規推奨はnear_52w_high・pbr_undervaluedなど正lift確認済みシグナルが複数同時成立する場合のみに限定し件数を絞る。",
+      "evidence": "ソース別的中率: holdings58.2%/short_term49.3%/long_term57.3%/discovery20.0%。市場相対discovery-8.66%/件(n=5)。",
+      "confidence": "MEDIUM",
+      "category": "risk_management",
+      "still_valid": true,
+      "date_added": "2026-07-17",
+      "last_validated": "2026-07-17"
+    },
+    {
+      "insight": "保有ポジションのtime_stop(14営業日で見直し)が実運用で執行されておらず、Position-awareの最悪5ポジションのうち4件がUP方向・うち3件が21〜45日間未実現のまま含み損を拡大している。Paper Portfolio NAVが-2.0%と反実仮想バックテストの正の期待値(EV+0.87%/件)から乖離している主因の一つとみられ、保有14営業日超のUPポジションを機械的にフラグ付けし見直し対象とする運用をパイプラインに実装すべき。",
+      "evidence": "最悪5ポジション: 7846.T UP -64.63%/45日[未実現]、4452.T UP -47.22%/40日[未実現]、5032.T UP -19.51%/45日[未実現]、5857.T UP -16.83%/21日[未実現]。Paper Portfolio NAV: 1,000,000円→980,215円(-2.0%)、処理ポジション数59・勝率45.8% vs 反実仮想baseline勝率56.8%。",
+      "confidence": "HIGH",
+      "category": "risk_management",
+      "still_valid": true,
+      "date_added": "2026-07-17",
+      "last_validated": "2026-07-17"
+    },
+    {
+      "insight": "Critic二次評価のkeep判定(45.7%, n=208)はdowngrade判定(26.7%, n=15)より高いがbaseline(56.8%)を11.1pt下回っており、二次評価が予測の質を改善する方向に機能していない。downgradeの除外判断自体は妥当だが、keepのスコアリングロジック自体の見直しが必要。",
+      "evidence": "Critic verdict: keep n=208 勝率45.7% mean_dir_return-0.98% / downgrade n=15 勝率26.7% mean_dir_return-2.04%。baseline勝率56.8%。",
+      "confidence": "HIGH",
+      "category": "risk_management",
+      "still_valid": true,
+      "date_added": "2026-07-17",
+      "last_validated": "2026-07-17"
+    },
+    {
+      "insight": "pbr_undervalued(PBR1倍以下)は今回lift+21.0%(N=57)、near_52w_high(52週高値付近)はlift+11.6%(N=29)と大サンプルで安定した正シグナル。screening_weightsで最優先の重み引き上げ対象として維持・強化する。earnings_miss(決算ミス)はlift+22.5%と最大だがN=10と小さいため重み引き上げは段階的に留める。",
+      "evidence": "pbr_undervalued: with77.2%(57件)vs without56.2%(682件)lift+21.0%。near_52w_high: with69.0%(29件)vs without57.3%(710件)lift+11.6%。earnings_miss: with80.0%(10件)vs without57.5%(729件)lift+22.5%。",
+      "confidence": "HIGH",
+      "category": "fundamental_insight",
+      "still_valid": true,
+      "date_added": "2026-07-17",
+      "last_validated": "2026-07-17"
+    },
+    {
+      "insight": "macd_crossover(lift-29.2%)・analyst_downgrade_drift(lift-38.0%)・volume_surge(lift-24.6%)・sma25_breakout(lift-14.4%)・roe_profitable(lift-9.0%)は一貫して負のliftを示す有害シグナル群。単独エントリー根拠としての使用を禁止し、screening_weightsを最小水準に引き下げる。特にvolume_surgeは現行weight=31と負のliftに著しく不整合であるため最優先で是正する。",
+      "evidence": "macd_crossover: with29.6%(27件)vs without58.8%(712件)lift-29.2%。analyst_downgrade_drift: with20.0%(5件)vs without58.0%(734件)lift-38.0%。volume_surge: with33.3%(6件)vs without58.0%(733件)lift-24.6%(現行weight=31)。sma25_breakout: with44.6%(65件)vs without59.1%(674件)lift-14.4%。roe_profitable: with50.7%(152件)vs without59.6%(587件)lift-9.0%。",
+      "confidence": "HIGH",
+      "category": "technical_pattern",
+      "still_valid": true,
+      "date_added": "2026-07-17",
+      "last_validated": "2026-07-17"
+    },
+    {
+      "insight": "rsi_oversold_recoveryは複数セッションで符号が頻繁に反転しており、今回もlift+2.1%(N=99)とほぼゼロ。現行weight=16は過去の一時的な高liftを反映した過大な水準であり、有効性が統計的に確定するまで重みを引き下げる。",
+      "evidence": "rsi_oversold_recovery: with59.6%(99件)vs without57.5%(640件)lift+2.1%。過去セッションでは-19.4%〜+2.9%の間で符号反転を繰り返している。現行screening_weight=16。",
+      "confidence": "MEDIUM",
+      "category": "technical_pattern",
+      "still_valid": true,
+      "date_added": "2026-07-17",
+      "last_validated": "2026-07-17"
     }
   ],
   "regime_strategies": {
-    "上昇トレンド": "pbr_undervalued・near_52w_highなど正lift確認済みシグナルを中心に新規UPエントリーを解禁する。金融・証券セクター(大手証券等)を回復初動の第一優先とし、建設インフラ(PBR0.9倍以下+配当4%超+売上成長30%超)は複数日の継続保有を検討する。HIGH信頼度は引き続きDOWN方向中心とし、UPへのHIGH付与はテクニカル・ファンダ・需給が全て揃った場合のみ限定的に許可する。",
-    "下降トレンド": "DOWN方向・holdingsソース・MEDIUM信頼度の組み合わせを主軸とし、新規UPエントリーは原則停止する。保有銘柄数が5件を超える、またはDOWN/損切り推奨が保有の50%超になった時点で現金比率の引き上げを優先する。バイオ・製薬・暗号資産テーマ株・急騰小型株はスクリーニング段階で除外を継続する。",
-    "レンジ相場": "pbr_undervalued・near_52w_high・earnings_yoy_growth・sector_rotationなど複合の正lift条件が揃った銘柄のみに限定したselective entryを行う。sma25_breakout・macd_crossover・volume_surge・analyst_downgrade_driftなど負liftシグナル単独でのエントリーは禁止し、ポジション数を絞ってDDを抑制する。",
-    "高ボラティリティ": "バイオ・製薬・暗号資産テーマ株・急騰小型株(時価総額300億円以下かつ直近20営業日+20%超)のスクリーニング除外を徹底する。HIGH信頼度の新規付与は原則停止しMEDIUM以下に統一する。保有14営業日超のUPポジションは自動フラグ付けしtime_stopを厳格運用、同時保有上限5銘柄ルールも厳格に適用する。"
+    "上昇トレンド": "near_52w_high・pbr_undervaluedなど正lift確認済みシグナルが複数成立する場合に限りUP新規推奨を解禁するが、HIGH信頼度はDOWN方向中心を維持しUP方向のHIGH付与は原則見送る。sma25_breakout・macd_crossover・volume_surgeは負lift継続のため単独根拠にしない。",
+    "下降トレンド": "新規UP推奨を原則停止し、DOWN方向・holdings保有整理・現金化を最優先とする。保有5件超または保有の50%超がDOWN/損切り推奨になった時点で新規エントリーを全停止する。底打ちシグナル(RSI30以下+出来高急増+陽線転換が複数セクターで同時確認)が出るまでUP再開を見送る。",
+    "レンジ相場": "pbr_undervalued・near_52w_high・sector_rotationなど正lift確認済みの複合シグナルが揃う銘柄に絞ってholdings/long_term中心にエントリーする。short_termはTC控除後net赤字のため件数を絞り、discoveryは正lift複数成立時のみ採用する。",
+    "高ボラティリティ": "ポジションサイジングを縮小し、保有14営業日超のUPポジションを機械的にフラグ付けしtime_stopを執行する。損切りは新規-5%・既存保有-8%超(回復シグナルなし)で統一し、同時保有上限5銘柄を厳格適用する。"
   },
-  "last_review_date": "2026-07-16"
+  "last_review_date": "2026-07-17"
 }
