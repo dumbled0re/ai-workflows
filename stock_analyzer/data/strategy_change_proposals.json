@@ -33,7 +33,7 @@
       "wide_spread_liquidity": 4.0
     },
     "reason": "Bayesian shrinkage proposal (30 signals); calibration_zone=green, recovery_confirmed=False",
-    "submitted_at": "2026-07-17"
+    "submitted_at": "2026-07-21"
   },
   "weekly_review": {
     "proposed": {

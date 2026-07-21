@@ -6,15 +6,15 @@
   "proposed": {
     "analyst_consensus_buy": {
       "current_weight": 4,
-      "raw_with_rate": 0.518,
-      "shrunk_with_rate": 0.524,
-      "raw_without_rate": 0.592,
+      "raw_with_rate": 0.521,
+      "shrunk_with_rate": 0.527,
+      "raw_without_rate": 0.591,
       "shrunk_without_rate": 0.591,
-      "shrunk_lift_pp": -6.7,
+      "shrunk_lift_pp": -6.4,
       "scaling_factor": 1.0,
       "proposed_weight": 4,
-      "n_with": 141,
-      "n_without": 595
+      "n_with": 142,
+      "n_without": 597
     },
     "analyst_downgrade_drift": {
       "current_weight": 4,
@@ -26,55 +26,55 @@
       "scaling_factor": 1.0,
       "proposed_weight": 4,
       "n_with": 5,
-      "n_without": 731
+      "n_without": 734
     },
     "analyst_target_upside": {
       "current_weight": 4,
-      "raw_with_rate": 0.538,
-      "shrunk_with_rate": 0.542,
+      "raw_with_rate": 0.541,
+      "shrunk_with_rate": 0.544,
       "raw_without_rate": 0.588,
       "shrunk_without_rate": 0.587,
-      "shrunk_lift_pp": -4.5,
+      "shrunk_lift_pp": -4.3,
       "scaling_factor": 1.0,
       "proposed_weight": 4,
-      "n_with": 156,
-      "n_without": 580
+      "n_with": 157,
+      "n_without": 582
     },
     "analyst_upgrade_drift": {
       "current_weight": 7,
       "raw_with_rate": 0.6,
-      "shrunk_with_rate": 0.578,
-      "raw_without_rate": 0.577,
+      "shrunk_with_rate": 0.579,
+      "raw_without_rate": 0.578,
       "shrunk_without_rate": 0.577,
-      "shrunk_lift_pp": 0.2,
+      "shrunk_lift_pp": 0.1,
       "scaling_factor": 1.02,
       "proposed_weight": 7,
       "n_with": 10,
-      "n_without": 726
+      "n_without": 729
     },
     "bollinger_lower": {
       "current_weight": 6,
       "raw_with_rate": 0.556,
       "shrunk_with_rate": 0.561,
-      "raw_without_rate": 0.578,
+      "raw_without_rate": 0.579,
       "shrunk_without_rate": 0.578,
-      "shrunk_lift_pp": -1.7,
+      "shrunk_lift_pp": -1.8,
       "scaling_factor": 1.0,
       "proposed_weight": 6,
       "n_with": 27,
-      "n_without": 709
+      "n_without": 712
     },
     "dividend_yield": {
       "current_weight": 8,
-      "raw_with_rate": 0.602,
-      "shrunk_with_rate": 0.597,
+      "raw_with_rate": 0.605,
+      "shrunk_with_rate": 0.6,
       "raw_without_rate": 0.573,
       "shrunk_without_rate": 0.573,
-      "shrunk_lift_pp": 2.4,
-      "scaling_factor": 1.05,
+      "shrunk_lift_pp": 2.7,
+      "scaling_factor": 1.06,
       "proposed_weight": 8,
-      "n_with": 113,
-      "n_without": 623
+      "n_with": 114,
+      "n_without": 625
     },
     "earnings_beat": {
       "current_weight": 4,
@@ -86,79 +86,79 @@
       "scaling_factor": 1.0,
       "proposed_weight": 4,
       "n_with": 41,
-      "n_without": 695
+      "n_without": 698
     },
     "earnings_consistent_beat": {
       "current_weight": 5,
-      "raw_with_rate": 0.552,
-      "shrunk_with_rate": 0.558,
-      "raw_without_rate": 0.579,
+      "raw_with_rate": 0.567,
+      "shrunk_with_rate": 0.567,
+      "raw_without_rate": 0.578,
       "shrunk_without_rate": 0.578,
-      "shrunk_lift_pp": -2.0,
+      "shrunk_lift_pp": -1.1,
       "scaling_factor": 1.0,
       "proposed_weight": 5,
-      "n_with": 29,
-      "n_without": 707
+      "n_with": 30,
+      "n_without": 709
     },
     "earnings_miss": {
       "current_weight": 4,
       "raw_with_rate": 0.8,
       "shrunk_with_rate": 0.645,
-      "raw_without_rate": 0.574,
-      "shrunk_without_rate": 0.574,
+      "raw_without_rate": 0.575,
+      "shrunk_without_rate": 0.575,
       "shrunk_lift_pp": 7.1,
       "scaling_factor": 1.14,
       "proposed_weight": 5,
       "n_with": 10,
-      "n_without": 726
+      "n_without": 729
     },
     "earnings_yoy_growth": {
       "current_weight": 8,
       "raw_with_rate": 0.667,
-      "shrunk_with_rate": 0.598,
-      "raw_without_rate": 0.576,
+      "shrunk_with_rate": 0.599,
+      "raw_without_rate": 0.577,
       "shrunk_without_rate": 0.576,
       "shrunk_lift_pp": 2.2,
       "scaling_factor": 1.05,
       "proposed_weight": 8,
       "n_with": 9,
-      "n_without": 727
+      "n_without": 730
     },
     "forward_estimate_cut": {
       "current_weight": 4,
-      "raw_with_rate": 0.512,
-      "shrunk_with_rate": 0.529,
-      "raw_without_rate": 0.582,
+      "raw_with_rate": 0.523,
+      "shrunk_with_rate": 0.537,
+      "raw_without_rate": 0.581,
       "shrunk_without_rate": 0.581,
-      "shrunk_lift_pp": -5.2,
+      "shrunk_lift_pp": -4.4,
       "scaling_factor": 1.0,
       "proposed_weight": 4,
-      "n_with": 43,
-      "n_without": 693
+      "n_with": 44,
+      "n_without": 695
     },
     "forward_estimate_raise": {
       "current_weight": 6,
       "raw_with_rate": 0.581,
       "shrunk_with_rate": 0.576,
-      "raw_without_rate": 0.577,
+      "raw_without_rate": 0.578,
       "shrunk_without_rate": 0.577,
-      "shrunk_lift_pp": -0.1,
+      "shrunk_lift_pp": -0.2,
       "scaling_factor": 1.0,
       "proposed_weight": 6,
       "n_with": 31,
-      "n_without": 705
+      "n_without": 708
     },
     "low_peg_ratio": {
       "current_weight": 6,
-      "raw_with_rate": 0.58,
-      "shrunk_with_rate": 0.579,
-      "raw_without_rate": 0.577,
+      "raw_with_rate": 0.583,
+      "shrunk_with_rate": 0.581,
+      "raw_without_rate": 0.576,
       "shrunk_without_rate": 0.576,
-      "shrunk_lift_pp": 0.2,
+      "shrunk_lift_pp": 0.5,
       "scaling_factor": 1.02,
       "proposed_weight": 6,
-      "n_with": 143,
-      "n_without": 593
+      "n_with": 144,
+      "n_without": 595
     },
     "macd_crossover": {
       "current_weight": 1,
@@ -170,31 +170,31 @@
       "scaling_factor": 1.0,
       "proposed_weight": 1,
       "n_with": 27,
-      "n_without": 709
+      "n_without": 712
     },
     "margin_low_pressure": {
       "current_weight": 4,
       "raw_with_rate": 0.5,
       "shrunk_with_rate": 0.545,
       "raw_without_rate": 0.579,
-      "shrunk_without_rate": 0.578,
+      "shrunk_without_rate": 0.579,
       "shrunk_lift_pp": -3.3,
       "scaling_factor": 1.0,
       "proposed_weight": 4,
       "n_with": 10,
-      "n_without": 726
+      "n_without": 729
     },
     "margin_overhang": {
       "current_weight": 8,
       "raw_with_rate": 0.588,
       "shrunk_with_rate": 0.577,
-      "raw_without_rate": 0.577,
+      "raw_without_rate": 0.578,
       "shrunk_without_rate": 0.577,
-      "shrunk_lift_pp": 0.0,
-      "scaling_factor": 1.02,
+      "shrunk_lift_pp": -0.0,
+      "scaling_factor": 1.0,
       "proposed_weight": 8,
       "n_with": 17,
-      "n_without": 719
+      "n_without": 722
     },
     "near_52w_high": {
       "current_weight": 9,
@@ -206,31 +206,31 @@
       "scaling_factor": 1.13,
       "proposed_weight": 10,
       "n_with": 29,
-      "n_without": 707
+      "n_without": 710
     },
     "pbr_undervalued": {
       "current_weight": 16,
       "raw_with_rate": 0.772,
       "shrunk_with_rate": 0.719,
-      "raw_without_rate": 0.561,
-      "shrunk_without_rate": 0.561,
-      "shrunk_lift_pp": 15.8,
+      "raw_without_rate": 0.562,
+      "shrunk_without_rate": 0.562,
+      "shrunk_lift_pp": 15.7,
       "scaling_factor": 1.2,
       "proposed_weight": 19,
       "n_with": 57,
-      "n_without": 679
+      "n_without": 682
     },
     "per_value": {
       "current_weight": 4,
       "raw_with_rate": 0.587,
-      "shrunk_with_rate": 0.583,
+      "shrunk_with_rate": 0.584,
       "raw_without_rate": 0.576,
       "shrunk_without_rate": 0.576,
-      "shrunk_lift_pp": 0.8,
+      "shrunk_lift_pp": 0.7,
       "scaling_factor": 1.03,
       "proposed_weight": 4,
       "n_with": 104,
-      "n_without": 632
+      "n_without": 635
     },
     "relative_strength": {
       "current_weight": 8,
@@ -242,55 +242,55 @@
       "scaling_factor": 1.03,
       "proposed_weight": 8,
       "n_with": 20,
-      "n_without": 716
+      "n_without": 719
     },
     "revenue_growth": {
       "current_weight": 3,
-      "raw_with_rate": 0.544,
-      "shrunk_with_rate": 0.546,
+      "raw_with_rate": 0.547,
+      "shrunk_with_rate": 0.549,
       "raw_without_rate": 0.586,
       "shrunk_without_rate": 0.585,
-      "shrunk_lift_pp": -3.9,
+      "shrunk_lift_pp": -3.6,
       "scaling_factor": 1.0,
       "proposed_weight": 3,
-      "n_with": 149,
-      "n_without": 587
+      "n_with": 150,
+      "n_without": 589
     },
     "roe_profitable": {
       "current_weight": 3,
-      "raw_with_rate": 0.503,
-      "shrunk_with_rate": 0.511,
-      "raw_without_rate": 0.597,
-      "shrunk_without_rate": 0.596,
-      "shrunk_lift_pp": -8.5,
+      "raw_with_rate": 0.507,
+      "shrunk_with_rate": 0.514,
+      "raw_without_rate": 0.596,
+      "shrunk_without_rate": 0.595,
+      "shrunk_lift_pp": -8.2,
       "scaling_factor": 1.0,
       "proposed_weight": 3,
-      "n_with": 151,
-      "n_without": 585
+      "n_with": 152,
+      "n_without": 587
     },
     "rsi_healthy_momentum": {
       "current_weight": 3,
       "raw_with_rate": 0.518,
       "shrunk_with_rate": 0.528,
       "raw_without_rate": 0.585,
-      "shrunk_without_rate": 0.584,
+      "shrunk_without_rate": 0.585,
       "shrunk_lift_pp": -5.7,
       "scaling_factor": 1.0,
       "proposed_weight": 3,
       "n_with": 83,
-      "n_without": 653
+      "n_without": 656
     },
     "rsi_oversold_recovery": {
       "current_weight": 16,
-      "raw_with_rate": 0.592,
-      "shrunk_with_rate": 0.588,
+      "raw_with_rate": 0.596,
+      "shrunk_with_rate": 0.591,
       "raw_without_rate": 0.575,
       "shrunk_without_rate": 0.575,
-      "shrunk_lift_pp": 1.3,
+      "shrunk_lift_pp": 1.6,
       "scaling_factor": 1.04,
       "proposed_weight": 17,
-      "n_with": 98,
-      "n_without": 638
+      "n_with": 99,
+      "n_without": 640
     },
     "sector_rotation": {
       "current_weight": 8,
@@ -302,43 +302,43 @@
       "scaling_factor": 1.05,
       "proposed_weight": 8,
       "n_with": 19,
-      "n_without": 717
+      "n_without": 720
     },
     "sma25_breakout": {
       "current_weight": 2,
       "raw_with_rate": 0.446,
       "shrunk_with_rate": 0.475,
-      "raw_without_rate": 0.59,
+      "raw_without_rate": 0.591,
       "shrunk_without_rate": 0.59,
       "shrunk_lift_pp": -11.5,
       "scaling_factor": 1.0,
       "proposed_weight": 2,
       "n_with": 65,
-      "n_without": 671
+      "n_without": 674
     },
     "volume_spike": {
       "current_weight": 8,
       "raw_with_rate": 0.526,
       "shrunk_with_rate": 0.535,
-      "raw_without_rate": 0.583,
+      "raw_without_rate": 0.584,
       "shrunk_without_rate": 0.583,
       "shrunk_lift_pp": -4.8,
       "scaling_factor": 1.0,
       "proposed_weight": 8,
       "n_with": 76,
-      "n_without": 660
+      "n_without": 663
     },
     "volume_surge": {
       "current_weight": 31,
       "raw_with_rate": 0.333,
       "shrunk_with_rate": 0.514,
-      "raw_without_rate": 0.579,
+      "raw_without_rate": 0.58,
       "shrunk_without_rate": 0.579,
       "shrunk_lift_pp": -6.6,
       "scaling_factor": 1.0,
       "proposed_weight": 31,
       "n_with": 6,
-      "n_without": 730
+      "n_without": 733
     },
     "volume_trend_up": {
       "current_weight": 4,
@@ -346,23 +346,23 @@
       "shrunk_with_rate": 0.544,
       "raw_without_rate": 0.582,
       "shrunk_without_rate": 0.582,
-      "shrunk_lift_pp": -3.7,
+      "shrunk_lift_pp": -3.8,
       "scaling_factor": 1.0,
       "proposed_weight": 4,
       "n_with": 78,
-      "n_without": 658
+      "n_without": 661
     },
     "wide_spread_liquidity": {
       "current_weight": 4,
       "raw_with_rate": 0.667,
       "shrunk_with_rate": 0.591,
       "raw_without_rate": 0.577,
-      "shrunk_without_rate": 0.576,
+      "shrunk_without_rate": 0.577,
       "shrunk_lift_pp": 1.4,
       "scaling_factor": 1.04,
       "proposed_weight": 4,
       "n_with": 6,
-      "n_without": 730
+      "n_without": 733
     }
   }
 }
