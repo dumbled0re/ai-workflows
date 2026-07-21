@@ -6,27 +6,27 @@
   "proposed": {
     "analyst_consensus_buy": {
       "current_weight": 4,
-      "raw_with_rate": 0.521,
-      "shrunk_with_rate": 0.527,
+      "raw_with_rate": 0.524,
+      "shrunk_with_rate": 0.53,
       "raw_without_rate": 0.591,
-      "shrunk_without_rate": 0.591,
-      "shrunk_lift_pp": -6.4,
+      "shrunk_without_rate": 0.59,
+      "shrunk_lift_pp": -6.0,
       "scaling_factor": 1.0,
       "proposed_weight": 4,
-      "n_with": 142,
-      "n_without": 597
+      "n_with": 143,
+      "n_without": 606
     },
     "analyst_downgrade_drift": {
       "current_weight": 4,
       "raw_with_rate": 0.2,
-      "shrunk_with_rate": 0.494,
-      "raw_without_rate": 0.58,
+      "shrunk_with_rate": 0.495,
+      "raw_without_rate": 0.581,
       "shrunk_without_rate": 0.58,
       "shrunk_lift_pp": -8.6,
       "scaling_factor": 1.0,
       "proposed_weight": 4,
       "n_with": 5,
-      "n_without": 734
+      "n_without": 744
     },
     "analyst_target_upside": {
       "current_weight": 4,
@@ -34,71 +34,71 @@
       "shrunk_with_rate": 0.544,
       "raw_without_rate": 0.588,
       "shrunk_without_rate": 0.587,
-      "shrunk_lift_pp": -4.3,
+      "shrunk_lift_pp": -4.4,
       "scaling_factor": 1.0,
       "proposed_weight": 4,
-      "n_with": 157,
-      "n_without": 582
+      "n_with": 159,
+      "n_without": 590
     },
     "analyst_upgrade_drift": {
       "current_weight": 7,
       "raw_with_rate": 0.6,
       "shrunk_with_rate": 0.579,
       "raw_without_rate": 0.578,
-      "shrunk_without_rate": 0.577,
+      "shrunk_without_rate": 0.578,
       "shrunk_lift_pp": 0.1,
       "scaling_factor": 1.02,
       "proposed_weight": 7,
       "n_with": 10,
-      "n_without": 729
+      "n_without": 739
     },
     "bollinger_lower": {
       "current_weight": 6,
       "raw_with_rate": 0.556,
       "shrunk_with_rate": 0.561,
       "raw_without_rate": 0.579,
-      "shrunk_without_rate": 0.578,
+      "shrunk_without_rate": 0.579,
       "shrunk_lift_pp": -1.8,
       "scaling_factor": 1.0,
       "proposed_weight": 6,
       "n_with": 27,
-      "n_without": 712
+      "n_without": 722
     },
     "dividend_yield": {
       "current_weight": 8,
-      "raw_with_rate": 0.605,
-      "shrunk_with_rate": 0.6,
+      "raw_with_rate": 0.603,
+      "shrunk_with_rate": 0.598,
       "raw_without_rate": 0.573,
       "shrunk_without_rate": 0.573,
-      "shrunk_lift_pp": 2.7,
-      "scaling_factor": 1.06,
+      "shrunk_lift_pp": 2.5,
+      "scaling_factor": 1.05,
       "proposed_weight": 8,
-      "n_with": 114,
-      "n_without": 625
+      "n_with": 116,
+      "n_without": 633
     },
     "earnings_beat": {
       "current_weight": 4,
       "raw_with_rate": 0.537,
       "shrunk_with_rate": 0.547,
-      "raw_without_rate": 0.58,
+      "raw_without_rate": 0.581,
       "shrunk_without_rate": 0.58,
       "shrunk_lift_pp": -3.3,
       "scaling_factor": 1.0,
       "proposed_weight": 4,
       "n_with": 41,
-      "n_without": 698
+      "n_without": 708
     },
     "earnings_consistent_beat": {
       "current_weight": 5,
-      "raw_with_rate": 0.567,
-      "shrunk_with_rate": 0.567,
-      "raw_without_rate": 0.578,
-      "shrunk_without_rate": 0.578,
-      "shrunk_lift_pp": -1.1,
+      "raw_with_rate": 0.562,
+      "shrunk_with_rate": 0.565,
+      "raw_without_rate": 0.579,
+      "shrunk_without_rate": 0.579,
+      "shrunk_lift_pp": -1.4,
       "scaling_factor": 1.0,
       "proposed_weight": 5,
-      "n_with": 30,
-      "n_without": 709
+      "n_with": 32,
+      "n_without": 717
     },
     "earnings_miss": {
       "current_weight": 4,
@@ -110,67 +110,67 @@
       "scaling_factor": 1.14,
       "proposed_weight": 5,
       "n_with": 10,
-      "n_without": 729
+      "n_without": 739
     },
     "earnings_yoy_growth": {
       "current_weight": 8,
-      "raw_with_rate": 0.667,
-      "shrunk_with_rate": 0.599,
-      "raw_without_rate": 0.577,
+      "raw_with_rate": 0.7,
+      "shrunk_with_rate": 0.612,
+      "raw_without_rate": 0.576,
       "shrunk_without_rate": 0.576,
-      "shrunk_lift_pp": 2.2,
-      "scaling_factor": 1.05,
-      "proposed_weight": 8,
-      "n_with": 9,
-      "n_without": 730
+      "shrunk_lift_pp": 3.6,
+      "scaling_factor": 1.08,
+      "proposed_weight": 9,
+      "n_with": 10,
+      "n_without": 739
     },
     "forward_estimate_cut": {
       "current_weight": 4,
-      "raw_with_rate": 0.523,
-      "shrunk_with_rate": 0.537,
-      "raw_without_rate": 0.581,
+      "raw_with_rate": 0.522,
+      "shrunk_with_rate": 0.536,
+      "raw_without_rate": 0.582,
       "shrunk_without_rate": 0.581,
-      "shrunk_lift_pp": -4.4,
+      "shrunk_lift_pp": -4.6,
       "scaling_factor": 1.0,
       "proposed_weight": 4,
-      "n_with": 44,
-      "n_without": 695
+      "n_with": 46,
+      "n_without": 703
     },
     "forward_estimate_raise": {
       "current_weight": 6,
       "raw_with_rate": 0.581,
       "shrunk_with_rate": 0.576,
       "raw_without_rate": 0.578,
-      "shrunk_without_rate": 0.577,
+      "shrunk_without_rate": 0.578,
       "shrunk_lift_pp": -0.2,
       "scaling_factor": 1.0,
       "proposed_weight": 6,
       "n_with": 31,
-      "n_without": 708
+      "n_without": 718
     },
     "low_peg_ratio": {
       "current_weight": 6,
-      "raw_with_rate": 0.583,
+      "raw_with_rate": 0.582,
       "shrunk_with_rate": 0.581,
-      "raw_without_rate": 0.576,
-      "shrunk_without_rate": 0.576,
-      "shrunk_lift_pp": 0.5,
+      "raw_without_rate": 0.577,
+      "shrunk_without_rate": 0.577,
+      "shrunk_lift_pp": 0.4,
       "scaling_factor": 1.02,
       "proposed_weight": 6,
-      "n_with": 144,
-      "n_without": 595
+      "n_with": 146,
+      "n_without": 603
     },
     "macd_crossover": {
       "current_weight": 1,
       "raw_with_rate": 0.296,
       "shrunk_with_rate": 0.412,
-      "raw_without_rate": 0.588,
+      "raw_without_rate": 0.589,
       "shrunk_without_rate": 0.588,
       "shrunk_lift_pp": -17.6,
       "scaling_factor": 1.0,
       "proposed_weight": 1,
       "n_with": 27,
-      "n_without": 712
+      "n_without": 722
     },
     "margin_low_pressure": {
       "current_weight": 4,
@@ -182,127 +182,127 @@
       "scaling_factor": 1.0,
       "proposed_weight": 4,
       "n_with": 10,
-      "n_without": 729
+      "n_without": 739
     },
     "margin_overhang": {
       "current_weight": 8,
       "raw_with_rate": 0.588,
       "shrunk_with_rate": 0.577,
       "raw_without_rate": 0.578,
-      "shrunk_without_rate": 0.577,
+      "shrunk_without_rate": 0.578,
       "shrunk_lift_pp": -0.0,
       "scaling_factor": 1.0,
       "proposed_weight": 8,
       "n_with": 17,
-      "n_without": 722
+      "n_without": 732
     },
     "near_52w_high": {
       "current_weight": 9,
       "raw_with_rate": 0.69,
       "shrunk_with_rate": 0.64,
-      "raw_without_rate": 0.573,
+      "raw_without_rate": 0.574,
       "shrunk_without_rate": 0.573,
       "shrunk_lift_pp": 6.7,
       "scaling_factor": 1.13,
       "proposed_weight": 10,
       "n_with": 29,
-      "n_without": 710
+      "n_without": 720
     },
     "pbr_undervalued": {
       "current_weight": 16,
-      "raw_with_rate": 0.772,
-      "shrunk_with_rate": 0.719,
+      "raw_with_rate": 0.763,
+      "shrunk_with_rate": 0.713,
       "raw_without_rate": 0.562,
       "shrunk_without_rate": 0.562,
-      "shrunk_lift_pp": 15.7,
+      "shrunk_lift_pp": 15.1,
       "scaling_factor": 1.2,
       "proposed_weight": 19,
-      "n_with": 57,
-      "n_without": 682
+      "n_with": 59,
+      "n_without": 690
     },
     "per_value": {
       "current_weight": 4,
-      "raw_with_rate": 0.587,
-      "shrunk_with_rate": 0.584,
+      "raw_with_rate": 0.59,
+      "shrunk_with_rate": 0.587,
       "raw_without_rate": 0.576,
       "shrunk_without_rate": 0.576,
-      "shrunk_lift_pp": 0.7,
+      "shrunk_lift_pp": 1.1,
       "scaling_factor": 1.03,
       "proposed_weight": 4,
-      "n_with": 104,
-      "n_without": 635
+      "n_with": 105,
+      "n_without": 644
     },
     "relative_strength": {
       "current_weight": 8,
       "raw_with_rate": 0.6,
       "shrunk_with_rate": 0.584,
-      "raw_without_rate": 0.577,
+      "raw_without_rate": 0.578,
       "shrunk_without_rate": 0.577,
       "shrunk_lift_pp": 0.7,
       "scaling_factor": 1.03,
       "proposed_weight": 8,
       "n_with": 20,
-      "n_without": 719
+      "n_without": 729
     },
     "revenue_growth": {
       "current_weight": 3,
-      "raw_with_rate": 0.547,
-      "shrunk_with_rate": 0.549,
-      "raw_without_rate": 0.586,
-      "shrunk_without_rate": 0.585,
-      "shrunk_lift_pp": -3.6,
+      "raw_with_rate": 0.543,
+      "shrunk_with_rate": 0.546,
+      "raw_without_rate": 0.587,
+      "shrunk_without_rate": 0.586,
+      "shrunk_lift_pp": -4.0,
       "scaling_factor": 1.0,
       "proposed_weight": 3,
-      "n_with": 150,
-      "n_without": 589
+      "n_with": 151,
+      "n_without": 598
     },
     "roe_profitable": {
       "current_weight": 3,
-      "raw_with_rate": 0.507,
-      "shrunk_with_rate": 0.514,
+      "raw_with_rate": 0.51,
+      "shrunk_with_rate": 0.517,
       "raw_without_rate": 0.596,
       "shrunk_without_rate": 0.595,
-      "shrunk_lift_pp": -8.2,
+      "shrunk_lift_pp": -7.8,
       "scaling_factor": 1.0,
       "proposed_weight": 3,
-      "n_with": 152,
-      "n_without": 587
+      "n_with": 153,
+      "n_without": 596
     },
     "rsi_healthy_momentum": {
       "current_weight": 3,
       "raw_with_rate": 0.518,
       "shrunk_with_rate": 0.528,
-      "raw_without_rate": 0.585,
+      "raw_without_rate": 0.586,
       "shrunk_without_rate": 0.585,
       "shrunk_lift_pp": -5.7,
       "scaling_factor": 1.0,
       "proposed_weight": 3,
       "n_with": 83,
-      "n_without": 656
+      "n_without": 666
     },
     "rsi_oversold_recovery": {
       "current_weight": 16,
-      "raw_with_rate": 0.596,
-      "shrunk_with_rate": 0.591,
-      "raw_without_rate": 0.575,
+      "raw_with_rate": 0.594,
+      "shrunk_with_rate": 0.59,
+      "raw_without_rate": 0.576,
       "shrunk_without_rate": 0.575,
-      "shrunk_lift_pp": 1.6,
+      "shrunk_lift_pp": 1.4,
       "scaling_factor": 1.04,
       "proposed_weight": 17,
-      "n_with": 99,
-      "n_without": 640
+      "n_with": 101,
+      "n_without": 648
     },
     "sector_rotation": {
       "current_weight": 8,
       "raw_with_rate": 0.632,
       "shrunk_with_rate": 0.599,
-      "raw_without_rate": 0.576,
+      "raw_without_rate": 0.577,
       "shrunk_without_rate": 0.576,
       "shrunk_lift_pp": 2.3,
       "scaling_factor": 1.05,
       "proposed_weight": 8,
       "n_with": 19,
-      "n_without": 720
+      "n_without": 730
     },
     "sma25_breakout": {
       "current_weight": 2,
@@ -314,7 +314,7 @@
       "scaling_factor": 1.0,
       "proposed_weight": 2,
       "n_with": 65,
-      "n_without": 674
+      "n_without": 684
     },
     "volume_spike": {
       "current_weight": 8,
@@ -326,31 +326,31 @@
       "scaling_factor": 1.0,
       "proposed_weight": 8,
       "n_with": 76,
-      "n_without": 663
+      "n_without": 673
     },
     "volume_surge": {
       "current_weight": 31,
       "raw_with_rate": 0.333,
       "shrunk_with_rate": 0.514,
       "raw_without_rate": 0.58,
-      "shrunk_without_rate": 0.579,
+      "shrunk_without_rate": 0.58,
       "shrunk_lift_pp": -6.6,
       "scaling_factor": 1.0,
       "proposed_weight": 31,
       "n_with": 6,
-      "n_without": 733
+      "n_without": 743
     },
     "volume_trend_up": {
       "current_weight": 4,
       "raw_with_rate": 0.538,
-      "shrunk_with_rate": 0.544,
-      "raw_without_rate": 0.582,
+      "shrunk_with_rate": 0.545,
+      "raw_without_rate": 0.583,
       "shrunk_without_rate": 0.582,
       "shrunk_lift_pp": -3.8,
       "scaling_factor": 1.0,
       "proposed_weight": 4,
       "n_with": 78,
-      "n_without": 661
+      "n_without": 671
     },
     "wide_spread_liquidity": {
       "current_weight": 4,
@@ -362,7 +362,7 @@
       "scaling_factor": 1.04,
       "proposed_weight": 4,
       "n_with": 6,
-      "n_without": 733
+      "n_without": 743
     }
   }
 }
