@@ -25,7 +25,7 @@
       "roe_profitable": 3.0,
       "rsi_healthy_momentum": 3.0,
       "rsi_oversold_recovery": 17.0,
-      "sector_rotation": 8.0,
+      "sector_rotation": 9.0,
       "sma25_breakout": 2.0,
       "volume_spike": 8.0,
       "volume_surge": 31.0,
@@ -33,7 +33,7 @@
       "wide_spread_liquidity": 4.0
     },
     "reason": "Bayesian shrinkage proposal (30 signals); calibration_zone=green, recovery_confirmed=True",
-    "submitted_at": "2026-07-21"
+    "submitted_at": "2026-07-22"
   },
   "weekly_review": {
     "proposed": {
